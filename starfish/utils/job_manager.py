@@ -3,13 +3,13 @@ from datetime import datetime
 from time import sleep
 from functools import lru_cache
 from typing import Callable
-from starfish.utils.data_factory import DataFactory
-
+from starfish.utils.task_runner import TaskRunner
 # TODO: isit in the user process level or the service process level?
 class JobManager:
-    def __init__(self, data_factory: DataFactory, rate_limit: int = 10):
-        self.data_factory = data_factory
+    def __init__(self, rate_limit: int = 10, batch_size: int = 10):
+        self.task_runner = TaskRunner()   
         self.rate_limit = rate_limit  # requests per second
+        self.batch_size = batch_size
         self.job_stats = {
             'total': 0,
             'finished': 0,
@@ -20,9 +20,9 @@ class JobManager:
         self.batch_records = {}
         
         # Register callbacks
-        self.data_factory.add_callback('on_start', self._on_start)
-        self.data_factory.add_callback('on_batch_complete', self._on_batch_complete)
-        self.data_factory.add_callback('on_error', self._on_error)
+        self.task_runner.add_callback('on_task_start', self._on_start)
+        self.task_runner.add_callback('on_task_complete', self._on_batch_complete)
+        self.task_runner.add_callback('on_task_error', self._on_error)
 
     def _on_start(self):
         """Initialize job statistics"""
@@ -33,17 +33,17 @@ class JobManager:
         #     'pending': 0
         # }
 
-    def _on_batch_complete(self, batch_result, batch_id):
+    def _on_batch_complete(self, batch_result):
         """Update stats and cache successful batches"""
         self.job_stats['finished'] += 1
         self.job_stats['pending'] -= 1
-        self._cache_batch(batch_result)
+        self._cache_batch(str(batch_result))
 
-    def _on_error(self, error, batch_id):
+    def _on_error(self, error :str):
         """Handle failed batches"""
         self.job_stats['failed'] += 1
         self.job_stats['pending'] -= 1
-        self._cache_batch(error)
+        self._cache_batch(str(error))
 
     @lru_cache(maxsize=1000)
     def _cache_batch(self, batch_result):
@@ -55,8 +55,8 @@ class JobManager:
             'timestamp': timestamp,
             'data': batch_result
         }
-
-    def execute_with_retry(self, func: Callable, max_retries: int = 3, *args, **kwargs):
+    # task_runner
+    def execute_with_retry(self, func: Callable, batches= None, max_retries: int = 3):
         """Execute function with retry logic and rate limiting"""
         retries = 0
         # maybe better to use retries in a single request instead in the batch level.
@@ -66,12 +66,12 @@ class JobManager:
                 if self.job_stats['pending'] >= self.rate_limit:
                     sleep(1)
                 
-                self.job_stats['total'] += self.data_factory.batch_size
-                self.job_stats['pending'] += self.data_factory.batch_size
+                self.job_stats['total'] += self.batch_size
+                self.job_stats['pending'] += self.batch_size
                 if retries > 0:
-                    self.job_stats['retries'] += self.data_factory.batch_size
+                    self.job_stats['retries'] += self.batch_size
                 
-                return self.data_factory(func)(*args, **kwargs)
+                return self.task_runner.run_batches(func,batches)
                 
             except Exception as e:
                 retries += 1

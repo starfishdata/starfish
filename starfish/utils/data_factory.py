@@ -6,7 +6,7 @@ from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Any, Union
 from starfish.utils.event_loop import run_in_event_loop
-#from starfish.utils.job_manager import JobManager
+from starfish.utils.job_manager import JobManager
 class DataFactory:
     def __init__(self, storage_option: str = 'filesystem', batch_size: int = 100):
         self.storage_option = storage_option
@@ -14,10 +14,10 @@ class DataFactory:
         self.callbacks = {
             'on_start': None,
             'on_batch_complete': None,
-            'on_error': None
+            'on_error': None,
         }
         self.batch_counter = 0  # Add batch counter
-
+        self.job_manager = JobManager(batch_size=batch_size)
     def __call__(self, func: Callable):
         #self.job_manager.add_job(func)
         
@@ -73,42 +73,6 @@ class DataFactory:
                 batch_args[param] = values[i:i+self.batch_size]
                 batches.append(batch_args)
         return batches
-
-    # def _process_batches(self, func: Callable, batches: List[Dict]) -> List[Any]:
-    #     """Process batches with ThreadPoolExecutor"""
-    #     results = []
-    #     with ThreadPoolExecutor() as executor:
-    #         futures = [executor.submit(func, **batch) for batch in batches]
-            
-    #         for future in futures:
-    #             try:
-    #                 batch_result = future.result()
-    #                 results.extend(batch_result)
-    #                 self._execute_callbacks('on_batch_complete', batch_result)
-    #             except Exception as e:
-    #                 self._execute_callbacks('on_error', e)
-    #     return results
-
-    async def _async_process_batches(self, func: Callable, batches: List[Dict]) -> List[Any]:
-        """Process batches with asyncio"""
-        results = []
-        tasks = [asyncio.create_task(func(**batch)) for batch in batches]
-        
-        for task in tasks:
-            try:
-                batch_result = await task
-                results.extend(batch_result)
-                batch_id = self._generate_batch_id()  # Generate batch ID
-                # stored the input data for each batch 
-                cached_data = []
-                for result in batch_result:
-                    # city
-                    cached_data.append(result[0]['question'])
-                self._execute_callbacks('on_batch_complete', ",".join(cached_data), batch_id)  # Pass batch ID
-            except Exception as e:
-                batch_id = self._generate_batch_id()  # Generate batch ID even for errors
-                self._execute_callbacks('on_error', str(e), batch_id)  # Pass batch ID
-        return results
     
     def _generate_batch_id(self) -> str:
         """Generate unique batch ID"""
@@ -117,12 +81,11 @@ class DataFactory:
     
     def _process_batches(self, func: Callable, batches: List[Dict]) -> List[Any]:
         """Process batches with asyncio"""
-        return run_in_event_loop(self._async_process_batches(
+        return self.job_manager.execute_with_retry(
             func=func,
             batches=batches
-        ))
+        )
         
-
     def _store_results(self, results: List[Any]):
         """Handle storage based on configured option"""
         if self.storage_option == 'filesystem':
