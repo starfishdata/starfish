@@ -266,25 +266,31 @@ class JSONParser:
                 
                 schema_lines.append("    }" + ("," if item_idx < show_array_items - 1 else ""))
             
-            if show_array_items > 0:
-                schema_lines.append("    ...")
+            schema_lines.append("    ...")
             
             schema_lines.extend([
                 "  ]",
                 "}"
             ])
         else:
-            schema_lines.append("{")
+            # Always format as a list structure
+            schema_lines.append("[")
             properties = schema.get("properties", {})
             required = schema.get("required", [])
             
-            for i, (name, prop) in enumerate(properties.items()):
-                prop_lines = format_property(name, prop, required)
-                if i < len(properties) - 1 and prop_lines:
-                    prop_lines[-1] = prop_lines[-1] + ","
-                schema_lines.extend(prop_lines)
+            for item_idx in range(show_array_items):
+                schema_lines.append("    {")
+                
+                for i, (name, prop) in enumerate(properties.items()):
+                    prop_lines = format_property(name, prop, required, indent_level=2)
+                    if i < len(properties) - 1 and prop_lines:
+                        prop_lines[-1] = prop_lines[-1] + ","
+                    schema_lines.extend(prop_lines)
+                
+                schema_lines.append("    }" + ("," if item_idx < show_array_items - 1 else ""))
             
-            schema_lines.append("}")
+            schema_lines.append("    ...")
+            schema_lines.append("]")
         
         if schema.get("title") or schema.get("description"):
             schema_lines.append("")

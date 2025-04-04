@@ -5,19 +5,21 @@ from starfish.common.prompt.prompt_template import COMPLETE_PROMPTS, PARTIAL_PRO
 
 class PromptManager:
     """Manages Jinja2 template processing with variable analysis and rendering."""
-    MANDATE_SCHEMA_INSTRUCTION = """Please return data in the following JSON format: 
-               {{schema_instruction}}"""
+    MANDATE_INSTRUCTION = """
+You are asked to generate exactly {{num_records}} records and please return the data in the following JSON format: 
+{{schema_instruction}}
+"""
 
     def __init__(self, template_str: str, header: str = "", footer: str = ""):
         """Initialize with template string and analyze variables immediately."""
-        self.template_full = f"{header}\n{template_str}\n{footer}".strip() + f"\n{self.MANDATE_SCHEMA_INSTRUCTION}"
+        self.template_full = f"{header}\n{template_str}\n{footer}".strip() + f"\n{self.MANDATE_INSTRUCTION}"
         self._env = Environment(undefined=StrictUndefined)
         self._template = self._env.from_string(self.template_full)
         self._ast = self._env.parse(self.template_full)
         
         # Analyze variables immediately to avoid repeated processing
         self.all_vars, self.required_vars, self.optional_vars = self._analyze_variables()
-        
+    
     @classmethod
     def from_string(cls, template_str: str, header: str = "", footer: str = "") -> 'PromptManager':
         """Create from template string."""
@@ -149,6 +151,8 @@ class PromptManager:
         """
         # Validate required variables
         for var in self.required_vars:
+            if var == "num_records":
+                continue # num_records has default value of 1, so it is not required
             if var not in variables:
                 raise ValueError(f"Required variable '{var}' is missing")
             if variables[var] is None:
@@ -159,7 +163,9 @@ class PromptManager:
         for var in self.optional_vars:
             if var not in render_vars:
                 render_vars[var] = None
-                
+        
+        # Add default num_records
+        render_vars["num_records"] = render_vars.get("num_records", 1)
         return self._template.render(**render_vars)
     
     def construct_messages(self, variables: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -167,10 +173,11 @@ class PromptManager:
         rendered_template = self.render_template(variables)
         return [{"role": "user", "content": rendered_template}]
     
-    def get_printable_messages(self, rendered_template: str) -> str:
-        """Format template with visual separators."""
-        lines = ["\n" + "="*80, "📝 RENDERED PROMPT:", "="*80]
-        lines.append(rendered_template)
+    def get_printable_messages(self, messages: List[Dict[str, str]]) -> str:
+        """Format constructed messages with visual separators."""
+        lines = ["\n" + "="*80, "📝 CONSTRUCTED MESSAGES:", "="*80]
+        for msg in messages:
+            lines.append(f"\nRole: {msg['role']}\nContent:\n{msg['content']}")
         lines.extend(["\n" + "="*80, "End of prompt", "="*80 + "\n"])
         return "\n".join(lines)
     

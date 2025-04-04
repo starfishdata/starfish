@@ -40,7 +40,7 @@ The generated data should be contextually relevant to the given topic: '{{topic}
     - Ensure factual accuracy where applicable.
 {% endif %}
 
-Generate exactly {{num_records}} unique and high-quality synthetic data points.  
+Generate unique and high-quality data points.  
 - Ensure diversity in the dataset while maintaining coherence.
 - Avoid redundant or repetitive entries.
 """,
@@ -52,7 +52,7 @@ PARTIAL_PROMPTS = {
         "header": """You are a data generation expert. Your primary objective is to create 
 high-quality synthetic data that strictly adheres to the provided guidelines.""",
         "footer": """
-       Generate exactly {{num_records}} unique and high-quality synthetic data points.  
+       Generate unique and high-quality data points.  
         - Ensure diversity in the dataset while maintaining coherence.
         - Avoid redundant or repetitive entries.
         """

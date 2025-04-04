@@ -1,7 +1,7 @@
 import litellm
-import os
 from typing import List, Dict, Optional, Any
 from starfish.common.logger import get_logger
+from starfish.adapters.litellm_adapter_ext import OPENAI_COMPATIBLE_PROVIDERS_CONFIG, route_openai_compatible_request
 
 logger = get_logger(__name__)
 
@@ -118,7 +118,7 @@ async def route_huggingface_request(model_name: str, messages: List[Dict[str, st
         messages: The messages to send to the model
         model_kwargs: Additional keyword arguments for the model
     """
-    from starfish.services.huggingface_service import ensure_hf_model_ready
+    from starfish.adapters.huggingface_adapter import ensure_hf_model_ready
     
     # Extract the HuggingFace model ID (everything after "hf/")
     hf_model_id = model_name.split("/", 1)[1]
@@ -143,66 +143,26 @@ async def route_huggingface_request(model_name: str, messages: List[Dict[str, st
         raise RuntimeError(error_msg)
     
 
-async def route_hyperbolic_request(model_name: str, messages: List[Dict[str, str]], model_kwargs: Dict[str, Any]) -> Any:
-    """
-    Handle requests for Hyperbolic models.
-
-    Args:
-        model_name (str): The full model name (e.g., "hyperbolic/Qwen/QwQ-32B")
-        messages (List[Dict[str, str]]): The messages to send to the model.
-        model_kwargs (Dict[str, Any]): Additional model parameters.
-
-    Returns:
-        Any: The response from the Hyperbolic model.
-    """
-    HYPERBOLIC_API_KEY_ERROR = "HYPERBOLIC_API_KEY is not set. Please set it in the environment variables."
-    HYPERBOLIC_API_BASE_ERROR = "HYPERBOLIC_API_BASE is not set. Please set it in the environment variables."
-
-    # Ensure API key is set
-    hyperbolic_api_key = os.getenv("HYPERBOLIC_API_KEY")
-    if not hyperbolic_api_key:
-        logger.error(HYPERBOLIC_API_KEY_ERROR)
-        raise RuntimeError(HYPERBOLIC_API_KEY_ERROR)
-    
-    # Set up headers with the API key in Bearer format
-    headers = {"Authorization": f"{hyperbolic_api_key}"}
-
-    # Ensure API base is set
-    hyperbolic_api_base = os.getenv("HYPERBOLIC_API_BASE")
-    if not hyperbolic_api_base:
-        logger.error(HYPERBOLIC_API_BASE_ERROR)
-        raise RuntimeError(HYPERBOLIC_API_BASE_ERROR)
-
-    # Extract the model name from the full name (remove the "hyperbolic/" prefix)
-    model_id = model_name.split("/", 1)[1]  # e.g., "Qwen/QwQ-32B"
-    
-    # Use openai as the provider with the Hyperbolic API base    
-    return await litellm.acompletion(
-        model="openai/" + model_id,  # Use openai as the provider
-        messages=messages,
-        api_base = hyperbolic_api_base,   
-        headers = headers,
-        **model_kwargs
-    ) 
-
-
 async def call_chat_model(model_name: str, messages: List[Dict[str, str]], model_kwargs: Optional[Dict[str, Any]] = None) -> Any:
     """
-    Routes the model request to the appropriate backend based on the model name prefix.
-    
-    Args:
-        model_name: The name of the model (e.g., "ollama/llama3")
-        messages: The messages to send to the model
-        model_kwargs: Additional keyword arguments for the model
-        
-    Returns:
-        The response from the model
-    """
+    Routes the model request:
+    1. Checks OpenAI compatible providers defined in litellm_adapter_ext.py.
+    2. Checks specific handlers (Ollama, HuggingFace).
+    3. Defaults to standard LiteLLM call.
+    """    
+
     model_kwargs = model_kwargs or {}
-    
+    model_prefix = model_name.split("/", 1)[0] if "/" in model_name else None
+
     try:
+        if model_prefix and model_prefix in OPENAI_COMPATIBLE_PROVIDERS_CONFIG:
+            config = OPENAI_COMPATIBLE_PROVIDERS_CONFIG[model_prefix]
+            return await route_openai_compatible_request(
+                    model_prefix, config, model_name, messages, model_kwargs
+                )    
+            
         # Route based on model prefix
-        if model_name.startswith("ollama/"):
+        elif model_name.startswith("ollama/"):
             # Direct Ollama model
             return await route_ollama_request(model_name, messages, model_kwargs)
             
@@ -212,12 +172,6 @@ async def call_chat_model(model_name: str, messages: List[Dict[str, str]], model
             # These are not actually directly using HF API - they're served through Ollama
             return await route_huggingface_request(model_name, messages, model_kwargs)
         
-        elif model_name.startswith("hyperbolic/"):
-            return await route_hyperbolic_request(model_name, messages, model_kwargs)
-    
-        # Future providers can be added here with additional elif statements
-        # elif model_name.startswith("vllm/"):
-        #     return await route_vllm_request(model_name, messages, model_kwargs)
         else:
             # Default case - use litellm directly
             try:

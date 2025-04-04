@@ -121,8 +121,7 @@ class StructuredLLM:
 
         return prompt_inputs
 
-    async def run(self, **kwargs) -> LLMResponse:
-        """Main async method to run the LLM with the provided parameters."""
+    def render_prompt(self, **kwargs) -> str:
         # Add schema instructions if needed
         prompt_inputs = self._prepare_prompt_inputs(**kwargs)
         # Render the prompt template
@@ -130,6 +129,17 @@ class StructuredLLM:
             messages = self.prompt_manager.construct_messages(prompt_inputs)
         except ValueError as e:
             raise ValueError(f"Error rendering prompt template: {str(e)}")
+        return messages
+    
+    def render_prompt_printable(self, **kwargs) -> str:
+        """Print the prompt template with the provided parameters."""
+        messages = self.render_prompt(**kwargs)
+        return self.prompt_manager.get_printable_messages(messages)
+    
+    async def run(self, **kwargs) -> LLMResponse:
+        """Main async method to run the LLM with the provided parameters."""
+        # Render the prompt template
+        messages = self.render_prompt(**kwargs)
         
         # Call the LLM
         raw_response = await call_chat_model(
@@ -160,57 +170,3 @@ class StructuredLLM:
         For Jupyter notebooks, requires nest_asyncio.
         """
         return await self.run(**kwargs)
-
-
-def get_structured_llm(
-    model_name: str,
-    prompt: str,
-    output_schema: Union[List[Dict[str, Any]], Dict[str, Any], type],
-    prompt_template: Optional[str] = None,
-    model_kwargs: Optional[Dict[str, Any]] = None,
-    strict_parsing: bool = False,
-    type_check: bool = False,
-) -> StructuredLLM:
-    """
-    Create a callable LLM builder for template-based responses.
-    
-    Args:
-        model_name: LLM model name (e.g., 'openai/gpt-4o-mini')
-        prompt: Template string or content for partial template
-        output_schema: Output schema for parsing (JSON or Pydantic)
-        prompt_template: Optional name of partial template to use
-        model_kwargs: Additional parameters for the LLM
-        strict_parsing: If True, raise errors on parsing failures. If False, return None (default)
-        type_check: If True, check field types against schema. If False, skip type validation.
-        
-    Returns:
-        LLMBuilder: Callable object for async/sync LLM requests
-        
-    Example:
-        ```python
-        # Async usage with default error handling (returns None on parsing failures)
-        builder = llm_builder(...)
-        result = await builder(topic="history")  # Using __call__
-        if result.data is None:
-            # Handle parsing failure gracefully
-            print(f"Could not parse response, using raw: {result.raw}")
-        
-        # Strict parsing (raises exceptions on parsing failures)
-        builder = llm_builder(..., strict_parsing=True)
-        try:
-            result = await builder(topic="history")
-            process_data(result.data)
-        except (JsonParserError, PydanticParserError) as e:
-            # Handle parsing errors
-            print(f"Error: {e}")
-        ```
-    """
-    return StructuredLLM(
-        model_name=model_name,
-        prompt=prompt,
-        model_kwargs=model_kwargs,
-        output_schema=output_schema,
-        prompt_template=prompt_template,
-        strict_parsing=strict_parsing,
-        type_check=type_check,
-    ) 
