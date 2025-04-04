@@ -68,7 +68,7 @@ class StructuredLLM:
         self.prompt_variables = self.prompt_manager.get_all_variables()
         self.required_prompt_variables = self.prompt_manager.get_required_variables()
         self.optional_prompt_variables = self.prompt_manager.get_optional_variables()  
-        self.prompt = self.prompt_manager.get_prompt()  
+        self.prompt_template = self.prompt_manager.get_prompt()  
 
         # Schema processing
         self.output_schema = output_schema
@@ -121,8 +121,7 @@ class StructuredLLM:
 
         return prompt_inputs
 
-    async def run(self, **kwargs) -> LLMResponse:
-        """Main async method to run the LLM with the provided parameters."""
+    def get_prompt(self, **kwargs) -> str:
         # Add schema instructions if needed
         prompt_inputs = self._prepare_prompt_inputs(**kwargs)
         # Render the prompt template
@@ -130,6 +129,17 @@ class StructuredLLM:
             messages = self.prompt_manager.construct_messages(prompt_inputs)
         except ValueError as e:
             raise ValueError(f"Error rendering prompt template: {str(e)}")
+        return messages
+    
+    def get_prompt_printable(self, **kwargs) -> None:
+        """Print the prompt template with the provided parameters."""
+        messages = self.get_prompt(**kwargs)
+        return self.prompt_manager.get_printable_messages(messages)
+    
+    async def run(self, **kwargs) -> LLMResponse:
+        """Main async method to run the LLM with the provided parameters."""
+        # Render the prompt template
+        messages = self.get_prompt(**kwargs)
         
         # Call the LLM
         raw_response = await call_chat_model(
