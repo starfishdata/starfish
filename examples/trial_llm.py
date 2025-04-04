@@ -45,8 +45,8 @@ async def generate_city_info(cities: List[str], num_facts: int) :
     return cities_info
 
 # Add callback for error handling
-def handle_error(e: Exception):
-    print(f"Error occurred: {str(e)}")
+def handle_error(err_str: str):
+    print(f"Error occurred: {err_str}")
 
 generate_city_info.add_callback('on_error', handle_error)
 

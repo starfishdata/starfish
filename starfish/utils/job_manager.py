@@ -17,6 +17,11 @@ class JobManager:
             'pending': 0,
             "retries": 0
         }
+        self.callbacks = {
+            'on_start': None,
+            'on_job_complete': None,
+            'on_job_error': None,
+        }
         self.batch_records = {}
         
         # Register callbacks
@@ -26,25 +31,21 @@ class JobManager:
 
     def _on_start(self):
         """Initialize job statistics"""
-        # self.job_stats = {
-        #     'total': 0,
-        #     'finished': 0,
-        #     'failed': 0,
-        #     'pending': 0
-        # }
+        pass
 
     def _on_batch_complete(self, batch_result):
         """Update stats and cache successful batches"""
         self.job_stats['finished'] += 1
         self.job_stats['pending'] -= 1
         self._cache_batch(str(batch_result))
+        self._execute_callbacks('on_job_complete', batch_result)
 
     def _on_error(self, error :str):
         """Handle failed batches"""
         self.job_stats['failed'] += 1
         self.job_stats['pending'] -= 1
         self._cache_batch(str(error))
-
+        self._execute_callbacks('on_job_error', error)
     @lru_cache(maxsize=1000)
     def _cache_batch(self, batch_result):
         """Cache successful batch results"""
@@ -91,3 +92,13 @@ class JobManager:
         """Clear cached batch records"""
         self.batch_records.clear()
         self._cache_batch.cache_clear()
+
+    def add_callback(self, event: str, callback: Callable):
+        """Register callback functions"""
+        if event in self.callbacks:
+            self.callbacks[event] = callback
+
+    def _execute_callbacks(self, event: str, *args):
+        """Trigger registered callbacks"""
+        if callback := self.callbacks.get(event):
+            callback(*args)

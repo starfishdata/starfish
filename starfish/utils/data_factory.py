@@ -18,6 +18,9 @@ class DataFactory:
         }
         self.batch_counter = 0  # Add batch counter
         self.job_manager = JobManager(batch_size=batch_size)
+        self.job_manager.add_callback('on_job_start', self._on_start)
+        self.job_manager.add_callback('on_job_complete', self._on_complete)
+        self.job_manager.add_callback('on_job_error', self._on_error)
     def __call__(self, func: Callable):
         #self.job_manager.add_job(func)
         
@@ -43,9 +46,6 @@ class DataFactory:
         wrapper.add_callback = self.add_callback
         return wrapper
     
-    #def run(self, func: Callable, *args, **kwargs):
-        
-
     def _get_batchable_params(self, func: Callable) -> List[str]:
         """Identify parameters with List type hints"""
         type_hints = inspect.get_annotations(func)
@@ -105,6 +105,19 @@ class DataFactory:
         """Trigger registered callbacks"""
         if callback := self.callbacks.get(event):
             callback(*args)
+    
+    def _on_start(self):
+        """Initialize job statistics"""
+        pass
+
+    def _on_complete(self, batch_result):
+        """Update stats and cache successful batches"""
+        
+        self._execute_callbacks('on_batch_complete', batch_result)
+
+    def _on_error(self, error :str):
+        """Handle failed batches"""
+        self._execute_callbacks('on_error', error)
 
 # Public decorator interface
 def data_factory(storage_option: str = 'filesystem', batch_size: int = 100):
