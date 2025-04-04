@@ -6,7 +6,7 @@ from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Any, Union
 from starfish.utils.event_loop import run_in_event_loop
-
+#from starfish.utils.job_manager import JobManager
 class DataFactory:
     def __init__(self, storage_option: str = 'filesystem', batch_size: int = 100):
         self.storage_option = storage_option
@@ -16,8 +16,11 @@ class DataFactory:
             'on_batch_complete': None,
             'on_error': None
         }
+        self.batch_counter = 0  # Add batch counter
 
     def __call__(self, func: Callable):
+        #self.job_manager.add_job(func)
+        
         @wraps(func)
         def wrapper(*args, **kwargs):
             self._execute_callbacks('on_start')
@@ -39,15 +42,21 @@ class DataFactory:
         # Add callback registration methods
         wrapper.add_callback = self.add_callback
         return wrapper
+    
+    #def run(self, func: Callable, *args, **kwargs):
+        
 
     def _get_batchable_params(self, func: Callable) -> List[str]:
         """Identify parameters with List type hints"""
         type_hints = inspect.get_annotations(func)
         #and param != "return"
-        return [
+        keys = [
             param for param, hint in type_hints.items()
             if getattr(hint, '__origin__', None) is list 
         ]
+        if len(keys) == 0:
+            raise ValueError("No batchable parameters found")
+        return [keys[0]]
 
     def _create_batches(self, func: Callable, batchable_params: List[str], 
                       *args, **kwargs) -> List[Dict[str, Any]]:
@@ -89,10 +98,22 @@ class DataFactory:
             try:
                 batch_result = await task
                 results.extend(batch_result)
-                self._execute_callbacks('on_batch_complete', batch_result)
+                batch_id = self._generate_batch_id()  # Generate batch ID
+                # stored the input data for each batch 
+                cached_data = []
+                for result in batch_result:
+                    # city
+                    cached_data.append(result[0]['question'])
+                self._execute_callbacks('on_batch_complete', ",".join(cached_data), batch_id)  # Pass batch ID
             except Exception as e:
-                self._execute_callbacks('on_error', e)
+                batch_id = self._generate_batch_id()  # Generate batch ID even for errors
+                self._execute_callbacks('on_error', str(e), batch_id)  # Pass batch ID
         return results
+    
+    def _generate_batch_id(self) -> str:
+        """Generate unique batch ID"""
+        self.batch_counter += 1
+        return f"batch_{self.batch_counter:04d}"
     
     def _process_batches(self, func: Callable, batches: List[Dict]) -> List[Any]:
         """Process batches with asyncio"""
