@@ -21,7 +21,6 @@ from starfish.adapters.ollama_adapter import (
 logger = get_logger(__name__)
 
 HF_API_BASE = "https://huggingface.co/api"
-HUGGING_FACE_HUB_TOKEN = "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"
 
 #############################################
 # HuggingFace Exception Types
@@ -47,7 +46,7 @@ class HuggingFaceAPIError(HuggingFaceError):
 #############################################
 def get_hf_token() -> Optional[str]:
     """Get HuggingFace API token from environment variable"""
-    return os.environ.get(HUGGING_FACE_HUB_TOKEN)
+    return os.environ.get("HUGGING_FACE_HUB_TOKEN")
 
 async def _make_hf_request(url: str, params: Optional[Dict] = None, check_auth: bool = True) -> Tuple[bool, Any]:
     """
@@ -73,7 +72,7 @@ async def _make_hf_request(url: str, params: Optional[Dict] = None, check_auth: 
                 if response.status == 200:
                     return True, await response.json()
                 elif response.status in (401, 403):
-                    return False, f"Authentication required. Please set the {HUGGING_FACE_HUB_TOKEN} environment variable."
+                    return False, "Authentication required. Please set the {HUGGING_FACE_HUB_TOKEN} environment variable."
                 else:
                     return False, f"Request failed with status {response.status}"
     except Exception as e:
@@ -442,7 +441,7 @@ async def download_best_gguf_for_model(model_id: str) -> Tuple[bool, str, Option
             # Check if it's an auth error
             token = get_hf_token()
             if not token:
-                error_msg = f"Authentication required for model {model_id}. Please set the {HUGGING_FACE_HUB_TOKEN} environment variable."
+                error_msg = f"Authentication required for model {model_id}. Please set the HUGGING_FACE_HUB_TOKEN environment variable."
                 logger.error(error_msg)
                 raise HuggingFaceAuthError(error_msg)
             else:
