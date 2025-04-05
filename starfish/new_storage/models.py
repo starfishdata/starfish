@@ -17,14 +17,19 @@ StatusRecord = Literal[
     'pending', 'running', 'completed', 'duplicate', 'filtered', 'failed',  'cancelled'
 ]
 
+# Helper functions for default timestamps
+def utc_now() -> datetime.datetime:
+    """Return current UTC datetime."""
+    return datetime.datetime.now(datetime.timezone.utc)
+
 # --- Core Models ---
 
 class Project(BaseModel):
     project_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique project identifier.")
     name: str = Field(..., description="User-friendly project name.")
     description: Optional[str] = Field(None, description="Optional description.")
-    created_when: datetime.datetime = Field(default_factory=datetime.datetime.now(datetime.timezone.utc))
-    updated_when: datetime.datetime = Field(default_factory=datetime.datetime.now(datetime.timezone.utc))
+    created_when: datetime.datetime = Field(default_factory=utc_now)
+    updated_when: datetime.datetime = Field(default_factory=utc_now)
 
     class Config:
         from_attributes = True 
@@ -44,12 +49,12 @@ class GenerationMasterJob(BaseModel):
     filtered_record_count: int = Field(default=0, description="Aggregate count of 'filtered' records.")
     duplicate_record_count: int = Field(default=0, description="Aggregate count of 'duplicate' records.")
     failed_record_count: int = Field(default=0, description="Aggregate count of 'failed' records.")
-    creation_time: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="Job submission time.")
+    creation_time: datetime.datetime = Field(default_factory=utc_now, description="Job submission time.")
     start_time: Optional[datetime.datetime] = Field(None, description="Time the first execution work began.")
     end_time: Optional[datetime.datetime] = Field(None, description="Time the job reached a terminal state.")
-    last_update_time: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="Last modification time.")
+    last_update_time: datetime.datetime = Field(default_factory=utc_now, description="Last modification time.")
 
-    @field_validator('output_schema', pre=True, allow_reuse=True)
+    @field_validator('output_schema', mode="before")
     def _parse_json_string(cls, value):
         if isinstance(value, str):
             try:
@@ -73,14 +78,14 @@ class GenerationJob(BaseModel):
     filtered_record_count: int = Field(default=0, description="'filtered' records from this run.")
     duplicate_record_count: int = Field(default=0, description="'duplicate' records from this run.")
     failed_record_count: int = Field(default=0, description="'failed' records from this run.")
-    creation_time: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
+    creation_time: datetime.datetime = Field(default_factory=utc_now)
     start_time: Optional[datetime.datetime] = Field(None, description="When this execution actually started.")
     end_time: Optional[datetime.datetime] = Field(None, description="When this execution finished.")
-    last_update_time: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
+    last_update_time: datetime.datetime = Field(default_factory=utc_now)
     worker_id: Optional[str] = Field(None, description="Identifier of the worker (if applicable).")
     error_message: Optional[str] = Field(None, description="Error if the whole execution run failed.")
 
-    @field_validator('run_config', pre=True, allow_reuse=True)
+    @field_validator('run_config', mode="before")
     def _parse_json_string(cls, value):
         # Same validator as above if stored as JSON string in DB
         if isinstance(value, str):
@@ -90,9 +95,9 @@ class GenerationJob(BaseModel):
                  raise ValueError("Invalid JSON string provided for run_config")
         return value
 
-    @computed_field # Requires Pydantic v2
-    @property
-    def duration_seconds(self) -> Optional[float]:
+    # Helper method to calculate duration if needed
+    def get_duration_seconds(self) -> Optional[float]:
+        """Calculate the duration in seconds between start_time and end_time."""
         if self.start_time and self.end_time:
             start = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
             end = self.end_time.replace(tzinfo=None) if self.end_time.tzinfo else self.end_time
@@ -109,9 +114,9 @@ class Record(BaseModel):
     master_job_id: str = Field(..., description="Denormalized FK to GenerationMasterJob.")
     status: StatusRecord = Field(default='pending', description="Final determined status of this artifact.")
     output_ref: Optional[str] = Field(None, description="Reference (e.g., file path, S3 URI) to the external data JSON.")
-    start_time: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="Time generator function produced the data.")
-    end_time: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="Time final status was assigned.")
-    last_update_time: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
+    start_time: datetime.datetime = Field(default_factory=utc_now, description="Time generator function produced the data.")
+    end_time: datetime.datetime = Field(default_factory=utc_now, description="Time final status was assigned.")
+    last_update_time: datetime.datetime = Field(default_factory=utc_now)
     error_message: Optional[str] = Field(None, description="Specific error related to this record.")
 
     class Config:
