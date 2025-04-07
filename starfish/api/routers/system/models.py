@@ -1,37 +1,47 @@
-"""
-Model management API routes
-"""
-from typing import Dict, Any, List
+"""Model management API routes"""
+
+import logging
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
-import logging
 
 from starfish.services.model_management_service import (
-    list_local_models as service_list_models, 
     delete_local_model as service_delete_model,
-    search_huggingface_models,
-    download_huggingface_model
 )
+from starfish.services.model_management_service import download_huggingface_model
+from starfish.services.model_management_service import (
+    list_local_models as service_list_models,
+)
+from starfish.services.model_management_service import search_huggingface_models
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 class DeleteModelResponse(BaseModel):
     """Response model for model deletion"""
+
     success: bool
     message: str
 
+
 class ModelListResponse(BaseModel):
     """Response model for model listing"""
+
     models: List[Dict[str, Any]]
+
 
 class DownloadModelRequest(BaseModel):
     """Request model for model download"""
+
     model_id: str
+
 
 class DownloadModelResponse(BaseModel):
     """Response model for model download"""
+
     success: bool
     message: str
 
@@ -53,9 +63,7 @@ async def remove_local_model(model_name: str, request: Request):
 
 @router.get("/search_hf_models", response_model=ModelListResponse, tags=["Local Model"])
 async def search_hf_models(
-    request: Request,
-    query: str = Query("", description="Search query"),
-    limit: int = Query(20, description="Maximum number of results")
+    request: Request, query: str = Query("", description="Search query"), limit: int = Query(20, description="Maximum number of results")
 ):
     """Search for models on HuggingFace"""
     models = await search_huggingface_models(query, limit)

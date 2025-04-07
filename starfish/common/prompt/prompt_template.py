@@ -1,8 +1,6 @@
-
 # Complete prompts that need no additional template text
 COMPLETE_PROMPTS = {
-    "data_gen": 
-"""
+    "data_gen": """
 You are a data generation expert. Your primary objective is to create 
 high-quality synthetic data that strictly adheres to the provided guidelines.
 
@@ -55,6 +53,6 @@ high-quality synthetic data that strictly adheres to the provided guidelines."""
        Generate unique and high-quality data points.  
         - Ensure diversity in the dataset while maintaining coherence.
         - Avoid redundant or repetitive entries.
-        """
+        """,
     },
 }

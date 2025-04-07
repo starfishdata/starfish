@@ -1,1 +1,1 @@
-"""Integration tests for Starfish.""" 
+"""Integration tests for Starfish."""

@@ -1,6 +1,7 @@
 # synthetic_data_gen/storage/local/schema.py
-import aiosqlite
 import logging
+
+import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_records_master_id ON Records(master_job_id);
 CREATE INDEX IF NOT EXISTS idx_records_job_id ON Records(job_id);
 CREATE INDEX IF NOT EXISTS idx_records_status ON Records(status);
 """
+
 
 # --- Setup Function ---
 async def initialize_db_schema(conn: aiosqlite.Connection):

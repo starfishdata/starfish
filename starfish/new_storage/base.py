@@ -1,21 +1,21 @@
 # synthetic_data_gen/core/interfaces/storage.py
 import datetime
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 # Import Pydantic models from where they are defined
 # Assuming they are in synthetic_data_gen/models.py
 from starfish.new_storage.models import (
-    Project,
-    GenerationMasterJob,
     GenerationJob,
+    GenerationMasterJob,
+    Project,
     Record,
-    StatusRecord
+    StatusRecord,
 )
 
+
 class Storage(ABC):
-    """
-    Abstract Base Class for persistent storage backend implementations.
+    """Abstract Base Class for persistent storage backend implementations.
     Defines the contract for saving and retrieving job/record metadata and data artifacts.
     """
 
@@ -81,7 +81,9 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    async def log_master_job_end(self, master_job_id: str, final_status: str, summary: Optional[Dict[str, Any]], end_time: datetime.datetime, update_time: datetime.datetime) -> None:
+    async def log_master_job_end(
+        self, master_job_id: str, final_status: str, summary: Optional[Dict[str, Any]], end_time: datetime.datetime, update_time: datetime.datetime
+    ) -> None:
         """Log the final status and summary of a master job."""
         pass
 
@@ -96,7 +98,9 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    async def list_master_jobs(self, project_id: Optional[str] = None, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None) -> List[GenerationMasterJob]:
+    async def list_master_jobs(
+        self, project_id: Optional[str] = None, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None
+    ) -> List[GenerationMasterJob]:
         """List master jobs, optionally filtering by project and status."""
         pass
 
@@ -107,7 +111,15 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    async def log_execution_job_end(self, job_id: str, final_status: str, counts: Dict[str, int], end_time: datetime.datetime, update_time: datetime.datetime, error_message: Optional[str] = None) -> None:
+    async def log_execution_job_end(
+        self,
+        job_id: str,
+        final_status: str,
+        counts: Dict[str, int],
+        end_time: datetime.datetime,
+        update_time: datetime.datetime,
+        error_message: Optional[str] = None,
+    ) -> None:
         """Log the final status and outcome counts of an execution job."""
         pass
 
@@ -117,7 +129,9 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    async def list_execution_jobs(self, master_job_id: str, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None) -> List[GenerationJob]:
+    async def list_execution_jobs(
+        self, master_job_id: str, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None
+    ) -> List[GenerationJob]:
         """List execution jobs for a given master job."""
         pass
 
@@ -134,28 +148,19 @@ class Storage(ABC):
 
     @abstractmethod
     async def get_records_for_master_job(
-        self,
-        master_job_id: str,
-        status_filter: Optional[List[StatusRecord]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
+        self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None, limit: Optional[int] = None, offset: Optional[int] = None
     ) -> List[Record]:
         """Retrieve metadata for records belonging to a master job."""
         pass
 
     @abstractmethod
-    async def count_records_for_master_job(
-         self,
-         master_job_id: str,
-         status_filter: Optional[List[StatusRecord]] = None
-    ) -> Dict[str, int]:
-         """Efficiently get counts of records grouped by status for a master job."""
-         pass
-    
-
+    async def count_records_for_master_job(self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None) -> Dict[str, int]:
+        """Efficiently get counts of records grouped by status for a master job."""
+        pass
 
 
 from starfish.core.component_registry import Registry
+
 # Create a storage-specific registry
 storage_registry = Registry[Storage](Storage)
 
@@ -167,5 +172,3 @@ get_all_storage_input_models = storage_registry.get_all_input_models
 
 # For backward compatibility
 BaseStorage = Storage
-
-

@@ -1,28 +1,25 @@
 import datetime
 import json
-from typing import Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field, computed_field, field_validator
 import uuid
+from typing import Any, Dict, Literal, Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 # --- Enums for Status Fields ---
 
-StatusMasterJob = Literal[
-    'pending', 'running',  'completed',
-    'failed', 'completed_with_errors', 'cancelled'
-]
-StatusExecutionJob = Literal[
-    'pending', 'running', 'completed', 'failed', 'cancelled'
-]
-StatusRecord = Literal[
-    'pending', 'running', 'completed', 'duplicate', 'filtered', 'failed',  'cancelled'
-]
+StatusMasterJob = Literal["pending", "running", "completed", "failed", "completed_with_errors", "cancelled"]
+StatusExecutionJob = Literal["pending", "running", "completed", "failed", "cancelled"]
+StatusRecord = Literal["pending", "running", "completed", "duplicate", "filtered", "failed", "cancelled"]
+
 
 # Helper functions for default timestamps
 def utc_now() -> datetime.datetime:
     """Return current UTC datetime."""
     return datetime.datetime.now(datetime.timezone.utc)
 
+
 # --- Core Models ---
+
 
 class Project(BaseModel):
     project_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique project identifier.")
@@ -32,15 +29,18 @@ class Project(BaseModel):
     updated_when: datetime.datetime = Field(default_factory=utc_now)
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
+
 
 class GenerationMasterJob(BaseModel):
     master_job_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique job identifier.")
     project_id: str = Field(..., description="FK to Projects. Groups jobs.")
     name: Optional[str] = Field(None, description="Optional user-friendly name.")
-    status: StatusMasterJob = Field(default='pending', description="Overall status of the job request.")
+    status: StatusMasterJob = Field(default="pending", description="Overall status of the job request.")
     request_config_ref: str = Field(..., description="Reference (e.g., file path, S3 URI) to the external request config JSON.")
-    output_schema: Dict[str, Any] = Field(..., description="JSON definition of the expected primary data structure.") # Store as dict, serialize to JSON str for DB
+    output_schema: Dict[str, Any] = Field(
+        ..., description="JSON definition of the expected primary data structure."
+    )  # Store as dict, serialize to JSON str for DB
     storage_uri: str = Field(..., description="Primary storage location config.")
     metadata_storage_uri_override: Optional[str] = Field(None, description="Advanced config override for metadata.")
     data_storage_uri_override: Optional[str] = Field(None, description="Advanced config override for data.")
@@ -54,7 +54,7 @@ class GenerationMasterJob(BaseModel):
     end_time: Optional[datetime.datetime] = Field(None, description="Time the job reached a terminal state.")
     last_update_time: datetime.datetime = Field(default_factory=utc_now, description="Last modification time.")
 
-    @field_validator('output_schema', mode="before")
+    @field_validator("output_schema", mode="before")
     def _parse_json_string(cls, value):
         if isinstance(value, str):
             try:
@@ -64,14 +64,14 @@ class GenerationMasterJob(BaseModel):
         return value
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
 
 
 class GenerationJob(BaseModel):
     job_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique execution identifier.")
     master_job_id: str = Field(..., description="FK to MasterJobs.")
-    status: StatusExecutionJob = Field(default='pending', description="Status of this specific execution run.")
-    run_config: Optional[Dict[str, Any]] = Field(None, description="JSON of specific inputs/context for this run.") # Store as dict
+    status: StatusExecutionJob = Field(default="pending", description="Status of this specific execution run.")
+    run_config: Optional[Dict[str, Any]] = Field(None, description="JSON of specific inputs/context for this run.")  # Store as dict
     attempted_generations: int = Field(default=0, description="Generation cycles/input items processed in this run.")
     produced_outputs_count: int = Field(default=0, description="Raw data items returned by generator(s) in this run.")
     completed_record_count: int = Field(default=0, description="'completed' records from this run.")
@@ -85,14 +85,14 @@ class GenerationJob(BaseModel):
     worker_id: Optional[str] = Field(None, description="Identifier of the worker (if applicable).")
     error_message: Optional[str] = Field(None, description="Error if the whole execution run failed.")
 
-    @field_validator('run_config', mode="before")
+    @field_validator("run_config", mode="before")
     def _parse_json_string(cls, value):
         # Same validator as above if stored as JSON string in DB
         if isinstance(value, str):
-             try:
-                 return json.loads(value)
-             except json.JSONDecodeError:
-                 raise ValueError("Invalid JSON string provided for run_config")
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                raise ValueError("Invalid JSON string provided for run_config")
         return value
 
     # Helper method to calculate duration if needed
@@ -105,14 +105,14 @@ class GenerationJob(BaseModel):
         return None
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
 
 
 class Record(BaseModel):
     record_uid: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Globally unique artifact ID.")
     job_id: str = Field(..., description="FK to GenerationJob.")
     master_job_id: str = Field(..., description="Denormalized FK to GenerationMasterJob.")
-    status: StatusRecord = Field(default='pending', description="Final determined status of this artifact.")
+    status: StatusRecord = Field(default="pending", description="Final determined status of this artifact.")
     output_ref: Optional[str] = Field(None, description="Reference (e.g., file path, S3 URI) to the external data JSON.")
     start_time: datetime.datetime = Field(default_factory=utc_now, description="Time generator function produced the data.")
     end_time: datetime.datetime = Field(default_factory=utc_now, description="Time final status was assigned.")
@@ -120,10 +120,8 @@ class Record(BaseModel):
     error_message: Optional[str] = Field(None, description="Specific error related to this record.")
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
 
 
 ### Request configs: {storage_uri}/configs/{master_job_id}.request.json
 ### Record Data: {storage_uri}/data/{record_uid[:2]}/{record_uid[2:4]}/{record_uid}.json
-
-
