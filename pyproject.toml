@@ -37,3 +37,4 @@ ipykernel = "^6.29.5"
 
 [tool.poetry.scripts]
 starfish = "starfish.api.cli:main"
+

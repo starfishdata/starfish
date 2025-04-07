@@ -7,19 +7,12 @@ import uuid
 from queue import Queue
 from starfish.utils.job_manager import JobManager
 class DataFactory:
-    def __init__(self, storage: str, batch_size: int,max_concurrency:int,target_count:int,state:Dict[str,Any],on_record_complete:List[Callable],on_record_error:List[Callable]):
+    def __init__(self, storage: str, batch_size: int,max_concurrency:int,
+                 target_count:int,state:Dict[str,Any],on_record_complete:List[Callable],
+                 on_record_error:List[Callable],input_converter:Callable):
         # self.storage = storage
         self.batch_size = batch_size
-        # self.max_concurrency = max_concurrency
-        # self.state = state
-        # self.on_record_complete = on_record_complete
-        # self.on_record_error = on_record_error
-        # self.callbacks = {
-        #     'on_start': [],
-        #     'on_batch_complete': [],
-        #     'on_error': [],
-        #     'on_record_complete': [],
-        # }
+        self.input_converter = input_converter
         self.job_config={
                 'max_concurrency':max_concurrency,
                 'target_count':target_count,
@@ -33,10 +26,7 @@ class DataFactory:
 
             job_config=self.job_config,
             storage=storage,state=state)
-        # self.job_manager.add_callback('on_job_start', self._on_start)
-        # self.job_manager.add_callback('on_job_complete', self._on_complete)
-        # self.job_manager.add_callback('on_job_error', self._on_error)
-        # self.job_manager.add_callback('on_record_complete', self._on_record_complete)
+        
     def __call__(self, func: Callable):
         #self.job_manager.add_job(func)
         
@@ -45,11 +35,14 @@ class DataFactory:
             #self._execute_callbacks('on_start')
             
             # Get batchable parameters from type hints
-            batchable_params = self._get_batchable_params(func)
-            
-            
+            #batchable_params = self._get_batchable_params(func)
+            batches = self.input_converter(*args, **kwargs)
+            # batches = Queue()
+            # for data in converted_data:
+            #     batches.put(data)
+
             # Prepare batches
-            batches = self._create_batches(func, batchable_params, *args, **kwargs)
+            #batches = self._create_batches(func, batchable_params, *args, **kwargs)
             
             # Process batches in parallel
             self._process_batches(func, batches)
@@ -60,7 +53,10 @@ class DataFactory:
             #self._store_results(results)
             
             #return results
-
+        # Add run method to the wrapped function
+        def run(*args, **kwargs):
+            return wrapper(*args, **kwargs) 
+        wrapper.run = run
         wrapper.state = self.job_manager.state
         return wrapper
     
@@ -148,31 +144,50 @@ class DataFactory:
         self._execute_callbacks('on_record_complete', data)
 
     def _save_master_job(self):
-        # """Save the master job to SQLite database"""
-        # from sqlmodel import SQLModel, Session, create_engine
-        # from starfish.new_storage.models import GenerationMasterJob
         
-        # # Create SQLite engine (you might want to make this configurable)
-        # engine = create_engine("sqlite:///data_factory.db")
-        
-        # # Create tables if they don't exist
-        # SQLModel.metadata.create_all(engine)
-        
-        # # Create a new master job instance
-        # master_job = GenerationMasterJob(
-        #     project_id="default_project",  # You might want to make this configurable
-        #     request_config_ref="config.json",  # Update with actual config reference
-        #     output_schema={},  # Update with actual schema
-        #     storage_uri="sqlite:///data_factory.db",  # Update with actual storage URI
-        #     target_record_count=self.batch_size * len(self.job_manager.jobs)
-        # )
-        
-        # # Save to database
-        # with Session(engine) as session:
-        #     session.add(master_job)
-        #     session.commit()
-        #     session.refresh(master_job)
         pass
+
+
+
+def default_input_converter(data, **kwargs) -> Queue[Dict[str, Any]]:
+    # Determine parallel sources
+    parallel_sources = {}
+    if isinstance(data, list):
+        parallel_sources['data'] = data
+    for key, value in kwargs.items():
+        if isinstance(value, (list, tuple)):
+            parallel_sources[key] = value
+
+    # Validate parallel sources have same length
+    lengths = [len(v) for v in parallel_sources.values()]
+    if len(set(lengths)) > 1:
+        raise ValueError("All parallel sources must have the same length")
+
+    # Determine batch size (L)
+    batch_size = lengths[0] if lengths else 1
+
+    # Prepare results
+    results = Queue()
+    for i in range(batch_size):
+        record = {}
+        
+        # Add data if exists
+        if 'data' in parallel_sources:
+            record.update(parallel_sources['data'][i])
+        
+        # Add parallel kwargs
+        for key in parallel_sources:
+            if key != 'data':
+                record[key] = parallel_sources[key][i]
+        
+        # Add broadcast kwargs
+        for key, value in kwargs.items():
+            if not isinstance(value, (list, tuple)):
+                record[key] = value
+        
+        results.put(record)
+    
+    return results
 
 # Public decorator interface
 def data_factory(storage: str = 'filesystem',
@@ -181,6 +196,8 @@ def data_factory(storage: str = 'filesystem',
                   max_concurrency:int=50,
                   state:Dict[str,Any]={},
                   on_record_complete:List[Callable]=[],
-                  on_record_error:List[Callable]=[]
+                  on_record_error:List[Callable]=[],
+                  input_converter=default_input_converter
                   ):
-    return DataFactory(storage, batch_size,max_concurrency,target_count,state,on_record_complete,on_record_error)
+    return DataFactory(storage, batch_size,max_concurrency,target_count,state,on_record_complete,
+                       on_record_error, input_converter = input_converter)
