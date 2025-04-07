@@ -1,5 +1,6 @@
 
 import asyncio
+from time import sleep
 from typing import Callable, Dict, List, Any, Union
 from starfish.utils.event_loop import run_in_event_loop
 class TaskRunner:
@@ -40,7 +41,7 @@ class TaskRunner:
             except Exception as e:
                 err_str = str(e)
                 results.append(err_str)
-                self._execute_callbacks('on_task_error', err_str)  
+                self._execute_callbacks('on_task_error', str(e))  
         return results
     
     
@@ -51,6 +52,21 @@ class TaskRunner:
             batches=batches
         ))
     
+    async def run_task(self, func: Callable, input_data: Dict) -> List[Any]:
+        """Process a single task with asyncio"""
+        retries = 0
+        max_retries = 0
+        # maybe better to use retries in a single request instead in the batch level.
+        while retries <= max_retries:
+            try:
+               output = await func(**input_data)
+               return output
+                
+            except Exception as e:
+                retries += 1
+                if retries > max_retries:
+                    raise e
+                sleep(2 ** retries)  # exponential backoff
     def add_callback(self, event: str, callback: Callable):
         """Register callback functions"""
         if event in self.callbacks:

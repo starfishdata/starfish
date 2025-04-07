@@ -1,104 +1,132 @@
+import asyncio
+from typing import Dict, Any, List
 
-from datetime import datetime
+from datetime import datetime, timedelta
+import json
 from time import sleep
 from functools import lru_cache
-from typing import Callable
+from typing import Callable, Optional
+import uuid
+
+from pydantic import computed_field
+from starfish.utils.errors import DuplicateRecordError, FilterRecordError
 from starfish.utils.task_runner import TaskRunner
-# TODO: isit in the user process level or the service process level?
+from starfish.utils.event_loop import run_in_event_loop
 class JobManager:
-    def __init__(self, rate_limit: int = 10, batch_size: int = 10):
-        self.task_runner = TaskRunner()   
-        self.rate_limit = rate_limit  # requests per second
-        self.batch_size = batch_size
-        self.job_stats = {
-            'total': 0,
-            'finished': 0,
-            'failed': 0,
-            'pending': 0,
-            "retries": 0
-        }
-        self.callbacks = {
-            'on_start': None,
-            'on_job_complete': None,
-            'on_job_error': None,
-        }
-        self.batch_records = {}
+    def __init__(self, job_config: Dict[str, Any], storage, state):
+        self.job_config = job_config
+        # sqlite storage    
+        self.storage = storage
+        # cache state
+        self.state = state
+        # not above a number every minute
+        self.semaphore = asyncio.Semaphore(job_config.get('max_concurrency'))
+        self.lock = asyncio.Lock()
+        self.task_runner = TaskRunner()
+        self.job_input_queue = None
         
-        # Register callbacks
-        self.task_runner.add_callback('on_task_start', self._on_start)
-        self.task_runner.add_callback('on_task_complete', self._on_batch_complete)
-        self.task_runner.add_callback('on_task_error', self._on_error)
+        # Job counters
+        self.completed_count = 0
+        
+        self.duplicate_count = 0
+        self.filtered_count = 0
+        self.failed_count = 0
+        
+    def run_orchestration(self) -> List[Any]:
+        """Process batches with asyncio"""
+        run_in_event_loop(self._async_run_orchestration())
 
-    def _on_start(self):
-        """Initialize job statistics"""
+    async def _async_run_orchestration(self):
+        """Main orchestration loop for the job"""
+        # await self.storage.setup()
+        # await self.state.setup()
+        
+        # await self.storage.save_request_config(self.job_config)
+        # await self.storage.log_master_job_start(self.master_job_id)
+        self.job_input_queue = self.job_config['job_input_queue']
+        self.target_count = self.job_config.get('target_count')
+        master_job_start_time = datetime.now() 
+        time_out_seconds = 60 * 1       # target_count : if length of input data or specific number
+        # if completed count not changed for three times, then failed and break
+        while self.completed_count < self.target_count:
+           
+            if not self.job_input_queue.empty():
+                if datetime.now() - master_job_start_time > timedelta(seconds=time_out_seconds):
+                    print(f"No more data to process after {datetime.now() - master_job_start_time} seconds")
+                    break
+                await self.semaphore.acquire()
+                input_data = self.job_input_queue.get()
+                task = asyncio.create_task(self._run_single_task(input_data))
+                #task.add_done_callback(self._handle_task_completion)
+                 # Create a task to handle the completion
+                asyncio.create_task(self._handle_task_completion(task))
+            else:
+                if datetime.now() - master_job_start_time > timedelta(seconds=time_out_seconds):
+                    print(f"No more data to process after {datetime.now() - master_job_start_time} seconds")
+                    break
+                await asyncio.sleep(1)
+
+            
+            
+
+    async def _run_single_task(self, input_data):
+        """Run a single task with error handling and storage"""
+        try:
+            output = await self.task_runner.run_task(
+                self.job_config['user_func'], 
+                input_data
+            )
+            
+            # Process hooks
+            for hook in self.job_config.get('on_record_complete', []):
+                await hook(output, self.state)
+                
+            # Save record if successful
+            # output_ref = await self.storage.save_record_data(output)
+            output_ref = {}
+            return {'status': 'completed', 'output_ref': output_ref}
+            
+        except (DuplicateRecordError, FilterRecordError) as e:
+            return {'status': 'duplicate' if isinstance(e, DuplicateRecordError) else 'filtered'}
+        except Exception as e:
+            self.job_input_queue.put(input_data)
+            return {'status': 'failed', 'error': str(e)}
+
+    async def _handle_task_completion(self, task):
+        """Handle task completion and update counters"""
+        result = await task
+        async with self.lock:
+            if result['status'] == 'completed':
+                self.completed_count += 1
+            elif result['status'] == 'duplicate':
+                self.duplicate_count += 1
+            elif result['status'] == 'filtered':
+                self.filtered_count += 1
+            else:
+                self.failed_count += 1
+                
+            # await self.storage.log_record_metadata(
+            #     self.master_job_id,
+            #     result
+            # )
+            
+            self.semaphore.release()
+            
+            if self.completed_count >= self.target_count:
+                # how to get the job status
+                await self._finalize_job()
+
+    async def _finalize_job(self):
+        """Clean up after job completion"""
+        # await self.storage.log_master_job_end(self.master_job_id)
+        # await self.storage.close()
+        # await self.state.close()
+
+    def _prepare_next_input(self):
+        """Prepare input data for the next task"""
+        # Implementation depends on specific use case
         pass
-
-    def _on_batch_complete(self, batch_result):
-        """Update stats and cache successful batches"""
-        self.job_stats['finished'] += 1
-        self.job_stats['pending'] -= 1
-        self._cache_batch(str(batch_result))
-        self._execute_callbacks('on_job_complete', batch_result)
-
-    def _on_error(self, error :str):
-        """Handle failed batches"""
-        self.job_stats['failed'] += 1
-        self.job_stats['pending'] -= 1
-        self._cache_batch(str(error))
-        self._execute_callbacks('on_job_error', error)
-    @lru_cache(maxsize=1000)
-    def _cache_batch(self, batch_result):
-        """Cache successful batch results"""
-        timestamp = datetime.now().isoformat()
-        # need consider what to hash to avoid duplicate user case
-        batch_id = hash(tuple(batch_result))
-        self.batch_records[batch_id] = {
-            'timestamp': timestamp,
-            'data': batch_result
-        }
-    # task_runner
-    def execute_with_retry(self, func: Callable, batches= None, max_retries: int = 3):
-        """Execute function with retry logic and rate limiting"""
-        retries = 0
-        # maybe better to use retries in a single request instead in the batch level.
-        while retries <= max_retries:
-            try:
-                # Rate limiting
-                if self.job_stats['pending'] >= self.rate_limit:
-                    sleep(1)
-                
-                self.job_stats['total'] += self.batch_size
-                self.job_stats['pending'] += self.batch_size
-                if retries > 0:
-                    self.job_stats['retries'] += self.batch_size
-                
-                return self.task_runner.run_batches(func,batches)
-                
-            except Exception as e:
-                retries += 1
-                if retries > max_retries:
-                    raise e
-                sleep(2 ** retries)  # exponential backoff
-
-    def get_job_status(self):
-        """Return current job statistics"""
-        return self.job_stats
-
-    def get_cached_batches(self):
-        """Return all cached batch records"""
-        return self.batch_records
-
-    def clear_cache(self):
-        """Clear cached batch records"""
-        self.batch_records.clear()
-        self._cache_batch.cache_clear()
-
-    def add_callback(self, event: str, callback: Callable):
-        """Register callback functions"""
-        if event in self.callbacks:
-            self.callbacks[event] = callback
-
-    def _execute_callbacks(self, event: str, *args):
-        """Trigger registered callbacks"""
-        if callback := self.callbacks.get(event):
-            callback(*args)
+    
+    def update_job_config(self, job_config: Dict[str, Any]):
+        """Update job config by merging new values with existing config"""
+        self.job_config = {**self.job_config, **job_config}
