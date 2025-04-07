@@ -70,7 +70,7 @@ def get_city_info_wf(city_name, region_code, num_records_per_city):
         prompt = 'Get state/province for {{city_name}} in region {{region_code}}.',
         output_schema = [{'name': 'state_province', 'type': 'string'}]
     )
-    output = structured_llm.run(city_name=city_name, region_code=region_code, num_records_per_city=num_records_per_city)
+    output = structured_llm.run(city_name=city_name, region_code=region_code, num_records=num_records_per_city)
     return output.data
 
 
@@ -95,9 +95,29 @@ get_city_info_wf.run(
     num_records_per_city = 3
 )
 
+## Invoke sequence
+# data =[
+#     {'city_name': 'Berlin'}, 
+#     {'city_name': 'Rome'}
+# ]
+
+# data =[
+#     {'city_name': 'Berlin', 'region_code': 'DE'}, 
+#     {'city_name': 'Rome', 'region_code': 'IT'}
+# ]
+
+# data =[
+#     {'city_name': 'Beijing', 'region_code': 'DE'}, 
+#     {'city_name': 'Beijing', 'region_code': 'IT'}
+# ]
+
+# data =[
+#     {'city_name': 'Beijing', 'region_code': 'DE', 'num_records_per_city': 3}, 
+#     {'city_name': 'Beijing', 'region_code': 'IT', 'num_records_per_city': 3}
+# ]
 
 
-### Workflow input:
+### DataFactory input:
 ###     Data: List[Dict], Tuple[Dict]
 ###     Kwargs: List / Tuple or single value (int / string)
 
@@ -106,8 +126,8 @@ get_city_info_wf.run(
 ### Overwrite, if key conflict, Kwargs value will overwrite Data value, and if within Kwargs, broadcast will overwrite parallel
 
 # 1. Parallel Sources: data=List[Dict] (if provided) AND any kwarg with a List/Tuple value.
-# 2.Broadcast Sources: Any kwarg with a single value (not List/Tuple).
+# 2. Broadcast Sources: Any kwarg with a single value (not List/Tuple).
 # 3. Length Constraint: All parallel sources MUST have the same length (L). Batch size is L (or 1 if no parallel sources).
-# 4Execution: Run L times.
+# 4. Execution: Run L times.
 # Args Assembly (iter i): Start with data[i] (if exists), merge/override with parallel kwargs[key][i], merge/override with broadcast kwargs[key].
 # Override Order: Broadcast Kwarg > Parallel Kwarg > data Dict Value.
