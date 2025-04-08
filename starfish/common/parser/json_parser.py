@@ -206,9 +206,9 @@ class JSONParser:
                         example_value = (
                             '""'
                             if nested_prop.get("type") == "string"
-                            else "0"
+                            else "number"
                             if nested_prop.get("type") in ["integer", "number"]
-                            else "false"
+                            else "true or false"
                             if nested_prop.get("type") == "boolean"
                             else "[]"
                             if nested_prop.get("type") == "array"
@@ -226,9 +226,9 @@ class JSONParser:
                 example_value = (
                     '""'
                     if field_type == "string"
-                    else "0"
+                    else "number"
                     if field_type in ["integer", "number"]
-                    else "false"
+                    else "true or false"
                     if field_type == "boolean"
                     else "[]"
                     if field_type == "array"
