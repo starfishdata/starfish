@@ -3,6 +3,7 @@
 todo
 .local/
 .vscode/
+.ruff_cache/
 data_factory_output/
 
 .cursor

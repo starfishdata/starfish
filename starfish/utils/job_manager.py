@@ -2,9 +2,11 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
-from starfish.utils.errors import DuplicateRecordError, FilterRecordError
+from starfish.utils.errors import DuplicateRecordError, FilterRecordError, RecordError
+from starfish.utils.constants import RECORD_STATUS
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.task_runner import TaskRunner
+from starfish.utils.enums import RecordStatus
 
 
 class JobManager:
@@ -19,6 +21,7 @@ class JobManager:
         self.lock = asyncio.Lock()
         self.task_runner = TaskRunner()
         self.job_input_queue = None
+        self.job_output = []
 
         # Job counters
         self.completed_count = 0
@@ -26,10 +29,12 @@ class JobManager:
         self.duplicate_count = 0
         self.filtered_count = 0
         self.failed_count = 0
+        self.total_task_run_count = 0
+        self.job_run_stop_threshold = 3
 
     def run_orchestration(self) -> List[Any]:
         """Process batches with asyncio"""
-        run_in_event_loop(self._async_run_orchestration())
+        return run_in_event_loop(self._async_run_orchestration())
 
     async def _async_run_orchestration(self):
         """Main orchestration loop for the job"""
@@ -40,57 +45,65 @@ class JobManager:
         # await self.storage.log_master_job_start(self.master_job_id)
         self.job_input_queue = self.job_config["job_input_queue"]
         self.target_count = self.job_config.get("target_count")
-        master_job_start_time = datetime.now()
-        time_out_seconds = 60 * 1  # target_count : if length of input data or specific number
         # if completed count not changed for three times, then failed and break
-        while self.completed_count < self.target_count:
+        # this happens because of the retry mechanism when error occurs
+        while self.completed_count < self.target_count and (self.total_task_run_count - self.target_count) < self.job_run_stop_threshold:
             if not self.job_input_queue.empty():
-                if datetime.now() - master_job_start_time > timedelta(seconds=time_out_seconds):
-                    print(f"No more data to process after {datetime.now() - master_job_start_time} seconds")
-                    break
                 await self.semaphore.acquire()
                 input_data = self.job_input_queue.get()
                 task = asyncio.create_task(self._run_single_task(input_data))
-                # task.add_done_callback(self._handle_task_completion)
                 # Create a task to handle the completion
                 asyncio.create_task(self._handle_task_completion(task))
             else:
-                if datetime.now() - master_job_start_time > timedelta(seconds=time_out_seconds):
-                    print(f"No more data to process after {datetime.now() - master_job_start_time} seconds")
-                    break
                 await asyncio.sleep(1)
+        return self.job_output
 
     async def _run_single_task(self, input_data):
         """Run a single task with error handling and storage"""
         try:
             output = await self.task_runner.run_task(self.job_config["user_func"], input_data)
-
-            # Process hooks
+           
+            # Process hooks; hook return the status of the record : ENUM:  duplicate, filtered
+            # gemina 2.5 slack channel; 
+            # update state ensure thread safe and user-friendly
+            hooks_output = []
             for hook in self.job_config.get("on_record_complete", []):
-                await hook(output, self.state)
-
+                hooks_output.append(await hook(output, self.state))
+            if hooks_output.count(RecordStatus.DUPLICATE) > 0:
+                raise DuplicateRecordError
+            elif hooks_output.count(RecordStatus.FILTERED) > 0:
+                raise FilterRecordError
+            elif hooks_output.count(RecordStatus.FAILED) > 0:
+                raise RecordError
             # Save record if successful
             # output_ref = await self.storage.save_record_data(output)
-            output_ref = {}
-            return {"status": "completed", "output_ref": output_ref}
+            output_ref = output
+            return {RECORD_STATUS: RecordStatus.COMPLETED, "output_ref": output_ref}
 
         except (DuplicateRecordError, FilterRecordError) as e:
-            return {"status": "duplicate" if isinstance(e, DuplicateRecordError) else "filtered"}
+            return {RECORD_STATUS: RecordStatus.DUPLICATE if isinstance(e, DuplicateRecordError) else RecordStatus.FILTERED}
+        except RecordError as e:
+            return {RECORD_STATUS: RecordStatus.FAILED, "error": str(e)}
         except Exception as e:
+            for hook in self.job_config.get("on_record_error", []):
+                await hook(str(e), self.state)
             self.job_input_queue.put(input_data)
-            return {"status": "failed", "error": str(e)}
+            return {RECORD_STATUS: RecordStatus.FAILED, "error": str(e)}
 
     async def _handle_task_completion(self, task):
         """Handle task completion and update counters"""
         result = await task
         async with self.lock:
-            if result["status"] == "completed":
+            self.job_output.append(result)
+            self.total_task_run_count += 1
+            if result[RECORD_STATUS] == RecordStatus.COMPLETED:
                 self.completed_count += 1
-            elif result["status"] == "duplicate":
+                # user can update the counter in the user-defined hook
+            elif result[RECORD_STATUS] == RecordStatus.DUPLICATE:
                 self.duplicate_count += 1
-            elif result["status"] == "filtered":
+            elif result[RECORD_STATUS] == RecordStatus.FILTERED:
                 self.filtered_count += 1
-            else:
+            elif result[RECORD_STATUS] == RecordStatus.FAILED:
                 self.failed_count += 1
 
             # await self.storage.log_record_metadata(
