@@ -1,11 +1,13 @@
+from enum import Enum
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from enum import Enum
+
 from starfish.common.logger import get_logger, log_manager
 
 router = APIRouter()
 logger = get_logger(__name__)
+
 
 class LogLevelEnum(str, Enum):
     verbose = "VERBOSE"

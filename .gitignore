@@ -1,6 +1,9 @@
 # Adhoc stuff
 /dev/
 todo
+.local/
+.vscode/
+data_factory_output/
 
 .cursor
 

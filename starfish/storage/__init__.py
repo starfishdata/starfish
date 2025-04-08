@@ -1,5 +1,4 @@
-"""
-Storage implementations for Starfish.
+"""Storage implementations for Starfish.
 
 This module provides:
 1. Base Storage interface and factory functions
@@ -9,20 +8,27 @@ This module provides:
 5. Association functionality for relationships between records
 """
 
+# Import all storage implementations to register them
+import starfish.storage.filesystem
+import starfish.storage.prefixed_filesystem
 from starfish.storage.base import (
-    Storage, create_storage, get_available_storage_types, get_all_storage_input_models,
-    RecordTypeRegistry, AssociationTypeRegistry
+    AssociationTypeRegistry,
+    RecordTypeRegistry,
+    Storage,
+    create_storage,
+    get_all_storage_input_models,
+    get_available_storage_types,
 )
 
 # Import data models for convenient access
 from starfish.storage.models import (
-    Project, JobMetadata, Record, RecordAssociation, 
-    AssociationType, StorageCapabilities
+    AssociationType,
+    JobMetadata,
+    Project,
+    Record,
+    RecordAssociation,
+    StorageCapabilities,
 )
-
-# Import all storage implementations to register them
-import starfish.storage.filesystem
-import starfish.storage.prefixed_filesystem
 
 # These will be added in future releases
 # import starfish.core.storage.database
@@ -31,24 +37,23 @@ import starfish.storage.prefixed_filesystem
 # Export the interfaces, models and factory functions
 __all__ = [
     # Factory functions
-    "Storage", 
+    "Storage",
     "create_storage",
     "get_available_storage_types",
     "get_all_storage_input_models",
-    
     # Registries
     "RecordTypeRegistry",
     "AssociationTypeRegistry",
-    
     # Data models
     "Project",
     "JobMetadata",
     "Record",
     "RecordAssociation",
     "AssociationType",
-    "StorageCapabilities"
+    "StorageCapabilities",
 ]
 
 # Also expose BaseStorage for backward compatibility
 from starfish.storage.base import BaseStorage
+
 __all__.append("BaseStorage")
