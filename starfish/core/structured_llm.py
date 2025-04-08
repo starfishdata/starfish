@@ -96,28 +96,17 @@ class StructuredLLM:
         """A convenience wrapper around the run() method."""
         return await self.run(**kwargs)
 
-    def _prepare_prompt_inputs(self, serialize_list_input: bool = True, **kwargs) -> Dict[str, Any]:
+    def _prepare_prompt_inputs(self, **kwargs) -> Dict[str, Any]:
         """Prepare the prompt input for the LLM."""
         # Filter keys that are in prompt_variables
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in self.prompt_variables}
 
-        # Process each value based on type
-        prompt_inputs = {}
-        for key, value in filtered_kwargs.items():
-            # Handle different value types
-            if isinstance(value, list):
-                if not serialize_list_input:
-                    raise TypeError(f"Variable '{key}' is a list, but list serialization is disabled " f"(serialize_list_input=False).")
-                prompt_inputs[key] = json.dumps(value)
-            else:
-                prompt_inputs[key] = value
-
         # Add schema instructions if available
         schema_str = self._get_schema_instructions()
         if schema_str:
-            prompt_inputs["schema_instruction"] = schema_str
+            filtered_kwargs["schema_instruction"] = schema_str
 
-        return prompt_inputs
+        return filtered_kwargs
 
     def render_prompt(self, **kwargs) -> str:
         # Add schema instructions if needed

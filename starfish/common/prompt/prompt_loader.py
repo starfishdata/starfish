@@ -1,4 +1,5 @@
 import functools
+import json
 from typing import Any, Dict, List, Set, Tuple
 
 from jinja2 import Environment, StrictUndefined, meta, nodes
@@ -10,8 +11,22 @@ class PromptManager:
     """Manages Jinja2 template processing with variable analysis and rendering."""
 
     MANDATE_INSTRUCTION = """
-You are asked to generate exactly {{num_records}} records and please return the data in the following JSON format: 
-{{schema_instruction}}
+{% if is_list_input %}
+Additional Instructions:
+
+You are provided with a list named |{{ list_input_variable }}| that contains exactly {{ input_list_length }} elements.
+
+Processing:
+
+1. Process each element according to the provided instructions.
+2. Generate and return a JSON array containing exactly {{ input_list_length }} results, preserving the original order.
+3. Your output must strictly adhere to the following JSON schema:
+{{ schema_instruction }}
+
+{% else %}
+You are asked to generate exactly {{ num_records }} records and please return the data in the following JSON format: 
+{{ schema_instruction }}
+{% endif %}
 """
 
     def __init__(self, template_str: str, header: str = "", footer: str = ""):
@@ -160,14 +175,38 @@ You are asked to generate exactly {{num_records}} records and please return the 
             if variables[var] is None:
                 raise ValueError(f"Required variable '{var}' cannot be None")
 
-        # Add default None for optional variables
+        # Create a copy of variables to avoid modifying the original
         render_vars = variables.copy()
+        
+        # Check for list inputs with priority given to required variables
+        is_list_input = False
+        list_input_variable = None
+        input_list_length = None
+        
+        # Check variables in priority order (required first, then optional)
+        for var in list(self.required_vars) + list(self.optional_vars):
+            if var in render_vars and isinstance(render_vars[var], list):
+                is_list_input = True
+                list_input_variable = var
+                input_list_length = len(render_vars[var])
+                # Add reference to the variable in the prompt before serializing
+                original_list = render_vars[var]
+                render_vars[var] = f"|{var}| : {json.dumps(original_list)}"
+                break  # Stop after finding the first list
+
+        # Add default None for optional variables
         for var in self.optional_vars:
             if var not in render_vars:
                 render_vars[var] = None
 
+        # Add list processing variables
+        render_vars["is_list_input"] = is_list_input
+        render_vars["list_input_variable"] = list_input_variable
+        render_vars["input_list_length"] = input_list_length
+
         # Add default num_records
         render_vars["num_records"] = render_vars.get("num_records", 1)
+        
         return self._template.render(**render_vars)
 
     def construct_messages(self, variables: Dict[str, Any]) -> List[Dict[str, str]]:
