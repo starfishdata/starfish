@@ -33,11 +33,17 @@ def workflow(city_name, num_records_per_city):
 data = workflow.run(city_name=["San Francisco", "New York", "Los Angeles"], num_records_per_city=3)
 
 
-### Use Case 3: data=List[Dict] Only
-data = workflow.run([{"city_name": "Paris"}, {"city_name": "Tokyo"}])
+### Use Case 3: data=List[Dict] Only 
+data = workflow.run(data = [
+    {'city_name': 'Paris'},
+    {'city_name': 'Tokyo'}
+])
 
 ### Use Case 4: data=List[Dict] + Broadcast Kwarg
-data = workflow.run([{"city_name": "Paris"}, {"city_name": "Tokyo"}], num_records_per_city=3)
+data = workflow.run(data = [
+    {'city_name': 'Paris'},
+    {'city_name': 'Tokyo'}
+], num_records_per_city = 3)
 
 
 ### Use Case 5: data (List[Dict]) + Parallel Kwarg (Matching Lengths)
@@ -88,23 +94,23 @@ get_city_info_wf.run(
 )
 
 ## Invoke sequence
-# data =[
-#     {'city_name': 'Berlin'},
+# [
+#     {'city_name': 'Berlin'}, 
 #     {'city_name': 'Rome'}
 # ]
 
-# data =[
-#     {'city_name': 'Berlin', 'region_code': 'DE'},
+# [
+#     {'city_name': 'Berlin', 'region_code': 'DE'}, 
 #     {'city_name': 'Rome', 'region_code': 'IT'}
 # ]
 
-# data =[
-#     {'city_name': 'Beijing', 'region_code': 'DE'},
+# [
+#     {'city_name': 'Beijing', 'region_code': 'DE'}, 
 #     {'city_name': 'Beijing', 'region_code': 'IT'}
 # ]
 
-# data =[
-#     {'city_name': 'Beijing', 'region_code': 'DE', 'num_records_per_city': 3},
+# [
+#     {'city_name': 'Beijing', 'region_code': 'DE', 'num_records_per_city': 3}, 
 #     {'city_name': 'Beijing', 'region_code': 'IT', 'num_records_per_city': 3}
 # ]
 
