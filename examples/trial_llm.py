@@ -2,20 +2,21 @@ from typing import Any, Dict
 
 from starfish.core.structured_llm import StructuredLLM
 from starfish.utils.data_factory import data_factory
-from starfish.utils.enums import RecordStatus
+from starfish.utils.constants import RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
 
 # Add callback for error handling
 async def handle_error(data: Any, state: Dict[str, Any]):
     print(f"Error occurred: {data}")
-    return RecordStatus.FAILED
+    return RECORD_STATUS_FAILED
 
 async def handle_record_complete(data: Any, state: Dict[str, Any]):
     print(f"Record complete: {data}")
-    return RecordStatus.COMPLETED
+    return RECORD_STATUS_COMPLETED
 
 async def handle_duplicate_record(data: Any, state: Dict[str, Any]):
     print(f"Record duplicated: {data}")
-    return RecordStatus.COMPLETED
+    #return RECORD_STATUS_DUPLICATE
+    return RECORD_STATUS_COMPLETED
 
 @data_factory(
     storage="local", max_concurrency=50, state={}, on_record_complete=[handle_record_complete, handle_duplicate_record], on_record_error=[handle_error]

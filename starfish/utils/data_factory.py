@@ -9,7 +9,7 @@ from inspect import signature, Parameter
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.job_manager import JobManager
 from starfish.utils.enums import RecordStatus
-from starfish.utils.constants import RECORD_STATUS, TEST_DB_DIR, TEST_DB_URI
+from starfish.utils.constants import RECORD_STATUS, TEST_DB_DIR, TEST_DB_URI, RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
 from starfish.new_storage.local.local_storage import LocalStorage
 from starfish.new_storage.models import (
     GenerationJob,
@@ -71,8 +71,8 @@ class DataFactory:
             output = self._process_batches(func, batches)
             result = []
             for v in output:
-                if v.get(RECORD_STATUS) == RecordStatus.COMPLETED:
-                    result.append(v.get("output_ref"))
+                if v.get(RECORD_STATUS) == RECORD_STATUS_COMPLETED:
+                    result.append(v.get("output"))
           
             #result = [v for v in output if v.get(RECORD_STATUS) == RecordStatus.COMPLETED]
             # Exception due to all requests failing
