@@ -8,9 +8,10 @@ from typing import Any, Callable, Dict, List
 from inspect import signature, Parameter
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.job_manager import JobManager
-from starfish.utils.enums import RecordStatus
 from starfish.utils.constants import RECORD_STATUS, TEST_DB_DIR, TEST_DB_URI, RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
 from starfish.new_storage.local.local_storage import LocalStorage
+from starfish.new_storage.in_memory.in_memory_storage import InMemoryStorage
+from starfish.utils.state import MutableSharedState
 from starfish.new_storage.models import (
     GenerationJob,
     GenerationMasterJob,
@@ -26,7 +27,7 @@ class DataFactory:
         batch_size: int,
         max_concurrency: int,
         target_count: int,
-        state: Dict[str, Any],
+        state: MutableSharedState,
         on_record_complete: List[Callable],
         on_record_error: List[Callable],
         input_converter: Callable,
@@ -58,10 +59,8 @@ class DataFactory:
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # self._execute_callbacks('on_start')
 
-            # Get batchable parameters from type hints
-            # batchable_params = self._get_batchable_params(func)
+            # todo batches is a list of dicts
             batches = self.input_converter(*args, **kwargs)
             self._check_parameter_match(func, batches)
             self.save_request_config()
@@ -208,6 +207,9 @@ class DataFactory:
         if self.storage == "local":
             self.factory_storage = LocalStorage(TEST_DB_URI)
             asyncio.run(self.factory_storage.setup())
+        else:
+            self.factory_storage = InMemoryStorage()
+            asyncio.run(self.factory_storage.setup())
             
 
 
@@ -258,9 +260,11 @@ def data_factory(
     batch_size: int = 1,
     target_count: int = 0,
     max_concurrency: int = 50,
-    state: Dict[str, Any] = {},
+    initial_state_values: Dict[str, Any] = {},
     on_record_complete: List[Callable] = [],
     on_record_error: List[Callable] = [],
     input_converter=default_input_converter,
 ):
+    state = MutableSharedState(initial_state_values)
+
     return DataFactory(storage, batch_size, max_concurrency, target_count, state, on_record_complete, on_record_error, input_converter=input_converter)

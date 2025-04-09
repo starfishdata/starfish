@@ -3,23 +3,31 @@ from typing import Any, Dict
 from starfish.core.structured_llm import StructuredLLM
 from starfish.utils.data_factory import data_factory
 from starfish.utils.constants import RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
-
+from starfish.utils.state import MutableSharedState
 # Add callback for error handling
-async def handle_error(data: Any, state: Dict[str, Any]):
+# todo state is a class with thread safe dict
+async def handle_error(data: Any, state: MutableSharedState):
     print(f"Error occurred: {data}")
     return RECORD_STATUS_FAILED
 
-async def handle_record_complete(data: Any, state: Dict[str, Any]):
+async def handle_record_complete(data: Any, state: MutableSharedState):
     print(f"Record complete: {data}")
+
+    await state.set("completed_count",  1)
+    await state.data
+    await state.update({"completed_count": 2})
     return RECORD_STATUS_COMPLETED
 
-async def handle_duplicate_record(data: Any, state: Dict[str, Any]):
+async def handle_duplicate_record(data: Any, state: MutableSharedState):
     print(f"Record duplicated: {data}")
+    await state.set("completed_count",  1)
+    await state.data
+    await state.update({"completed_count": 2})
     #return RECORD_STATUS_DUPLICATE
     return RECORD_STATUS_COMPLETED
 
 @data_factory(
-    storage="local", max_concurrency=50, state={}, on_record_complete=[handle_record_complete, handle_duplicate_record], on_record_error=[handle_error]
+    storage="local", max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], on_record_error=[handle_error]
 )
 async def get_city_info_wf(city_name, region_code):
     structured_llm = StructuredLLM(

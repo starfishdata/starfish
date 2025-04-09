@@ -2,6 +2,7 @@ import asyncio
 import datetime
 from typing import Any, Dict, List
 import uuid
+from queue import Queue
 from starfish.utils.errors import DuplicateRecordError, FilterRecordError, RecordError
 from starfish.utils.constants import RECORD_STATUS
 from starfish.utils.event_loop import run_in_event_loop
@@ -13,10 +14,12 @@ from starfish.new_storage.models import (
     Project,
     Record,
 )
+from starfish.utils.state import MutableSharedState
+from starfish.new_storage.base import Storage    
 
 
 class JobManager:
-    def __init__(self, master_job_id: str, job_config: Dict[str, Any], storage, state):
+    def __init__(self, master_job_id: str, job_config: Dict[str, Any], storage: Storage, state: MutableSharedState):
         self.master_job_id = master_job_id
         self.job_config = job_config
         # sqlite storage
@@ -27,8 +30,9 @@ class JobManager:
         self.semaphore = asyncio.Semaphore(job_config.get("max_concurrency"))
         self.lock = asyncio.Lock()
         self.task_runner = TaskRunner()
-        self.job_input_queue = None
-        self.job_output = []
+        self.job_input_queue = Queue()
+        # it shall be a thread safe queue
+        self.job_output = Queue()
 
         # Job counters
         self.completed_count = 0
@@ -58,22 +62,23 @@ class JobManager:
     async def job_save_record_data(self, records, task_status:str) -> List[str]:
         print("\n5. Saving record data...")
         output_ref_list = []
-        for i, record in enumerate(records):
-            # Generate some test data
-
-            record["record_uid"] = str(uuid.uuid4())
-            output_ref = await self.storage.save_record_data(record["record_uid"], self.master_job_id, self.job_id, record)
-            record["job_id"] = self.job_id
-            # Update the record with the output reference
-            record["master_job_id"] = self.master_job_id
-            record["status"] = task_status
-            record["output_ref"] = output_ref
-            record["end_time"] = datetime.datetime.now(datetime.timezone.utc)
-            # Convert dict to Pydantic model
-            record_model = Record(**record)
-            await self.storage.log_record_metadata(record_model)
-            print(f"  - Saved data for record {i}: {output_ref}")
-            output_ref_list.append(output_ref)
+        storage_class_name = self.storage.__class__.__name__
+        if storage_class_name == "LocalStorage":
+            for i, record in enumerate(records):
+            
+                record["record_uid"] = str(uuid.uuid4())
+                output_ref = await self.storage.save_record_data(record["record_uid"], self.master_job_id, self.job_id, record)
+                record["job_id"] = self.job_id
+                # Update the record with the output reference
+                record["master_job_id"] = self.master_job_id
+                record["status"] = task_status
+                record["output_ref"] = output_ref
+                record["end_time"] = datetime.datetime.now(datetime.timezone.utc)
+                # Convert dict to Pydantic model
+                record_model = Record(**record)
+                await self.storage.log_record_metadata(record_model)
+                print(f"  - Saved data for record {i}: {output_ref}")
+                output_ref_list.append(output_ref)     
         return output_ref_list
 
     async def complete_execution_job(self):
@@ -86,13 +91,15 @@ class JobManager:
         await self.storage.log_execution_job_end(self.job_id, "completed", counts, now, now)
         print("  - Marked execution job as completed")
     
-    
+    def is_job_to_stop(self) -> bool:
+        items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
+        return len(items_check) == self.job_run_stop_threshold and all(item[RECORD_STATUS] != RECORD_STATUS_COMPLETED for item in items_check)
 
     def run_orchestration(self) -> List[Any]:
         """Process batches with asyncio"""
         return run_in_event_loop(self._async_run_orchestration())
 
-    async def _async_run_orchestration(self):
+    async def _async_run_orchestration(self) -> List[Any]:
         """Main orchestration loop for the job"""
         await self.create_execution_job()
         #await self.update_execution_job_status()
@@ -100,7 +107,8 @@ class JobManager:
         self.target_count = self.job_config.get("target_count")
         # if completed count not changed for three times, then failed and break
         # this happens because of the retry mechanism when error occurs
-        while self.completed_count < self.target_count and (self.total_task_run_count - self.target_count) < self.job_run_stop_threshold:
+        # todo: use queue to check the last 3 task status
+        while self.completed_count < self.target_count and not self.is_job_to_stop():
             if not self.job_input_queue.empty():
                 await self.semaphore.acquire()
                 input_data = self.job_input_queue.get()
@@ -109,7 +117,7 @@ class JobManager:
                 asyncio.create_task(self._handle_task_completion(task))
             else:
                 await asyncio.sleep(1)
-        return self.job_output
+        return list(self.job_output.queue)
 
     async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
         """Run a single task with error handling and storage"""
@@ -120,11 +128,11 @@ class JobManager:
             output = await self.task_runner.run_task(self.job_config["user_func"], input_data)
             # Save record all status except failed (not user-defined hook returns failed); 
             # if user-defined hook returns failed, still save the record
-            
             # Process hooks; hook return the status of the record : ENUM:  duplicate, filtered
             # gemina 2.5 slack channel; 
             # update state ensure thread safe and user-friendly
             hooks_output = []
+            # class based hooks. use semaphore to ensure thread safe
             for hook in self.job_config.get("on_record_complete", []):
                 hooks_output.append(await hook(output, self.state))
             if hooks_output.count(RECORD_STATUS_DUPLICATE) > 0:
@@ -145,7 +153,7 @@ class JobManager:
         """Handle task completion and update counters"""
         result = await task
         async with self.lock:
-            self.job_output.append(result)
+            self.job_output.put(result)
             self.total_task_run_count += 1
             if result[RECORD_STATUS] == RECORD_STATUS_COMPLETED:
                 self.completed_count += 1
@@ -156,11 +164,6 @@ class JobManager:
                 self.filtered_count += 1
             elif result[RECORD_STATUS] == RECORD_STATUS_FAILED:
                 self.failed_count += 1
-
-            # await self.storage.log_record_metadata(
-            #     self.master_job_id,
-            #     result
-            # )
 
             self.semaphore.release()
 
