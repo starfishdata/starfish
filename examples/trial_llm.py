@@ -15,7 +15,7 @@ async def handle_record_complete(data: Any, state: Dict[str, Any]):
 
 async def handle_duplicate_record(data: Any, state: Dict[str, Any]):
     print(f"Record duplicated: {data}")
-    return RecordStatus.DUPLICATE
+    return RecordStatus.COMPLETED
 
 @data_factory(
     storage="local", max_concurrency=50, state={}, on_record_complete=[handle_record_complete, handle_duplicate_record], on_record_error=[handle_error]

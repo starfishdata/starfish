@@ -1,16 +1,23 @@
 import asyncio
-from datetime import datetime, timedelta
+import datetime
 from typing import Any, Dict, List
-
+import uuid
 from starfish.utils.errors import DuplicateRecordError, FilterRecordError, RecordError
 from starfish.utils.constants import RECORD_STATUS
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.task_runner import TaskRunner
 from starfish.utils.enums import RecordStatus
+from starfish.new_storage.models import (
+    GenerationJob,
+    GenerationMasterJob,
+    Project,
+    Record,
+)
 
 
 class JobManager:
-    def __init__(self, job_config: Dict[str, Any], storage, state):
+    def __init__(self, master_job_id: str, job_config: Dict[str, Any], storage, state):
+        self.master_job_id = master_job_id
         self.job_config = job_config
         # sqlite storage
         self.storage = storage
@@ -31,9 +38,55 @@ class JobManager:
         self.failed_count = 0
         self.total_task_run_count = 0
         self.job_run_stop_threshold = 3
+        self.job_id = str(uuid.uuid4())
+        
+
+    async def create_execution_job(self):
+        print("\n3. Creating execution job...")
+       
+        self.job = GenerationJob(job_id=self.job_id, master_job_id=self.master_job_id, status="running", worker_id="test-worker-1")
+        await self.storage.log_execution_job_start(self.job)
+        print(f"  - Created execution job: {self.job.job_id}")
+
+    async def update_execution_job_status(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        self.job.status = "running"
+        self.job.start_time = now
+        await self.storage.log_execution_job_start(self.job)
+        print("  - Updated execution job status to: running")
+
+    async def job_save_record_data(self, records):
+        print("\n5. Saving record data...")
+        for i, record in enumerate(records):
+            # Generate some test data
+
+            record["record_uid"] = str(uuid.uuid4())
+            output_ref = await self.storage.save_record_data(record["record_uid"], self.master_job_id, self.job_id, record)
+            record["job_id"] = self.job_id
+            # Update the record with the output reference
+            record["master_job_id"] = self.master_job_id
+            record["status"] = "completed"
+            record["end_time"] = datetime.datetime.now(datetime.timezone.utc)
+            # Convert dict to Pydantic model
+            record_model = Record(**record)
+            await self.storage.log_record_metadata(record_model)
+            print(f"  - Saved data for record {i}: {output_ref}")
+
+    async def complete_execution_job(self):
+        print("\n6. Completing execution job...")
+        now = datetime.datetime.now(datetime.timezone.utc)
+        counts = {"completed": self.completed_count, 
+                  "filtered": self.filtered_count, 
+                  "duplicate": self.duplicate_count, 
+                  "failed": self.failed_count}
+        await self.storage.log_execution_job_end(self.job_id, "completed", counts, now, now)
+        print("  - Marked execution job as completed")
+    
+    
 
     def run_orchestration(self) -> List[Any]:
         """Process batches with asyncio"""
+        
         return run_in_event_loop(self._async_run_orchestration())
 
     async def _async_run_orchestration(self):
@@ -43,6 +96,8 @@ class JobManager:
 
         # await self.storage.save_request_config(self.job_config)
         # await self.storage.log_master_job_start(self.master_job_id)
+        await self.create_execution_job()
+        #await self.update_execution_job_status()
         self.job_input_queue = self.job_config["job_input_queue"]
         self.target_count = self.job_config.get("target_count")
         # if completed count not changed for three times, then failed and break
@@ -75,9 +130,8 @@ class JobManager:
                 raise FilterRecordError
             elif hooks_output.count(RecordStatus.FAILED) > 0:
                 raise RecordError
-            # Save record if successful
-            # output_ref = await self.storage.save_record_data(output)
-            output_ref = output
+            # Save record all status except failed
+            output_ref = await self.job_save_record_data(output)
             return {RECORD_STATUS: RecordStatus.COMPLETED, "output_ref": output_ref}
 
         except (DuplicateRecordError, FilterRecordError) as e:
@@ -120,7 +174,9 @@ class JobManager:
     async def _finalize_job(self):
         """Clean up after job completion"""
         # await self.storage.log_master_job_end(self.master_job_id)
-        # await self.storage.close()
+        await self.complete_execution_job()
+        #await self.complete_master_job()
+        #await self.storage.close()
         # await self.state.close()
 
     def _prepare_next_input(self):

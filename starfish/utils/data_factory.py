@@ -1,12 +1,23 @@
 
+import datetime
 import uuid
+import asyncio
 from functools import wraps
 from queue import Queue
 from typing import Any, Callable, Dict, List
 from inspect import signature, Parameter
+from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.job_manager import JobManager
 from starfish.utils.enums import RecordStatus
-from starfish.utils.constants import RECORD_STATUS
+from starfish.utils.constants import RECORD_STATUS, TEST_DB_DIR, TEST_DB_URI
+from starfish.new_storage.local.local_storage import LocalStorage
+from starfish.new_storage.models import (
+    GenerationJob,
+    GenerationMasterJob,
+    Project,
+    Record,
+)
+
 
 class DataFactory:
     def __init__(
@@ -31,8 +42,16 @@ class DataFactory:
             "on_record_complete": on_record_complete,
             "on_record_error": on_record_error,
         }
-        # self.batch_counter = 0  # Add batch counter
-        self.job_manager = JobManager(job_config=self.job_config, storage=storage, state=state)
+
+        self.project_id = str(uuid.uuid4())
+        # self.project_id = "8de05a58-c8a4-4c10-8c23-568679c88e65"
+        self.master_job_id = str(uuid.uuid4())
+        self.storage = storage
+        self.factory_storage = None
+        self.storage_setup()
+        self.save_project()
+        self.job_manager = JobManager(master_job_id=self.master_job_id, job_config=self.job_config, storage=self.factory_storage, 
+                                      state=state)
 
     def __call__(self, func: Callable):
         # self.job_manager.add_job(func)
@@ -45,6 +64,9 @@ class DataFactory:
             # batchable_params = self._get_batchable_params(func)
             batches = self.input_converter(*args, **kwargs)
             self._check_parameter_match(func, batches)
+            self.save_request_config()
+            self.log_master_job_start()
+
             # Process batches in parallel
             output = self._process_batches(func, batches)
             result = []
@@ -57,7 +79,8 @@ class DataFactory:
             if len(result) == 0:
                 raise Exception("No records completed")
 
-            self._save_master_job()
+            self.complete_master_job()
+            self.close_storage()
             return result
         # Add run method to the wrapped function
         def run(*args, **kwargs):
@@ -102,27 +125,90 @@ class DataFactory:
         target_acount = self.job_config.get("target_count")
         self.job_manager.update_job_config(
             {
-                "master_job_id": str(uuid.uuid4()),
+                "master_job_id": self.master_job_id,
                 "user_func": func,
                 "job_input_queue": batches,
                 "target_count": batches.qsize() if target_acount == 0 else target_acount,
             }
         )
+        self.update_master_job_status()
         return self.job_manager.run_orchestration()
 
-    # def _store_results(self, results: List[Any]):
-    #     """Handle storage based on configured option"""
-    #     if self.storage == 'filesystem':
-    #         os.makedirs('data_factory_output', exist_ok=True)
-    #         with open('data_factory_output/results.json', 'w') as f:
-    #             json.dump(results, f)
-    #     elif self.storage == 's3':
-    #         # Add AWS S3 integration here
-    #         pass
+    async def _save_project(self):
+        project = Project(project_id=self.project_id, name="Test Project", description="A test project for storage layer testing")
+        await self.factory_storage.save_project(project)
+
+    def save_project(self):
+        asyncio.run(self._save_project())
+        #return run_in_event_loop(self._save_project())
+
+    async def _save_request_config(self):
+        print("\n2. Creating master job...")
+        # First save the request config
+        config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}}
+        self.config_ref = await self.factory_storage.save_request_config(self.master_job_id, config_data)
+        print(f"  - Saved request config to: {self.config_ref}")
+    
+    def save_request_config(self):
+        asyncio.run(self._save_request_config())
+        #return run_in_event_loop(self._save_request_config())
 
 
-    def _save_master_job(self):
-        pass
+    async def _log_master_job_start(self):
+        # Now create the master job
+        master_job = GenerationMasterJob(
+            master_job_id=self.master_job_id,
+            project_id=self.project_id,
+            name="Test Master Job",
+            status="pending",
+            request_config_ref=self.config_ref,
+            output_schema={"type": "object", "properties": {"name": {"type": "string"}}},
+            storage_uri=TEST_DB_URI,
+            target_record_count=10,
+        )
+        await self.factory_storage.log_master_job_start(master_job)
+        print(f"  - Created master job: {master_job.name} ({master_job.master_job_id})")
+    
+    def log_master_job_start(self):
+        asyncio.run(self._log_master_job_start())
+        #return run_in_event_loop(self._log_master_job_start())
+
+    async def _update_master_job_status(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        await self.factory_storage.update_master_job_status(self.master_job_id, "running", now)
+        print("  - Updated master job status to: running")
+
+    def update_master_job_status(self):
+        asyncio.run(self._update_master_job_status())
+        #return run_in_event_loop(self._update_master_job_status())
+    
+
+    async def _complete_master_job(self):
+        #  Complete the master job
+        print("\n7. Completing master job...")
+        now = datetime.datetime.now(datetime.timezone.utc)
+        #todo : how to collect all the execution job status?
+        summary = {"completed": 5, "filtered": 0, "duplicate": 0, "failed": 0}
+        await self.factory_storage.log_master_job_end(self.master_job_id, "completed", summary, now, now)
+        print("  - Marked master job as completed")
+
+
+    def complete_master_job(self):
+        asyncio.run(self._complete_master_job())
+        #return run_in_event_loop(self._complete_master_job())
+
+    async def _close_storage(self): 
+        await self.factory_storage.close()  
+
+    def close_storage(self):
+        asyncio.run(self._close_storage())
+        #return run_in_event_loop(self._close_storage())
+
+    def storage_setup(self):
+        if self.storage == "local":
+            self.factory_storage = LocalStorage(TEST_DB_URI)
+            asyncio.run(self.factory_storage.setup())
+            
 
 
 def default_input_converter(data : List[Dict[str, Any]]=[], **kwargs) -> Queue[Dict[str, Any]]:
