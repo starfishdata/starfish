@@ -3,8 +3,11 @@
 todo
 .local/
 .vscode/
+.ruff_cache/
 data_factory_output/
-
+# examples/datafactory_test.ipynb
+# *.ipynb
+# .ipynb_checkpoints
 .cursor
 
 .DS_Store

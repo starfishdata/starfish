@@ -2,25 +2,20 @@ from typing import Any, Dict
 
 from starfish.core.structured_llm import StructuredLLM
 from starfish.utils.data_factory import data_factory
-
-# -> List[Dict] job hooks hook-up
-
+from starfish.utils.enums import RecordStatus
 
 # Add callback for error handling
-def handle_error(err_str: str):
-    print(f"Error occurred: {err_str}")
-
-
-# is this record or job complete?
-
+async def handle_error(data: Any, state: Dict[str, Any]):
+    print(f"Error occurred: {data}")
+    return RecordStatus.FAILED
 
 async def handle_record_complete(data: Any, state: Dict[str, Any]):
     print(f"Record complete: {data}")
-
+    return RecordStatus.COMPLETED
 
 async def handle_duplicate_record(data: Any, state: Dict[str, Any]):
     print(f"Record duplicated: {data}")
-
+    return RecordStatus.DUPLICATE
 
 @data_factory(
     storage="local", max_concurrency=50, state={}, on_record_complete=[handle_record_complete, handle_duplicate_record], on_record_error=[handle_error]
@@ -33,6 +28,22 @@ async def get_city_info_wf(city_name, region_code):
         model_kwargs={"temperature": 0.7},
     )
     output = await structured_llm.run(city_name=city_name, region_code=region_code)
+    # validation_llm = StructuredLLM(
+    #     model_name='anthropic/claude-3',
+    #     prompt='''Analyze these city facts and provide:
+    #     1. Accuracy score (0-10)
+    #     2. Potential sources for verification
+    #     3. Confidence level (0-1)
+    #     Facts: {{data}}''',
+    #     output_schema=[
+    #         {'name': 'accuracy_score', 'type': 'float'},
+    #         #{'name': 'sources', 'type': 'List[str]'},
+    #         {'name': 'confidence', 'type': 'float'}
+    #     ],
+    #     #max_tokens=500
+    # )
+    # output = await validation_llm.run(data=output.data)
+
     return output.data
 
 
@@ -42,10 +53,12 @@ async def get_city_info_wf(city_name, region_code):
 #     num_facts=3
 # )
 
-
+# return results// not loop forever
 results = get_city_info_wf.run(
-    data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
-    region_code=["DE", "IT"],
-    city_name="Beijing",  ### Overwrite the data key
+    #data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
+    #[{"city_name": "Berlin"}, {"city_name": "Rome"}],
+    city_name=["San Francisco", "New York", "Los Angeles"],
+    region_code=["DE", "IT", "US"],
+    # city_name="Beijing",  ### Overwrite the data key
     # num_records_per_city = 3
 )

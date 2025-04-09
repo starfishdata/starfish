@@ -1,11 +1,12 @@
-import inspect
+
 import uuid
 from functools import wraps
 from queue import Queue
 from typing import Any, Callable, Dict, List
-
+from inspect import signature, Parameter
 from starfish.utils.job_manager import JobManager
-
+from starfish.utils.enums import RecordStatus
+from starfish.utils.constants import RECORD_STATUS
 
 class DataFactory:
     def __init__(
@@ -43,23 +44,21 @@ class DataFactory:
             # Get batchable parameters from type hints
             # batchable_params = self._get_batchable_params(func)
             batches = self.input_converter(*args, **kwargs)
-            # batches = Queue()
-            # for data in converted_data:
-            #     batches.put(data)
-
-            # Prepare batches
-            # batches = self._create_batches(func, batchable_params, *args, **kwargs)
-
+            self._check_parameter_match(func, batches)
             # Process batches in parallel
-            self._process_batches(func, batches)
+            output = self._process_batches(func, batches)
+            result = []
+            for v in output:
+                if v.get(RECORD_STATUS) == RecordStatus.COMPLETED:
+                    result.append(v.get("output_ref"))
+          
+            #result = [v for v in output if v.get(RECORD_STATUS) == RecordStatus.COMPLETED]
+            # Exception due to all requests failing
+            if len(result) == 0:
+                raise Exception("No records completed")
 
             self._save_master_job()
-
-            # Store final results
-            # self._store_results(results)
-
-            # return results
-
+            return result
         # Add run method to the wrapped function
         def run(*args, **kwargs):
             return wrapper(*args, **kwargs)
@@ -67,39 +66,39 @@ class DataFactory:
         wrapper.run = run
         wrapper.state = self.job_manager.state
         return wrapper
-
-    def _get_batchable_params(self, func: Callable) -> List[str]:
-        """Identify parameters with List type hints"""
-        type_hints = inspect.get_annotations(func)
-        # and param != "return"
-        keys = [param for param, hint in type_hints.items() if getattr(hint, "__origin__", None) is list]
-        if len(keys) == 0:
-            raise ValueError("No batchable parameters found")
-        return [keys[0]]
-
-    def _create_batches(self, func: Callable, batchable_params: List[str], *args, **kwargs) -> Queue[Dict[str, Any]]:
-        """Split batchable parameters into chunks"""
-        sig = inspect.signature(func)
-        bound_args = sig.bind(*args, **kwargs)
-        bound_args.apply_defaults()
-
-        batches = Queue()
-        for param in batchable_params:
-            values = bound_args.arguments[param]
-            for i in range(0, len(values), self.batch_size):
-                batch_args = bound_args.arguments.copy()
-                batch_args[param] = values[i : i + self.batch_size]
-                batches.put(batch_args)
-
-        return batches
-
-    def _generate_batch_id(self) -> str:
-        """Generate unique batch ID"""
-        self.batch_counter += 1
-        return f"batch_{self.batch_counter:04d}"
-
+    
+    def _check_parameter_match(self, func: Callable, batches: Queue):
+        """Check if the parameters of the function match the parameters of the batches"""
+        # Get the parameters of the function
+        # func_params = inspect.signature(func).parameters
+        # # Get the parameters of the batches
+        # batches_params = inspect.signature(batches).parameters
+        #from inspect import signature, Parameter
+        func_sig = signature(func)
+        
+        # Validate batch items against function parameters
+        batch_item = batches.queue[0]
+        for param_name, param in func_sig.parameters.items():
+            # Skip if parameter has a default value
+            if param.default is not Parameter.empty:
+                continue
+            # Check if required parameter is missing in batch
+            if param_name not in batch_item:
+                raise TypeError(
+                    f"Batch item is missing required parameter '{param_name}' "
+                    f"for function {func.__name__}"
+                )
+        # Check 2: Ensure all batch parameters exist in function signature
+        for batch_param in batch_item.keys():
+            if batch_param not in func_sig.parameters:
+                raise TypeError(
+                    f"Batch items contains unexpected parameter '{batch_param}' "
+                    f"not found in function {func.__name__}"
+                )
+            
     def _process_batches(self, func: Callable, batches: Queue) -> List[Any]:
         """Process batches with asyncio"""
+        
         target_acount = self.job_config.get("target_count")
         self.job_manager.update_job_config(
             {
@@ -109,7 +108,7 @@ class DataFactory:
                 "target_count": batches.qsize() if target_acount == 0 else target_acount,
             }
         )
-        self.job_manager.run_orchestration()
+        return self.job_manager.run_orchestration()
 
     # def _store_results(self, results: List[Any]):
     #     """Handle storage based on configured option"""
@@ -121,41 +120,15 @@ class DataFactory:
     #         # Add AWS S3 integration here
     #         pass
 
-    def add_callback(self, event: str, callback: Callable):
-        """Register callback functions"""
-        if event in self.callbacks:
-            self.callbacks[event].append(callback)
-
-    def _execute_callbacks(self, event: str, *args):
-        """Trigger registered callbacks"""
-        if callbacks := self.callbacks.get(event):
-            for callback in callbacks:
-                callback(*args)
-
-    def _on_start(self):
-        """Initialize job statistics"""
-        pass
-
-    def _on_complete(self, batch_result):
-        """Update stats and cache successful batches"""
-        self._execute_callbacks("on_batch_complete", batch_result)
-
-    def _on_error(self, error: str):
-        """Handle failed batches"""
-        self._execute_callbacks("on_error", error)
-
-    def _on_record_complete(self, data: Any):
-        """Handle record completion"""
-        self._execute_callbacks("on_record_complete", data)
 
     def _save_master_job(self):
         pass
 
 
-def default_input_converter(data, **kwargs) -> Queue[Dict[str, Any]]:
+def default_input_converter(data : List[Dict[str, Any]]=[], **kwargs) -> Queue[Dict[str, Any]]:
     # Determine parallel sources
     parallel_sources = {}
-    if isinstance(data, list):
+    if isinstance(data, list) and len(data) > 0:
         parallel_sources["data"] = data
     for key, value in kwargs.items():
         if isinstance(value, (list, tuple)):
