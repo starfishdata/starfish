@@ -1,4 +1,3 @@
-
 import datetime
 import uuid
 import asyncio
@@ -7,7 +6,6 @@ from queue import Queue
 from typing import Any, Callable, Dict, List
 from inspect import signature, Parameter
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
-
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.job_manager import JobManager
 from starfish.utils.constants import RECORD_STATUS, TEST_DB_DIR, TEST_DB_URI, RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
@@ -55,6 +53,7 @@ class DataFactory:
         self.factory_storage = None
         self.storage_setup()
         self.save_project()
+        self._init_progress_bar()
         self.job_manager = JobManager(master_job_id=self.master_job_id, job_config=self.job_config, storage=self.factory_storage, 
                                       state=state)
 
@@ -63,28 +62,23 @@ class DataFactory:
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-
-            # todo batches is a list of dicts
-            batches = self.input_converter(*args, **kwargs)
-            self._check_parameter_match(func, batches)
-            self.save_request_config()
-            self.log_master_job_start()
-
-            # Process batches in parallel
-            output = self._process_batches(func, batches)
-            result = []
-            for v in output:
-                if v.get(RECORD_STATUS) == RECORD_STATUS_COMPLETED:
-                    result.append(v.get("output"))
-          
-            #result = [v for v in output if v.get(RECORD_STATUS) == RecordStatus.COMPLETED]
-            # Exception due to all requests failing
-            if len(result) == 0:
-                raise Exception("No records completed")
-
-            self.complete_master_job()
-            self.close_storage()
-            return result
+            try:
+                batches = self.input_converter(*args, **kwargs)
+                self._update_job_config(func, batches)
+                self._check_parameter_match(func, batches)
+                self.save_request_config()
+                self.log_master_job_start()
+                # Start progress bar before any operations
+                # Process batches and keep progress bar alive
+                self.start_job_progress_status()
+                output = self._process_batches()
+                result = self._process_output(output)
+                return result
+            finally:
+                # Ensure progress bar is properly closed
+                self.complete_master_job()
+                self.close_storage()
+                self.stop_job_progress_status()
         # Add run method to the wrapped function
         def run(*args, **kwargs):
             return wrapper(*args, **kwargs)
@@ -92,6 +86,13 @@ class DataFactory:
         wrapper.run = run
         wrapper.state = self.job_manager.state
         return wrapper
+    
+    def _process_output(self, output: List[Any]) -> List[Any]:
+        result = []
+        for v in output:
+            if v.get(RECORD_STATUS) == RECORD_STATUS_COMPLETED:
+                result.append(v.get("output"))
+        return result
     
     def _check_parameter_match(self, func: Callable, batches: Queue):
         """Check if the parameters of the function match the parameters of the batches"""
@@ -122,18 +123,23 @@ class DataFactory:
                     f"not found in function {func.__name__}"
                 )
             
-    def _process_batches(self, func: Callable, batches: Queue) -> List[Any]:
-        """Process batches with asyncio"""
-        
+    def _update_job_config(self, func: Callable, batches: Queue):
         target_acount = self.job_config.get("target_count")
+        new_target_count = batches.qsize() if target_acount == 0 else target_acount
+        self.job_config.update({"target_count": new_target_count})
         self.job_manager.update_job_config(
             {
                 "master_job_id": self.master_job_id,
                 "user_func": func,
                 "job_input_queue": batches,
-                "target_count": batches.qsize() if target_acount == 0 else target_acount,
+                "target_count": new_target_count,
+                "progress": self.progress,
+                "progress_tasks": self.progress_tasks,
             }
         )
+    
+    def _process_batches(self) -> List[Any]:
+        """Process batches with asyncio"""
         self.update_master_job_status()
         return self.job_manager.run_orchestration()
 
@@ -215,7 +221,7 @@ class DataFactory:
             self.factory_storage = InMemoryStorage()
             asyncio.run(self.factory_storage.setup())
 
-    def add_job_status(self):
+    def _init_progress_bar(self):
         self.progress = Progress(
             TextColumn("[bold blue]{task.description}"),
             BarColumn(),
@@ -223,14 +229,40 @@ class DataFactory:
             TextColumn("•"),
             TextColumn("{task.fields[status]}"),
             TimeRemainingColumn(),
-        ) if self.show_progress else None
+        ) if self.job_config.get("show_progress") else None
         # Separate task IDs for each counter
-        self.progress_task_ids = {
+        self.progress_tasks = {
             "completed": None,
             "failed": None,
             "filtered": None,
             "duplicate": None
         }
+        
+
+    def start_job_progress_status(self):
+        # Initialize and start progress bar if enabled
+        if self.job_config.get("show_progress"):
+            #self.progress.start()
+            #with self.progress_lock:
+            target_count = self.job_config.get("target_count")
+            self.progress_tasks[RECORD_STATUS_COMPLETED] = self.progress.add_task(
+                "Completed", total=target_count, status="✅ 0"
+            )
+            self.progress_tasks[RECORD_STATUS_FAILED] = self.progress.add_task(
+                "Failed", total=target_count, status="❌ 0"
+            )
+            self.progress_tasks[RECORD_STATUS_FILTERED] = self.progress.add_task(
+                "Filtered", total=target_count, status="🚫 0"
+            )
+            self.progress_tasks[RECORD_STATUS_DUPLICATE] = self.progress.add_task(
+                "Duplicated", total=target_count, status="🔁 0"
+            )
+            self.job_config["progress"] = self.progress
+            self.job_config["progress_tasks"] = self.progress_tasks
+    
+    def stop_job_progress_status(self):
+        if self.job_config.get("show_progress"):
+            self.progress.stop()
             
 
 

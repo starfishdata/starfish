@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 import uuid
 from queue import Queue
 from starfish.utils.errors import DuplicateRecordError, FilterRecordError, RecordError
-from starfish.utils.constants import RECORD_STATUS
+from starfish.utils.constants import RECORD_STATUS, STATUS_MOJO_MAP
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.task_runner import TaskRunner
 from starfish.utils.constants import RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
@@ -38,7 +38,7 @@ class JobManager:
         self.total_task_run_count = 0
         self.job_run_stop_threshold = 3
         self.job_id = str(uuid.uuid4())
-        self.show_progress = job_config.get("show_progress", False)  # Default to True if not specified
+        self.show_progress = job_config.get("show_progress") 
         
         self.progress_lock = asyncio.Lock()
 
@@ -105,6 +105,7 @@ class JobManager:
             item[RECORD_STATUS] != RECORD_STATUS_FAILED for item in items_check)
         total_tasks_reach_target = (self.total_task_run_count >= self.target_count)
         return consecutive_not_completed and total_tasks_reach_target
+    
     def run_orchestration(self) -> List[Any]:
         """Process batches with asyncio"""
         return run_in_event_loop(self._async_run_orchestration())
@@ -115,39 +116,20 @@ class JobManager:
         self.job_input_queue = self.job_config["job_input_queue"]
         self.target_count = self.job_config.get("target_count")
         
-        # Initialize progress bar if enabled
         if self.show_progress:
+            self.progress = self.job_config.get("progress")
+            self.progress_tasks = self.job_config.get("progress_tasks")
             self.progress.start()
-            async with self.progress_lock:
-                self.progress_task_ids["completed"] = self.progress.add_task(
-                    "Completed", total=self.target_count, status="✅ 0"
-                )
-                self.progress_task_ids["failed"] = self.progress.add_task(
-                    "Failed", total=self.target_count, status="❌ 0"
-                )
-                self.progress_task_ids["filtered"] = self.progress.add_task(
-                    "Filtered", total=self.target_count, status="🚫 0"
-                )
-                self.progress_task_ids["duplicate"] = self.progress.add_task(
-                    "Duplicated", total=self.target_count, status="🔁 0"
-                )
-            
-        try:
-            while not self.is_job_to_stop():
-                if not self.job_input_queue.empty():
-                    await self.semaphore.acquire()
-                    input_data = self.job_input_queue.get()
-                    task = asyncio.create_task(self._run_single_task(input_data))
-                    asyncio.create_task(self._handle_task_completion(task))
-                else:
-                    if self.is_consecutive_not_errors():
-                        break
-                    await asyncio.sleep(1)
-        finally:
-            # Stop progress bar if enabled
-            if self.show_progress:
-                self.progress.stop()
-        
+        while not self.is_job_to_stop():
+            if not self.job_input_queue.empty():
+                await self.semaphore.acquire()
+                input_data = self.job_input_queue.get()
+                task = asyncio.create_task(self._run_single_task(input_data))
+                asyncio.create_task(self._handle_task_completion(task))
+            else:
+                if self.is_consecutive_not_errors():
+                    break
+                await asyncio.sleep(1)
         return list(self.job_output.queue)
 
     async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
@@ -186,33 +168,24 @@ class JobManager:
         async with self.lock:
             self.job_output.put(result)
             self.total_task_run_count += 1
-            
+            task_status = result[RECORD_STATUS]
             # Update counters based on task status
-            if result[RECORD_STATUS] == RECORD_STATUS_COMPLETED:
+            if task_status == RECORD_STATUS_COMPLETED:
                 self.completed_count += 1
-                await self._update_progress("completed", "✅")
-            elif result[RECORD_STATUS] == RECORD_STATUS_DUPLICATE:
+            elif task_status == RECORD_STATUS_DUPLICATE:
                 self.duplicate_count += 1
-                await self._update_progress("duplicate", "🔁")
-            elif result[RECORD_STATUS] == RECORD_STATUS_FILTERED:
+            elif task_status == RECORD_STATUS_FILTERED:
                 self.filtered_count += 1
-                await self._update_progress("filtered", "🚫")
-            elif result[RECORD_STATUS] == RECORD_STATUS_FAILED:
+            else:
                 self.failed_count += 1
-                await self._update_progress("failed", "❌")
-
+            await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
             self.semaphore.release()
-
             if self.completed_count >= self.target_count:
                 await self._finalize_job()
 
     async def _finalize_job(self):
         """Clean up after job completion"""
-        # await self.storage.log_master_job_end(self.master_job_id)
         await self.complete_execution_job()
-        #await self.complete_master_job()
-        #await self.storage.close()
-        # await self.state.close()
 
     def _prepare_next_input(self):
         """Prepare input data for the next task"""
@@ -228,7 +201,9 @@ class JobManager:
         if not self.show_progress:
             return
         async with self.progress_lock:
-            task_id = self.progress_task_ids[counter_type]
+            task_id = self.progress_tasks[counter_type]
             if task_id is not None:
                 count = getattr(self, f"{counter_type}_count")
                 self.progress.update(task_id, advance=1, status=f"{emoji} {count}")
+                # Force refresh the progress display
+                self.progress.refresh()
