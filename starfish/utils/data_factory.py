@@ -6,6 +6,8 @@ from functools import wraps
 from queue import Queue
 from typing import Any, Callable, Dict, List
 from inspect import signature, Parameter
+from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
+
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.job_manager import JobManager
 from starfish.utils.constants import RECORD_STATUS, TEST_DB_DIR, TEST_DB_URI, RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
@@ -31,6 +33,7 @@ class DataFactory:
         on_record_complete: List[Callable],
         on_record_error: List[Callable],
         input_converter: Callable,
+        show_progress: bool,
     ):
         # self.storage = storage
         self.batch_size = batch_size
@@ -40,8 +43,9 @@ class DataFactory:
             "target_count": target_count,
             "storage": storage,
             "state": state,
-            "on_record_complete": on_record_complete,
+            "on_record_complete": on_record_complete,   
             "on_record_error": on_record_error,
+            "show_progress": show_progress,
         }
 
         self.project_id = str(uuid.uuid4())
@@ -210,6 +214,23 @@ class DataFactory:
         else:
             self.factory_storage = InMemoryStorage()
             asyncio.run(self.factory_storage.setup())
+
+    def add_job_status(self):
+        self.progress = Progress(
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("•"),
+            TextColumn("{task.fields[status]}"),
+            TimeRemainingColumn(),
+        ) if self.show_progress else None
+        # Separate task IDs for each counter
+        self.progress_task_ids = {
+            "completed": None,
+            "failed": None,
+            "filtered": None,
+            "duplicate": None
+        }
             
 
 
@@ -263,8 +284,9 @@ def data_factory(
     initial_state_values: Dict[str, Any] = {},
     on_record_complete: List[Callable] = [],
     on_record_error: List[Callable] = [],
+    show_progress: bool = True,
     input_converter=default_input_converter,
 ):
-    state = MutableSharedState(initial_state_values)
+    state = MutableSharedState(initial_state_values)    
 
-    return DataFactory(storage, batch_size, max_concurrency, target_count, state, on_record_complete, on_record_error, input_converter=input_converter)
+    return DataFactory(storage, batch_size, max_concurrency, target_count, state, on_record_complete, on_record_error, input_converter=input_converter, show_progress=show_progress)

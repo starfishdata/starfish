@@ -22,28 +22,25 @@ class JobManager:
     def __init__(self, master_job_id: str, job_config: Dict[str, Any], storage: Storage, state: MutableSharedState):
         self.master_job_id = master_job_id
         self.job_config = job_config
-        # sqlite storage
         self.storage = storage
-        # cache state
         self.state = state
-        # not above a number every minute
         self.semaphore = asyncio.Semaphore(job_config.get("max_concurrency"))
         self.lock = asyncio.Lock()
         self.task_runner = TaskRunner()
         self.job_input_queue = Queue()
         # it shall be a thread safe queue
         self.job_output = Queue()
-
         # Job counters
         self.completed_count = 0
-
         self.duplicate_count = 0
         self.filtered_count = 0
         self.failed_count = 0
         self.total_task_run_count = 0
         self.job_run_stop_threshold = 3
         self.job_id = str(uuid.uuid4())
+        self.show_progress = job_config.get("show_progress", False)  # Default to True if not specified
         
+        self.progress_lock = asyncio.Lock()
 
     async def create_execution_job(self):
         print("\n3. Creating execution job...")
@@ -92,9 +89,22 @@ class JobManager:
         print("  - Marked execution job as completed")
     
     def is_job_to_stop(self) -> bool:
+        # self.completed_count < self.target_count and not self.is_job_to_stop()
+        #or if no failed status, then no task added into the job_input_queue
+        #item[RECORD_STATUS] != RECORD_STATUS_FAILED 
+        #(self.total_task_run_count-self.failed_count) >= self.target_count
         items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
-        return len(items_check) == self.job_run_stop_threshold and all(item[RECORD_STATUS] != RECORD_STATUS_COMPLETED for item in items_check)
-
+        consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
+            item[RECORD_STATUS] != RECORD_STATUS_COMPLETED for item in items_check)
+        total_tasks_reach_target = (self.total_task_run_count >= self.target_count)
+        return consecutive_not_completed and total_tasks_reach_target
+    
+    def is_consecutive_not_errors(self) -> bool:
+        items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
+        consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
+            item[RECORD_STATUS] != RECORD_STATUS_FAILED for item in items_check)
+        total_tasks_reach_target = (self.total_task_run_count >= self.target_count)
+        return consecutive_not_completed and total_tasks_reach_target
     def run_orchestration(self) -> List[Any]:
         """Process batches with asyncio"""
         return run_in_event_loop(self._async_run_orchestration())
@@ -102,21 +112,42 @@ class JobManager:
     async def _async_run_orchestration(self) -> List[Any]:
         """Main orchestration loop for the job"""
         await self.create_execution_job()
-        #await self.update_execution_job_status()
         self.job_input_queue = self.job_config["job_input_queue"]
         self.target_count = self.job_config.get("target_count")
-        # if completed count not changed for three times, then failed and break
-        # this happens because of the retry mechanism when error occurs
-        # todo: use queue to check the last 3 task status
-        while self.completed_count < self.target_count and not self.is_job_to_stop():
-            if not self.job_input_queue.empty():
-                await self.semaphore.acquire()
-                input_data = self.job_input_queue.get()
-                task = asyncio.create_task(self._run_single_task(input_data))
-                # Create a task to handle the completion
-                asyncio.create_task(self._handle_task_completion(task))
-            else:
-                await asyncio.sleep(1)
+        
+        # Initialize progress bar if enabled
+        if self.show_progress:
+            self.progress.start()
+            async with self.progress_lock:
+                self.progress_task_ids["completed"] = self.progress.add_task(
+                    "Completed", total=self.target_count, status="✅ 0"
+                )
+                self.progress_task_ids["failed"] = self.progress.add_task(
+                    "Failed", total=self.target_count, status="❌ 0"
+                )
+                self.progress_task_ids["filtered"] = self.progress.add_task(
+                    "Filtered", total=self.target_count, status="🚫 0"
+                )
+                self.progress_task_ids["duplicate"] = self.progress.add_task(
+                    "Duplicated", total=self.target_count, status="🔁 0"
+                )
+            
+        try:
+            while not self.is_job_to_stop():
+                if not self.job_input_queue.empty():
+                    await self.semaphore.acquire()
+                    input_data = self.job_input_queue.get()
+                    task = asyncio.create_task(self._run_single_task(input_data))
+                    asyncio.create_task(self._handle_task_completion(task))
+                else:
+                    if self.is_consecutive_not_errors():
+                        break
+                    await asyncio.sleep(1)
+        finally:
+            # Stop progress bar if enabled
+            if self.show_progress:
+                self.progress.stop()
+        
         return list(self.job_output.queue)
 
     async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
@@ -155,20 +186,24 @@ class JobManager:
         async with self.lock:
             self.job_output.put(result)
             self.total_task_run_count += 1
+            
+            # Update counters based on task status
             if result[RECORD_STATUS] == RECORD_STATUS_COMPLETED:
                 self.completed_count += 1
-                # user can update the counter in the user-defined hook
+                await self._update_progress("completed", "✅")
             elif result[RECORD_STATUS] == RECORD_STATUS_DUPLICATE:
                 self.duplicate_count += 1
+                await self._update_progress("duplicate", "🔁")
             elif result[RECORD_STATUS] == RECORD_STATUS_FILTERED:
                 self.filtered_count += 1
+                await self._update_progress("filtered", "🚫")
             elif result[RECORD_STATUS] == RECORD_STATUS_FAILED:
                 self.failed_count += 1
+                await self._update_progress("failed", "❌")
 
             self.semaphore.release()
 
             if self.completed_count >= self.target_count:
-                # how to get the job status
                 await self._finalize_job()
 
     async def _finalize_job(self):
@@ -187,3 +222,13 @@ class JobManager:
     def update_job_config(self, job_config: Dict[str, Any]):
         """Update job config by merging new values with existing config"""
         self.job_config = {**self.job_config, **job_config}
+
+    async def _update_progress(self, counter_type: str, emoji: str):
+        """Thread-safe progress bar update"""
+        if not self.show_progress:
+            return
+        async with self.progress_lock:
+            task_id = self.progress_task_ids[counter_type]
+            if task_id is not None:
+                count = getattr(self, f"{counter_type}_count")
+                self.progress.update(task_id, advance=1, status=f"{emoji} {count}")

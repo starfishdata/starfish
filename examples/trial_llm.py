@@ -1,5 +1,5 @@
+import random
 from typing import Any, Dict
-
 from starfish.core.structured_llm import StructuredLLM
 from starfish.utils.data_factory import data_factory
 from starfish.utils.constants import RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
@@ -24,7 +24,9 @@ async def handle_duplicate_record(data: Any, state: MutableSharedState):
     await state.data
     await state.update({"completed_count": 2})
     #return RECORD_STATUS_DUPLICATE
-    return RECORD_STATUS_COMPLETED
+    if random.random() < 0.3:
+        return RECORD_STATUS_COMPLETED
+    return RECORD_STATUS_DUPLICATE
 
 @data_factory(
     storage="local", max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], on_record_error=[handle_error]
@@ -66,8 +68,8 @@ async def get_city_info_wf(city_name, region_code):
 results = get_city_info_wf.run(
     #data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
     #[{"city_name": "Berlin"}, {"city_name": "Rome"}],
-    city_name=["San Francisco", "New York", "Los Angeles"],
-    region_code=["DE", "IT", "US"],
+    city_name=["San Francisco", "New York", "Los Angeles"]*10,
+    region_code=["DE", "IT", "US"]*10,
     # city_name="Beijing",  ### Overwrite the data key
     # num_records_per_city = 3
 )
