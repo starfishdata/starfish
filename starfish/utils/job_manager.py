@@ -7,7 +7,7 @@ from starfish.utils.errors import DuplicateRecordError, FilterRecordError, Recor
 from starfish.utils.constants import RECORD_STATUS, STATUS_MOJO_MAP
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.task_runner import TaskRunner
-from starfish.utils.constants import RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
+from starfish.utils.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED
 from starfish.new_storage.models import (
     GenerationJob,
     GenerationMasterJob,
@@ -88,12 +88,12 @@ class JobManager:
     def is_job_to_stop(self) -> bool:
         # self.completed_count < self.target_count and not self.is_job_to_stop()
         #or if no failed status, then no task added into the job_input_queue
-        #item[RECORD_STATUS] != RECORD_STATUS_FAILED 
+        #item[RECORD_STATUS] != STATUS_FAILED 
         #(self.total_task_run_count-self.failed_count) >= self.target_count
         # items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
         # #consecutive_not_completed and 
         # consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
-        #     item[RECORD_STATUS] != RECORD_STATUS_COMPLETED for item in items_check)
+        #     item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check)
         total_tasks_reach_target = (self.completed_count >= self.target_count)
         return total_tasks_reach_target
     
@@ -101,7 +101,7 @@ class JobManager:
         items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
         # duplicate filtered need retry
         consecutive_completed = len(items_check) == self.job_run_stop_threshold and all(
-            item[RECORD_STATUS] == RECORD_STATUS_FAILED for item in items_check)
+            item[RECORD_STATUS] == STATUS_FAILED for item in items_check)
         total_tasks_reach_target = (self.completed_count >= self.target_count)
         return consecutive_completed and total_tasks_reach_target
     
@@ -134,7 +134,7 @@ class JobManager:
         """Run a single task with error handling and storage"""
         output = []
         output_ref = []
-        task_status = RECORD_STATUS_COMPLETED
+        task_status = STATUS_COMPLETED
         try:
             output = await self.task_runner.run_task(self.job_config["user_func"], input_data)
             # Save record all status except failed (not user-defined hook returns failed); 
@@ -146,20 +146,20 @@ class JobManager:
             # class based hooks. use semaphore to ensure thread safe
             for hook in self.job_config.get("on_record_complete", []):
                 hooks_output.append(await hook(output, self.state))
-            if hooks_output.count(RECORD_STATUS_DUPLICATE) > 0:
+            if hooks_output.count(STATUS_DUPLICATE) > 0:
                 # duplicate filtered need retry
-                task_status = RECORD_STATUS_DUPLICATE
-            elif hooks_output.count(RECORD_STATUS_FILTERED) > 0:
-                task_status = RECORD_STATUS_FILTERED 
+                task_status = STATUS_DUPLICATE
+            elif hooks_output.count(STATUS_FILTERED) > 0:
+                task_status = STATUS_FILTERED 
             output_ref = await self.job_save_record_data(output,task_status)
         except Exception as e:
             logger.error(f"Error running task: {e}")
             for hook in self.job_config.get("on_record_error", []):
                 await hook(str(e), self.state)
-            task_status = RECORD_STATUS_FAILED
+            task_status = STATUS_FAILED
         finally:
             # if task is not completed, put the input data back to the job input queue
-            if task_status != RECORD_STATUS_COMPLETED:
+            if task_status != STATUS_COMPLETED:
                 logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
                 self.job_input_queue.put(input_data)
             return {RECORD_STATUS: task_status, "output_ref": output_ref,"output":output}
@@ -172,11 +172,11 @@ class JobManager:
             self.total_task_run_count += 1
             task_status = result[RECORD_STATUS]
             # Update counters based on task status
-            if task_status == RECORD_STATUS_COMPLETED:
+            if task_status == STATUS_COMPLETED:
                 self.completed_count += 1
-            elif task_status == RECORD_STATUS_DUPLICATE:
+            elif task_status == STATUS_DUPLICATE:
                 self.duplicate_count += 1
-            elif task_status == RECORD_STATUS_FILTERED:
+            elif task_status == STATUS_FILTERED:
                 self.filtered_count += 1
             else:
                 self.failed_count += 1

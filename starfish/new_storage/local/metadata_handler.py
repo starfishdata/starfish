@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from starfish.utils.constants import RECORD_STATUS_COMPLETED, RECORD_STATUS_FAILED, RECORD_STATUS_FILTERED, RECORD_STATUS_DUPLICATE
+from starfish.utils.constants import STATUS_COMPLETED, STATUS_FAILED, STATUS_FILTERED, STATUS_DUPLICATE
 
 import aiosqlite
 
@@ -259,10 +259,10 @@ class SQLiteMetadataHandler:
             end_time,
             update_time,
             summary_str,
-            summary.get(RECORD_STATUS_COMPLETED, 0) if summary else 0,
-            summary.get(RECORD_STATUS_FILTERED, 0) if summary else 0,
-            summary.get(RECORD_STATUS_DUPLICATE, 0) if summary else 0,
-            summary.get(RECORD_STATUS_FAILED, 0) if summary else 0,
+            summary.get(STATUS_COMPLETED, 0) if summary else 0,
+            summary.get(STATUS_FILTERED, 0) if summary else 0,
+            summary.get(STATUS_DUPLICATE, 0) if summary else 0,
+            summary.get(STATUS_FAILED, 0) if summary else 0,
             master_job_id,
         )
         await self._execute_sql(sql, params)
@@ -341,10 +341,10 @@ class SQLiteMetadataHandler:
             end_time,
             update_time,
             error_message,
-            counts.get(RECORD_STATUS_COMPLETED, 0),
-            counts.get(RECORD_STATUS_FILTERED, 0),
-            counts.get(RECORD_STATUS_DUPLICATE, 0),
-            counts.get(RECORD_STATUS_FAILED, 0),
+            counts.get(STATUS_COMPLETED, 0),
+            counts.get(STATUS_FILTERED, 0),
+            counts.get(STATUS_DUPLICATE, 0),
+            counts.get(STATUS_FAILED, 0),
             job_id,
         )
         await self._execute_sql(sql, params)

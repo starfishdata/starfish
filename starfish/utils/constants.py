@@ -11,14 +11,14 @@ if os.path.exists(TEST_DB_DIR):
     logger.info(f"Cleaning up existing test directory: {TEST_DB_DIR}")
     shutil.rmtree(TEST_DB_DIR)
 
-RECORD_STATUS_COMPLETED = "completed"
-RECORD_STATUS_DUPLICATE = "duplicate"
-RECORD_STATUS_FILTERED = "filtered"
-RECORD_STATUS_FAILED = "failed"
+STATUS_COMPLETED = "completed"
+STATUS_DUPLICATE = "duplicate"
+STATUS_FILTERED = "filtered"
+STATUS_FAILED = "failed"
 
 STATUS_MOJO_MAP = {
-    RECORD_STATUS_COMPLETED: "✅",
-    RECORD_STATUS_DUPLICATE: "🔁",
-    RECORD_STATUS_FILTERED: "🚫",
-    RECORD_STATUS_FAILED: "❌",
+    STATUS_COMPLETED: "✅",
+    STATUS_DUPLICATE: "🔁",
+    STATUS_FILTERED: "🚫",
+    STATUS_FAILED: "❌",
 }

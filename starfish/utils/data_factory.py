@@ -8,7 +8,7 @@ from inspect import signature, Parameter
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.job_manager import JobManager
-from starfish.utils.constants import RECORD_STATUS, STATUS_MOJO_MAP, TEST_DB_DIR, TEST_DB_URI, RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
+from starfish.utils.constants import RECORD_STATUS, STATUS_MOJO_MAP, TEST_DB_DIR, TEST_DB_URI, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED
 from starfish.new_storage.local.local_storage import LocalStorage
 from starfish.new_storage.in_memory.in_memory_storage import InMemoryStorage
 from starfish.utils.state import MutableSharedState
@@ -91,7 +91,7 @@ class DataFactory:
         result = []
         output = self.job_manager.job_output.queue
         for v in output:
-            if v.get(RECORD_STATUS) == RECORD_STATUS_COMPLETED:
+            if v.get(RECORD_STATUS) == STATUS_COMPLETED:
                 result.append(v.get("output"))
         return result
     
@@ -185,11 +185,11 @@ class DataFactory:
         logger.debug("\n7. Completing master job...")
         now = datetime.datetime.now(datetime.timezone.utc)
         #todo : how to collect all the execution job status?
-        summary = {RECORD_STATUS_COMPLETED: self.job_manager.completed_count,
-                    RECORD_STATUS_FILTERED: self.job_manager.filtered_count,
-                    RECORD_STATUS_DUPLICATE: self.job_manager.duplicate_count,
-                    RECORD_STATUS_FAILED: self.job_manager.failed_count}
-        await self.factory_storage.log_master_job_end(self.master_job_id, "completed", summary, now, now)
+        summary = {STATUS_COMPLETED: self.job_manager.completed_count,
+                    STATUS_FILTERED: self.job_manager.filtered_count,
+                    STATUS_DUPLICATE: self.job_manager.duplicate_count,
+                    STATUS_FAILED: self.job_manager.failed_count}
+        await self.factory_storage.log_master_job_end(self.master_job_id, STATUS_COMPLETED, summary, now, now)
         logger.info(" master job as completed")
 
 
@@ -240,25 +240,25 @@ class DataFactory:
         ) if self.job_config.get("show_progress") else None
         # Separate task IDs for each counter
         self.progress_tasks = {
-            "completed": None,
-            "failed": None,
-            "filtered": None,
-            "duplicate": None
+            STATUS_COMPLETED: None,
+            STATUS_FAILED: None,
+            STATUS_FILTERED: None,
+            STATUS_DUPLICATE: None
         }
         if self.job_config.get("show_progress"):
             #self.progress.start()
             #with self.progress_lock:
             target_count = self.job_config.get("target_count")
-            self.progress_tasks[RECORD_STATUS_COMPLETED] = self.progress.add_task(
+            self.progress_tasks[STATUS_COMPLETED] = self.progress.add_task(
                 "Completed", total=target_count, status="✅ 0"
             )
-            self.progress_tasks[RECORD_STATUS_FAILED] = self.progress.add_task(
+            self.progress_tasks[STATUS_FAILED] = self.progress.add_task(
                 "Failed", total=target_count, status="❌ 0"
             )
-            self.progress_tasks[RECORD_STATUS_FILTERED] = self.progress.add_task(
+            self.progress_tasks[STATUS_FILTERED] = self.progress.add_task(
                 "Filtered", total=target_count, status="🚫 0"
             )
-            self.progress_tasks[RECORD_STATUS_DUPLICATE] = self.progress.add_task(
+            self.progress_tasks[STATUS_DUPLICATE] = self.progress.add_task(
                 "Duplicated", total=target_count, status="🔁 0"
             )
             self.job_config["progress"] = self.progress

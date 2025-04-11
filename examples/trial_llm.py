@@ -3,7 +3,7 @@ import asyncio
 from typing import Any, Dict
 from starfish.core.structured_llm import StructuredLLM
 from starfish.utils.data_factory import data_factory
-from starfish.utils.constants import RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
+from starfish.utils.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED
 from starfish.utils.state import MutableSharedState
 from starfish.common.logger import get_logger
 logger = get_logger(__name__)
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 # todo state is a class with thread safe dict
 async def handle_error(data: Any, state: MutableSharedState):
     logger.error(f"Error occurred: {data}")
-    return RECORD_STATUS_FAILED
+    return STATUS_FAILED
 
 async def handle_record_complete(data: Any, state: MutableSharedState):
     print(f"Record complete: {data}")
@@ -19,17 +19,17 @@ async def handle_record_complete(data: Any, state: MutableSharedState):
     await state.set("completed_count",  1)
     await state.data
     await state.update({"completed_count": 2})
-    return RECORD_STATUS_COMPLETED
+    return STATUS_COMPLETED
 
 async def handle_duplicate_record(data: Any, state: MutableSharedState):
     logger.debug(f"Record duplicated: {data}")
     await state.set("completed_count",  1)
     await state.data
     await state.update({"completed_count": 2})
-    #return RECORD_STATUS_DUPLICATE
+    #return STATUS_DUPLICATE
     if random.random() < 0.3:
-        return RECORD_STATUS_COMPLETED
-    return RECORD_STATUS_DUPLICATE
+        return STATUS_COMPLETED
+    return STATUS_DUPLICATE
 
 async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_time=0.01):
     await asyncio.sleep(sleep_time)
