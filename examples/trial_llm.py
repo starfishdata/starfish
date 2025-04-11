@@ -1,4 +1,5 @@
 import random
+import asyncio
 from typing import Any, Dict
 from starfish.core.structured_llm import StructuredLLM
 from starfish.utils.data_factory import data_factory
@@ -28,17 +29,31 @@ async def handle_duplicate_record(data: Any, state: MutableSharedState):
         return RECORD_STATUS_COMPLETED
     return RECORD_STATUS_DUPLICATE
 
+async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_time=0.01):
+    # Simulate a slight delay (optional, feels more async-realistic)
+    await asyncio.sleep(sleep_time)
+
+    # 5% chance of failure
+    if random.random() < fail_rate:
+        print(f"  {city_name}: Failed!") ## For debugging
+        raise ValueError(f"Mock LLM failed to process city: {city_name}")
+    
+    print(f"{city_name}: Successfully processed!") ## For debugging
+
+    result = [{"answer": f"{city_name}_{random.randint(1, 5)}"} for _ in range(num_records_per_city)]
+    return result
+
 @data_factory(
     storage="local", max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], on_record_error=[handle_error]
 )
 async def get_city_info_wf(city_name, region_code):
-    structured_llm = StructuredLLM(
-        model_name="openai/gpt-4o-mini",
-        prompt="Facts about city {{city_name}} in region {{region_code}}.",
-        output_schema=[{"name": "question", "type": "str"}, {"name": "answer", "type": "str"}],
-        model_kwargs={"temperature": 0.7},
-    )
-    output = await structured_llm.run(city_name=city_name, region_code=region_code)
+    # structured_llm = StructuredLLM(
+    #     model_name="openai/gpt-4o-mini",
+    #     prompt="Facts about city {{city_name}} in region {{region_code}}.",
+    #     output_schema=[{"name": "question", "type": "str"}, {"name": "answer", "type": "str"}],
+    #     model_kwargs={"temperature": 0.7},
+    # )
+    # output = await structured_llm.run(city_name=city_name, region_code=region_code)
     # validation_llm = StructuredLLM(
     #     model_name='anthropic/claude-3',
     #     prompt='''Analyze these city facts and provide:
@@ -55,7 +70,8 @@ async def get_city_info_wf(city_name, region_code):
     # )
     # output = await validation_llm.run(data=output.data)
 
-    return output.data
+    #return output.data
+    return await mock_llm_call(city_name, num_records_per_city=3, fail_rate=0.5, sleep_time=0.01)
 
 
 # Execute with batch processing

@@ -19,6 +19,9 @@ from starfish.new_storage.models import (
     Record,
 )
 
+from starfish.common.logger import get_logger
+logger = get_logger(__name__)
+
 
 class DataFactory:
     def __init__(
@@ -53,7 +56,6 @@ class DataFactory:
         self.factory_storage = None
         self.storage_setup()
         self.save_project()
-        self._init_progress_bar()
         self.job_manager = JobManager(master_job_id=self.master_job_id, job_config=self.job_config, storage=self.factory_storage, 
                                       state=state)
 
@@ -64,13 +66,12 @@ class DataFactory:
         def wrapper(*args, **kwargs):
             try:
                 batches = self.input_converter(*args, **kwargs)
-                self._update_job_config(func, batches)
                 self._check_parameter_match(func, batches)
                 self.save_request_config()
                 self.log_master_job_start()
                 # Start progress bar before any operations
                 # Process batches and keep progress bar alive
-                self.start_job_progress_status()
+                self._init_progress_bar_update_job_config(func, batches)
                 output = self._process_batches()
                 result = self._process_output(output)
                 return result
@@ -123,20 +124,7 @@ class DataFactory:
                     f"not found in function {func.__name__}"
                 )
             
-    def _update_job_config(self, func: Callable, batches: Queue):
-        target_acount = self.job_config.get("target_count")
-        new_target_count = batches.qsize() if target_acount == 0 else target_acount
-        self.job_config.update({"target_count": new_target_count})
-        self.job_manager.update_job_config(
-            {
-                "master_job_id": self.master_job_id,
-                "user_func": func,
-                "job_input_queue": batches,
-                "target_count": new_target_count,
-                "progress": self.progress,
-                "progress_tasks": self.progress_tasks,
-            }
-        )
+    
     
     def _process_batches(self) -> List[Any]:
         """Process batches with asyncio"""
@@ -152,11 +140,11 @@ class DataFactory:
         #return run_in_event_loop(self._save_project())
 
     async def _save_request_config(self):
-        print("\n2. Creating master job...")
+        logger.info("\n2. Creating master job...")
         # First save the request config
         config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}}
         self.config_ref = await self.factory_storage.save_request_config(self.master_job_id, config_data)
-        print(f"  - Saved request config to: {self.config_ref}")
+        logger.debug(f"  - Saved request config to: {self.config_ref}")
     
     def save_request_config(self):
         asyncio.run(self._save_request_config())
@@ -176,7 +164,7 @@ class DataFactory:
             target_record_count=10,
         )
         await self.factory_storage.log_master_job_start(master_job)
-        print(f"  - Created master job: {master_job.name} ({master_job.master_job_id})")
+        logger.debug(f"  - Created master job: {master_job.name} ({master_job.master_job_id})")
     
     def log_master_job_start(self):
         asyncio.run(self._log_master_job_start())
@@ -185,7 +173,7 @@ class DataFactory:
     async def _update_master_job_status(self):
         now = datetime.datetime.now(datetime.timezone.utc)
         await self.factory_storage.update_master_job_status(self.master_job_id, "running", now)
-        print("  - Updated master job status to: running")
+        logger.debug("  - Updated master job status to: running")
 
     def update_master_job_status(self):
         asyncio.run(self._update_master_job_status())
@@ -194,12 +182,12 @@ class DataFactory:
 
     async def _complete_master_job(self):
         #  Complete the master job
-        print("\n7. Completing master job...")
+        logger.debug("\n7. Completing master job...")
         now = datetime.datetime.now(datetime.timezone.utc)
         #todo : how to collect all the execution job status?
         summary = {"completed": 5, "filtered": 0, "duplicate": 0, "failed": 0}
         await self.factory_storage.log_master_job_end(self.master_job_id, "completed", summary, now, now)
-        print("  - Marked master job as completed")
+        logger.info(" master job as completed")
 
 
     def complete_master_job(self):
@@ -221,6 +209,23 @@ class DataFactory:
             self.factory_storage = InMemoryStorage()
             asyncio.run(self.factory_storage.setup())
 
+    def _init_progress_bar_update_job_config(self, func: Callable, batches: Queue):
+        target_acount = self.job_config.get("target_count")
+        new_target_count = batches.qsize() if target_acount == 0 else target_acount
+        self.job_config.update({"target_count": new_target_count})
+        self._init_progress_bar()
+        
+        self.job_manager.update_job_config(
+            {
+                "master_job_id": self.master_job_id,
+                "user_func": func,
+                "job_input_queue": batches,
+                "target_count": new_target_count,
+                "progress": self.progress,
+                "progress_tasks": self.progress_tasks,
+            }
+        )
+
     def _init_progress_bar(self):
         self.progress = Progress(
             TextColumn("[bold blue]{task.description}"),
@@ -237,10 +242,6 @@ class DataFactory:
             "filtered": None,
             "duplicate": None
         }
-        
-
-    def start_job_progress_status(self):
-        # Initialize and start progress bar if enabled
         if self.job_config.get("show_progress"):
             #self.progress.start()
             #with self.progress_lock:
@@ -259,6 +260,7 @@ class DataFactory:
             )
             self.job_config["progress"] = self.progress
             self.job_config["progress_tasks"] = self.progress_tasks
+            
     
     def stop_job_progress_status(self):
         if self.job_config.get("show_progress"):

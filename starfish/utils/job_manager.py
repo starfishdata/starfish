@@ -16,7 +16,9 @@ from starfish.new_storage.models import (
 )
 from starfish.utils.state import MutableSharedState
 from starfish.new_storage.base import Storage    
+from starfish.common.logger import get_logger
 
+logger = get_logger(__name__)
 
 class JobManager:
     def __init__(self, master_job_id: str, job_config: Dict[str, Any], storage: Storage, state: MutableSharedState):
@@ -43,50 +45,47 @@ class JobManager:
         self.progress_lock = asyncio.Lock()
 
     async def create_execution_job(self):
-        print("\n3. Creating execution job...")
+        logger.debug("\n3. Creating execution job...")
        
         self.job = GenerationJob(job_id=self.job_id, master_job_id=self.master_job_id, status="running", worker_id="test-worker-1")
         await self.storage.log_execution_job_start(self.job)
-        print(f"  - Created execution job: {self.job.job_id}")
+        logger.debug(f"  - Created execution job: {self.job.job_id}")
 
     async def update_execution_job_status(self):
         now = datetime.datetime.now(datetime.timezone.utc)
         self.job.status = "running"
         self.job.start_time = now
         await self.storage.log_execution_job_start(self.job)
-        print("  - Updated execution job status to: running")
+        logger.debug("  - Updated execution job status to: running")
 
     async def job_save_record_data(self, records, task_status:str) -> List[str]:
-        print("\n5. Saving record data...")
+        logger.debug("\n5. Saving record data...")
         output_ref_list = []
         storage_class_name = self.storage.__class__.__name__
         if storage_class_name == "LocalStorage":
             for i, record in enumerate(records):
-            
                 record["record_uid"] = str(uuid.uuid4())
                 output_ref = await self.storage.save_record_data(record["record_uid"], self.master_job_id, self.job_id, record)
                 record["job_id"] = self.job_id
-                # Update the record with the output reference
                 record["master_job_id"] = self.master_job_id
                 record["status"] = task_status
                 record["output_ref"] = output_ref
                 record["end_time"] = datetime.datetime.now(datetime.timezone.utc)
-                # Convert dict to Pydantic model
                 record_model = Record(**record)
                 await self.storage.log_record_metadata(record_model)
-                print(f"  - Saved data for record {i}: {output_ref}")
+                logger.debug(f"  - Saved data for record {i}: {output_ref}")
                 output_ref_list.append(output_ref)     
         return output_ref_list
 
     async def complete_execution_job(self):
-        print("\n6. Completing execution job...")
+        logger.debug("\n6. Completing execution job...")
         now = datetime.datetime.now(datetime.timezone.utc)
         counts = {"completed": self.completed_count, 
                   "filtered": self.filtered_count, 
                   "duplicate": self.duplicate_count, 
                   "failed": self.failed_count}
         await self.storage.log_execution_job_end(self.job_id, "completed", counts, now, now)
-        print("  - Marked execution job as completed")
+        logger.debug("  - Marked execution job as completed")
     
     def is_job_to_stop(self) -> bool:
         # self.completed_count < self.target_count and not self.is_job_to_stop()
@@ -101,6 +100,7 @@ class JobManager:
     
     def is_consecutive_not_errors(self) -> bool:
         items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
+        # duplicate filtered need retry
         consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
             item[RECORD_STATUS] != RECORD_STATUS_FAILED for item in items_check)
         total_tasks_reach_target = (self.total_task_run_count >= self.target_count)
@@ -121,13 +121,19 @@ class JobManager:
             self.progress_tasks = self.job_config.get("progress_tasks")
             self.progress.start()
         while not self.is_job_to_stop():
+            logger.verbose(f"Job is not to stop, checking job input queue")
             if not self.job_input_queue.empty():
+                logger.verbose(f"Job input queue is not empty, acquiring semaphore")
                 await self.semaphore.acquire()
+                logger.debug(f"Semaphore acquired, waiting for task to complete")
                 input_data = self.job_input_queue.get()
                 task = asyncio.create_task(self._run_single_task(input_data))
                 asyncio.create_task(self._handle_task_completion(task))
+                logger.debug(f"Task created, waiting for task to complete")
             else:
+                logger.info(f"No task to run, waiting for task to complete")
                 if self.is_consecutive_not_errors():
+                    logger.info(f"No consecutive errors, breaking")
                     break
                 await asyncio.sleep(1)
         return list(self.job_output.queue)
@@ -149,12 +155,14 @@ class JobManager:
             for hook in self.job_config.get("on_record_complete", []):
                 hooks_output.append(await hook(output, self.state))
             if hooks_output.count(RECORD_STATUS_DUPLICATE) > 0:
+                # duplicate filtered need retry
                 task_status = RECORD_STATUS_DUPLICATE
             elif hooks_output.count(RECORD_STATUS_FILTERED) > 0:
                 task_status = RECORD_STATUS_FILTERED 
             output_ref = await self.job_save_record_data(output,task_status)
 
         except Exception as e:
+            logger.error(f"Error running task: {e}")
             for hook in self.job_config.get("on_record_error", []):
                 await hook(str(e), self.state)
             self.job_input_queue.put(input_data)
