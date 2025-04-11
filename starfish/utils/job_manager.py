@@ -19,6 +19,7 @@ from starfish.new_storage.base import Storage
 from starfish.common.logger import get_logger
 
 logger = get_logger(__name__)
+# from starfish.common.logger_new import logger
 
 class JobManager:
     def __init__(self, master_job_id: str, job_config: Dict[str, Any], storage: Storage, state: MutableSharedState):
@@ -95,16 +96,16 @@ class JobManager:
         items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
         consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
             item[RECORD_STATUS] != RECORD_STATUS_COMPLETED for item in items_check)
-        total_tasks_reach_target = (self.total_task_run_count >= self.target_count)
+        total_tasks_reach_target = (self.completed_count >= self.target_count)
         return consecutive_not_completed and total_tasks_reach_target
     
-    def is_consecutive_not_errors(self) -> bool:
+    def is_consecutive_completed_after_reach_target(self) -> bool:
         items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
         # duplicate filtered need retry
-        consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
-            item[RECORD_STATUS] != RECORD_STATUS_FAILED for item in items_check)
-        total_tasks_reach_target = (self.total_task_run_count >= self.target_count)
-        return consecutive_not_completed and total_tasks_reach_target
+        consecutive_completed = len(items_check) == self.job_run_stop_threshold and all(
+            item[RECORD_STATUS] == RECORD_STATUS_FAILED for item in items_check)
+        total_tasks_reach_target = (self.completed_count >= self.target_count)
+        return consecutive_completed and total_tasks_reach_target
     
     def run_orchestration(self) -> List[Any]:
         """Process batches with asyncio"""
@@ -119,23 +120,33 @@ class JobManager:
         if self.show_progress:
             self.progress = self.job_config.get("progress")
             self.progress_tasks = self.job_config.get("progress_tasks")
-            self.progress.start()
-        while not self.is_job_to_stop():
-            logger.verbose(f"Job is not to stop, checking job input queue")
-            if not self.job_input_queue.empty():
-                logger.verbose(f"Job input queue is not empty, acquiring semaphore")
-                await self.semaphore.acquire()
-                logger.debug(f"Semaphore acquired, waiting for task to complete")
-                input_data = self.job_input_queue.get()
-                task = asyncio.create_task(self._run_single_task(input_data))
-                asyncio.create_task(self._handle_task_completion(task))
-                logger.debug(f"Task created, waiting for task to complete")
-            else:
-                logger.info(f"No task to run, waiting for task to complete")
-                if self.is_consecutive_not_errors():
-                    logger.info(f"No consecutive errors, breaking")
-                    break
-                await asyncio.sleep(1)
+            # Initialize counters dictionary
+            self._counters = {counter_type: 0 for counter_type in self.progress_tasks.keys()}
+        try:
+            while not self.is_job_to_stop():
+                logger.debug(f"Job is not to stop, checking job input queue")
+                if not self.job_input_queue.empty():
+                    logger.debug(f"Job input queue is not empty, acquiring semaphore")
+                    await self.semaphore.acquire()
+                    logger.debug(f"Semaphore acquired, waiting for task to complete")
+                    input_data = self.job_input_queue.get()
+                    task = asyncio.create_task(self._run_single_task(input_data))
+                    asyncio.create_task(self._handle_task_completion(task))
+                    logger.debug(f"Task created, waiting for task to complete")
+                else:
+                    logger.info(f"No task to run, waiting for task to complete")
+                    await asyncio.sleep(1)
+        finally:
+            if self.show_progress:
+                # Show final progress bar with actual counts
+                self.progress.start()
+                for counter_type, task_id in self.progress_tasks.items():
+                    if task_id is not None:
+                        count = getattr(self, f"{counter_type}_count")
+                        emoji = STATUS_MOJO_MAP[counter_type]
+                        #self.progress.update(task_id, completed=count, increment=count)
+                        self.progress.update(task_id, completed=count, status=f"{emoji} {count}")
+                self.progress.stop()
         return list(self.job_output.queue)
 
     async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
@@ -159,6 +170,10 @@ class JobManager:
                 task_status = RECORD_STATUS_DUPLICATE
             elif hooks_output.count(RECORD_STATUS_FILTERED) > 0:
                 task_status = RECORD_STATUS_FILTERED 
+            # if task is not completed, put the input data back to the job input queue
+            if task_status != RECORD_STATUS_COMPLETED:
+                logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
+                self.job_input_queue.put(input_data)
             output_ref = await self.job_save_record_data(output,task_status)
 
         except Exception as e:
@@ -186,7 +201,7 @@ class JobManager:
                 self.filtered_count += 1
             else:
                 self.failed_count += 1
-            await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
+            #await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
             self.semaphore.release()
             if self.completed_count >= self.target_count:
                 await self._finalize_job()
@@ -204,14 +219,10 @@ class JobManager:
         """Update job config by merging new values with existing config"""
         self.job_config = {**self.job_config, **job_config}
 
-    async def _update_progress(self, counter_type: str, emoji: str):
-        """Thread-safe progress bar update"""
-        if not self.show_progress:
-            return
-        async with self.progress_lock:
-            task_id = self.progress_tasks[counter_type]
-            if task_id is not None:
-                count = getattr(self, f"{counter_type}_count")
-                self.progress.update(task_id, advance=1, status=f"{emoji} {count}")
-                # Force refresh the progress display
-                self.progress.refresh()
+    # async def _update_progress(self, counter_type: str, emoji: str):
+    #     """Update counters without showing live progress"""
+    #     if not self.show_progress:
+    #         return
+    #     # Update the internal counters
+    #     async with self.progress_lock:
+    #         self._counters[counter_type] = getattr(self, f"{counter_type}_count")

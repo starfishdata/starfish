@@ -18,7 +18,6 @@ from starfish.new_storage.models import (
     Project,
     Record,
 )
-
 from starfish.common.logger import get_logger
 logger = get_logger(__name__)
 
@@ -79,7 +78,7 @@ class DataFactory:
                 # Ensure progress bar is properly closed
                 self.complete_master_job()
                 self.close_storage()
-                self.stop_job_progress_status()
+                #self.stop_job_progress_status()
         # Add run method to the wrapped function
         def run(*args, **kwargs):
             return wrapper(*args, **kwargs)

@@ -5,10 +5,12 @@ from starfish.core.structured_llm import StructuredLLM
 from starfish.utils.data_factory import data_factory
 from starfish.utils.constants import RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
 from starfish.utils.state import MutableSharedState
+from starfish.common.logger import get_logger
+logger = get_logger(__name__)
 # Add callback for error handling
 # todo state is a class with thread safe dict
 async def handle_error(data: Any, state: MutableSharedState):
-    print(f"Error occurred: {data}")
+    logger.error(f"Error occurred: {data}")
     return RECORD_STATUS_FAILED
 
 async def handle_record_complete(data: Any, state: MutableSharedState):
@@ -20,7 +22,7 @@ async def handle_record_complete(data: Any, state: MutableSharedState):
     return RECORD_STATUS_COMPLETED
 
 async def handle_duplicate_record(data: Any, state: MutableSharedState):
-    print(f"Record duplicated: {data}")
+    logger.debug(f"Record duplicated: {data}")
     await state.set("completed_count",  1)
     await state.data
     await state.update({"completed_count": 2})
@@ -30,21 +32,20 @@ async def handle_duplicate_record(data: Any, state: MutableSharedState):
     return RECORD_STATUS_DUPLICATE
 
 async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_time=0.01):
-    # Simulate a slight delay (optional, feels more async-realistic)
     await asyncio.sleep(sleep_time)
 
-    # 5% chance of failure
     if random.random() < fail_rate:
-        print(f"  {city_name}: Failed!") ## For debugging
+        logger.debug(f"  {city_name}: Failed!")
         raise ValueError(f"Mock LLM failed to process city: {city_name}")
     
-    print(f"{city_name}: Successfully processed!") ## For debugging
+    logger.debug(f"{city_name}: Successfully processed!")
 
     result = [{"answer": f"{city_name}_{random.randint(1, 5)}"} for _ in range(num_records_per_city)]
     return result
 
 @data_factory(
-    storage="local", max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], on_record_error=[handle_error]
+    storage="local", max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], 
+    on_record_error=[handle_error],show_progress=True
 )
 async def get_city_info_wf(city_name, region_code):
     # structured_llm = StructuredLLM(
