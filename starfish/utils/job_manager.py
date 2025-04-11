@@ -41,9 +41,6 @@ class JobManager:
         self.total_task_run_count = 0
         self.job_run_stop_threshold = 3
         self.job_id = str(uuid.uuid4())
-        self.show_progress = job_config.get("show_progress") 
-        
-        self.progress_lock = asyncio.Lock()
 
     async def create_execution_job(self):
         logger.debug("\n3. Creating execution job...")
@@ -93,11 +90,12 @@ class JobManager:
         #or if no failed status, then no task added into the job_input_queue
         #item[RECORD_STATUS] != RECORD_STATUS_FAILED 
         #(self.total_task_run_count-self.failed_count) >= self.target_count
-        items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
-        consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
-            item[RECORD_STATUS] != RECORD_STATUS_COMPLETED for item in items_check)
+        # items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
+        # #consecutive_not_completed and 
+        # consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
+        #     item[RECORD_STATUS] != RECORD_STATUS_COMPLETED for item in items_check)
         total_tasks_reach_target = (self.completed_count >= self.target_count)
-        return consecutive_not_completed and total_tasks_reach_target
+        return total_tasks_reach_target
     
     def is_consecutive_completed_after_reach_target(self) -> bool:
         items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
@@ -107,47 +105,30 @@ class JobManager:
         total_tasks_reach_target = (self.completed_count >= self.target_count)
         return consecutive_completed and total_tasks_reach_target
     
-    def run_orchestration(self) -> List[Any]:
+    def run_orchestration(self):
         """Process batches with asyncio"""
-        return run_in_event_loop(self._async_run_orchestration())
+        run_in_event_loop(self._async_run_orchestration())
 
-    async def _async_run_orchestration(self) -> List[Any]:
+    async def _async_run_orchestration(self):
         """Main orchestration loop for the job"""
         await self.create_execution_job()
         self.job_input_queue = self.job_config["job_input_queue"]
         self.target_count = self.job_config.get("target_count")
-        
-        if self.show_progress:
-            self.progress = self.job_config.get("progress")
-            self.progress_tasks = self.job_config.get("progress_tasks")
-            # Initialize counters dictionary
-            self._counters = {counter_type: 0 for counter_type in self.progress_tasks.keys()}
-        try:
-            while not self.is_job_to_stop():
-                logger.debug(f"Job is not to stop, checking job input queue")
-                if not self.job_input_queue.empty():
-                    logger.debug(f"Job input queue is not empty, acquiring semaphore")
-                    await self.semaphore.acquire()
-                    logger.debug(f"Semaphore acquired, waiting for task to complete")
-                    input_data = self.job_input_queue.get()
-                    task = asyncio.create_task(self._run_single_task(input_data))
-                    asyncio.create_task(self._handle_task_completion(task))
-                    logger.debug(f"Task created, waiting for task to complete")
-                else:
-                    logger.info(f"No task to run, waiting for task to complete")
-                    await asyncio.sleep(1)
-        finally:
-            if self.show_progress:
-                # Show final progress bar with actual counts
-                self.progress.start()
-                for counter_type, task_id in self.progress_tasks.items():
-                    if task_id is not None:
-                        count = getattr(self, f"{counter_type}_count")
-                        emoji = STATUS_MOJO_MAP[counter_type]
-                        #self.progress.update(task_id, completed=count, increment=count)
-                        self.progress.update(task_id, completed=count, status=f"{emoji} {count}")
-                self.progress.stop()
-        return list(self.job_output.queue)
+
+        while not self.is_job_to_stop():
+            logger.debug(f"Job is not to stop, checking job input queue")
+            if not self.job_input_queue.empty():
+                logger.debug(f"Job input queue is not empty, acquiring semaphore")
+                await self.semaphore.acquire()
+                logger.debug(f"Semaphore acquired, waiting for task to complete")
+                input_data = self.job_input_queue.get()
+                task = asyncio.create_task(self._run_single_task(input_data))
+                asyncio.create_task(self._handle_task_completion(task))
+                logger.debug(f"Task created, waiting for task to complete")
+            else:
+                logger.info(f"No task to run, waiting for task to complete")
+                await asyncio.sleep(1)
+        await self.complete_execution_job()
 
     async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
         """Run a single task with error handling and storage"""
@@ -170,19 +151,17 @@ class JobManager:
                 task_status = RECORD_STATUS_DUPLICATE
             elif hooks_output.count(RECORD_STATUS_FILTERED) > 0:
                 task_status = RECORD_STATUS_FILTERED 
-            # if task is not completed, put the input data back to the job input queue
-            if task_status != RECORD_STATUS_COMPLETED:
-                logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
-                self.job_input_queue.put(input_data)
             output_ref = await self.job_save_record_data(output,task_status)
-
         except Exception as e:
             logger.error(f"Error running task: {e}")
             for hook in self.job_config.get("on_record_error", []):
                 await hook(str(e), self.state)
-            self.job_input_queue.put(input_data)
             task_status = RECORD_STATUS_FAILED
         finally:
+            # if task is not completed, put the input data back to the job input queue
+            if task_status != RECORD_STATUS_COMPLETED:
+                logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
+                self.job_input_queue.put(input_data)
             return {RECORD_STATUS: task_status, "output_ref": output_ref,"output":output}
 
     async def _handle_task_completion(self, task):
@@ -203,12 +182,7 @@ class JobManager:
                 self.failed_count += 1
             #await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
             self.semaphore.release()
-            if self.completed_count >= self.target_count:
-                await self._finalize_job()
 
-    async def _finalize_job(self):
-        """Clean up after job completion"""
-        await self.complete_execution_job()
 
     def _prepare_next_input(self):
         """Prepare input data for the next task"""

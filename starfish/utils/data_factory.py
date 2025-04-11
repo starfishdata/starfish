@@ -8,7 +8,7 @@ from inspect import signature, Parameter
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.job_manager import JobManager
-from starfish.utils.constants import RECORD_STATUS, TEST_DB_DIR, TEST_DB_URI, RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
+from starfish.utils.constants import RECORD_STATUS, STATUS_MOJO_MAP, TEST_DB_DIR, TEST_DB_URI, RECORD_STATUS_COMPLETED, RECORD_STATUS_DUPLICATE, RECORD_STATUS_FILTERED, RECORD_STATUS_FAILED
 from starfish.new_storage.local.local_storage import LocalStorage
 from starfish.new_storage.in_memory.in_memory_storage import InMemoryStorage
 from starfish.utils.state import MutableSharedState
@@ -71,14 +71,14 @@ class DataFactory:
                 # Start progress bar before any operations
                 # Process batches and keep progress bar alive
                 self._init_progress_bar_update_job_config(func, batches)
-                output = self._process_batches()
-                result = self._process_output(output)
+                self._process_batches()
+                result = self._process_output()
                 return result
             finally:
                 # Ensure progress bar is properly closed
                 self.complete_master_job()
                 self.close_storage()
-                #self.stop_job_progress_status()
+                self.show_job_progress_status()
         # Add run method to the wrapped function
         def run(*args, **kwargs):
             return wrapper(*args, **kwargs)
@@ -87,8 +87,9 @@ class DataFactory:
         wrapper.state = self.job_manager.state
         return wrapper
     
-    def _process_output(self, output: List[Any]) -> List[Any]:
+    def _process_output(self) -> List[Any]:
         result = []
+        output = self.job_manager.job_output.queue
         for v in output:
             if v.get(RECORD_STATUS) == RECORD_STATUS_COMPLETED:
                 result.append(v.get("output"))
@@ -163,7 +164,7 @@ class DataFactory:
             target_record_count=10,
         )
         await self.factory_storage.log_master_job_start(master_job)
-        logger.debug(f"  - Created master job: {master_job.name} ({master_job.master_job_id})")
+        logger.debug(f"  - Created master job: {master_job.name} ({self.master_job_id})")
     
     def log_master_job_start(self):
         asyncio.run(self._log_master_job_start())
@@ -184,7 +185,10 @@ class DataFactory:
         logger.debug("\n7. Completing master job...")
         now = datetime.datetime.now(datetime.timezone.utc)
         #todo : how to collect all the execution job status?
-        summary = {"completed": 5, "filtered": 0, "duplicate": 0, "failed": 0}
+        summary = {RECORD_STATUS_COMPLETED: self.job_manager.completed_count,
+                    RECORD_STATUS_FILTERED: self.job_manager.filtered_count,
+                    RECORD_STATUS_DUPLICATE: self.job_manager.duplicate_count,
+                    RECORD_STATUS_FAILED: self.job_manager.failed_count}
         await self.factory_storage.log_master_job_end(self.master_job_id, "completed", summary, now, now)
         logger.info(" master job as completed")
 
@@ -261,8 +265,14 @@ class DataFactory:
             self.job_config["progress_tasks"] = self.progress_tasks
             
     
-    def stop_job_progress_status(self):
+    def show_job_progress_status(self):
         if self.job_config.get("show_progress"):
+            self.progress.start()
+            for counter_type, task_id in self.progress_tasks.items():
+                count = getattr(self.job_manager, f"{counter_type}_count")
+                emoji = STATUS_MOJO_MAP[counter_type]
+                #self.progress.update(task_id, completed=count, increment=count)
+                self.progress.update(task_id, completed=count, status=f"{emoji} {count}")
             self.progress.stop()
             
 
