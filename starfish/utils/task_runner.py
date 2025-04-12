@@ -5,9 +5,10 @@ from starfish.common.logger import get_logger
 logger = get_logger(__name__)
 #from starfish.common.logger_new import logger
 class TaskRunner:
-    def __init__(self, max_retries: int = 1, timeout: int = 30):
+    def __init__(self, max_retries: int = 1, timeout: int = 30, master_job_id: str = None):
         self.max_retries = max_retries
         self.timeout = timeout
+        self.master_job_id = master_job_id
 
 
     async def run_task(self, func: Callable, input_data: Dict) -> List[Any]:

@@ -73,6 +73,7 @@ class GenerationJob(BaseModel):
     status: StatusExecutionJob = Field(default="pending", description="Status of this specific execution run.")
     # send to task
     run_config: Optional[Dict[str, Any]] = Field(None, description="JSON of specific inputs/context for this run.")  # Store as dict
+    run_config_hash: str = Field(None, description="Hash of the run_config.")
     attempted_generations: int = Field(default=0, description="Generation cycles/input items processed in this run.")
     produced_outputs_count: int = Field(default=0, description="Raw data items returned by generator(s) in this run.")
     completed_record_count: int = Field(default=0, description="'completed' records from this run.")

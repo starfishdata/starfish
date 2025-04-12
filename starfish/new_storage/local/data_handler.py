@@ -69,7 +69,7 @@ class FileSystemDataHandler:
                 content = await f.read()
                 logger.debug(f"Read JSON from: {path}")
                 return json.loads(content)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             logger.warning(f"File not found: {path}")
             raise e
         except Exception as e:

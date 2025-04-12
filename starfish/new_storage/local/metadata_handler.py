@@ -354,6 +354,11 @@ class SQLiteMetadataHandler:
         row = await self._fetchone_sql(sql, (job_id,))
         return _row_to_pydantic(GenerationJob, row)
 
+    async def list_execution_jobs_by_master_id_and_config_hash_impl(self, master_job_id: str, config_hash: str, job_status: str) -> List[GenerationJob]:
+        sql = "SELECT * FROM GenerationJob WHERE master_job_id = ? AND run_config_hash = ? AND status = ?"
+        rows = await self._fetchall_sql(sql, (master_job_id, config_hash, job_status))
+        return [_row_to_pydantic(GenerationJob, row) for row in rows] if rows else []
+
     async def list_execution_jobs_impl(
         self, master_job_id: str, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None
     ) -> List[GenerationJob]:
@@ -395,6 +400,11 @@ class SQLiteMetadataHandler:
         sql = "SELECT * FROM Records WHERE record_uid = ?"
         row = await self._fetchone_sql(sql, (record_uid,))
         return _row_to_pydantic(Record, row)
+
+    async def list_record_metadata_impl(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
+        sql = "SELECT * FROM Records WHERE master_job_id = ? AND job_id = ?"
+        rows = await self._fetchall_sql(sql, (master_job_uuid, job_uuid))
+        return [_row_to_pydantic(Record, row) for row in rows]
 
     async def get_records_for_master_job_impl(
         self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None, limit: Optional[int] = None, offset: Optional[int] = None

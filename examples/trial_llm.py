@@ -3,7 +3,7 @@ import asyncio
 from typing import Any, Dict
 from starfish.core.structured_llm import StructuredLLM
 from starfish.utils.data_factory import data_factory
-from starfish.utils.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED
+from starfish.utils.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, STORAGE_TYPE_IN_MEMORY, STORAGE_TYPE_LOCAL
 from starfish.utils.state import MutableSharedState
 from starfish.common.logger import get_logger
 logger = get_logger(__name__)
@@ -44,7 +44,7 @@ async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_ti
     return result
 
 @data_factory(
-    storage="local", max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], 
+    storage=STORAGE_TYPE_LOCAL, max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], 
     on_record_error=[handle_error],show_progress=True
 )
 async def get_city_info_wf(city_name, region_code):
@@ -81,12 +81,28 @@ async def get_city_info_wf(city_name, region_code):
 #     num_facts=3
 # )
 
-# return results// not loop forever
-results = get_city_info_wf.run(
-    #data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
-    #[{"city_name": "Berlin"}, {"city_name": "Rome"}],
+# run re_run  dry_run
+user_case = "run"
+if user_case == "run":
+    results = get_city_info_wf.run(
+        #data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
+        #[{"city_name": "Berlin"}, {"city_name": "Rome"}],
     city_name=["San Francisco", "New York", "Los Angeles"]*10,
     region_code=["DE", "IT", "US"]*10,
-    # city_name="Beijing",  ### Overwrite the data key
-    # num_records_per_city = 3
-)
+        # city_name="Beijing",  ### Overwrite the data key
+        # num_records_per_city = 3
+    )
+elif user_case == "dry_run":    
+    results = get_city_info_wf.dry_run(
+        #data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
+        #[{"city_name": "Berlin"}, {"city_name": "Rome"}],
+        city_name=["San Francisco", "New York", "Los Angeles"]*10,
+        region_code=["DE", "IT", "US"]*10,
+            # city_name="Beijing",  ### Overwrite the data key
+            # num_records_per_city = 3
+        )
+elif user_case == "re_run":
+    results = get_city_info_wf.re_run( master_job_id="e342bb94-3784-45c7-beab-4e01cb059f1c")
+
+logger.info(f"Results: {results}")
+    

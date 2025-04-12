@@ -1,6 +1,8 @@
 import datetime
 import uuid
 import asyncio
+import json
+import hashlib
 from functools import wraps
 from queue import Queue
 from typing import Any, Callable, Dict, List
@@ -8,7 +10,7 @@ from inspect import signature, Parameter
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
 from starfish.utils.event_loop import run_in_event_loop
 from starfish.utils.job_manager import JobManager
-from starfish.utils.constants import RECORD_STATUS, STATUS_MOJO_MAP, TEST_DB_DIR, TEST_DB_URI, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED
+from starfish.utils.constants import RECORD_STATUS, RUN_MODE_DRY_RUN, STATUS_MOJO_MAP, STATUS_TOTAL, TEST_DB_DIR, TEST_DB_URI, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_NORMAL
 from starfish.new_storage.local.local_storage import LocalStorage
 from starfish.new_storage.in_memory.in_memory_storage import InMemoryStorage
 from starfish.utils.state import MutableSharedState
@@ -38,53 +40,84 @@ class DataFactory:
         # self.storage = storage
         self.batch_size = batch_size
         self.input_converter = input_converter
+        self.input_data = Queue()
         self.job_config = {
             "max_concurrency": max_concurrency,
             "target_count": target_count,
-            "storage": storage,
             "state": state,
             "on_record_complete": on_record_complete,   
             "on_record_error": on_record_error,
             "show_progress": show_progress,
         }
 
-        self.project_id = str(uuid.uuid4())
-        # self.project_id = "8de05a58-c8a4-4c10-8c23-568679c88e65"
-        self.master_job_id = str(uuid.uuid4())
         self.storage = storage
         self.factory_storage = None
-        self.storage_setup()
-        self.save_project()
-        self.job_manager = JobManager(master_job_id=self.master_job_id, job_config=self.job_config, storage=self.factory_storage, 
-                                      state=state)
+        self.func = None
+        self.master_job_id = None
 
     def __call__(self, func: Callable):
         # self.job_manager.add_job(func)
 
         @wraps(func)
         def wrapper(*args, **kwargs):
+            run_mode = self.job_config.get(RUN_MODE)
             try:
-                batches = self.input_converter(*args, **kwargs)
-                self._check_parameter_match(func, batches)
-                self.save_request_config()
-                self.log_master_job_start()
-                # Start progress bar before any operations
-                # Process batches and keep progress bar alive
-                self._init_progress_bar_update_job_config(func, batches)
+                
+                # Check for master_job_id in kwargs and assign if present
+                if run_mode == RUN_MODE_RE_RUN:
+                    self._setup_storage_and_job_manager()
+                    self.set_input_data_from_master_job()
+                    
+                    self._init_progress_bar_update_job_config()
+                elif run_mode == RUN_MODE_DRY_RUN:
+                    # dry run mode
+                    self.input_data = self.input_converter(*args, **kwargs)
+                    # Get only first item but maintain Queue structure
+                    first_item = self.input_data.get()
+                    self.input_data = Queue()
+                    self.input_data.put(first_item)
+                    self._check_parameter_match()
+                    self.job_manager = JobManager(job_config=self.job_config, storage=self.factory_storage)
+                    self._update_job_config()
+                else:
+                    self.input_data = self.input_converter(*args, **kwargs)
+                    self._check_parameter_match()
+                    self.project_id = str(uuid.uuid4())
+                    # self.project_id = "8de05a58-c8a4-4c10-8c23-568679c88e65"
+                    self.master_job_id = str(uuid.uuid4())
+                    self._setup_storage_and_job_manager()
+                    self.save_project() 
+                    self.save_request_config()
+                    self.log_master_job_start()
+                    # Start progress bar before any operations
+                    # Process batches and keep progress bar alive
+                    self._init_progress_bar_update_job_config()
+                    self.update_master_job_status()
                 self._process_batches()
                 result = self._process_output()
                 return result
             finally:
                 # Ensure progress bar is properly closed
-                self.complete_master_job()
-                self.close_storage()
-                self.show_job_progress_status()
+                if run_mode != RUN_MODE_DRY_RUN:
+                    self.complete_master_job()
+                    self.close_storage()
+                    self.show_job_progress_status()
         # Add run method to the wrapped function
         def run(*args, **kwargs):
+            if 'master_job_id' in kwargs:
+                # re_run mode
+                self.master_job_id = kwargs['master_job_id']
+                self.job_config[RUN_MODE] = RUN_MODE_RE_RUN
+            return wrapper(*args, **kwargs)
+        def dry_run(*args, **kwargs):
+            self.job_config[RUN_MODE] = RUN_MODE_DRY_RUN
             return wrapper(*args, **kwargs)
 
         wrapper.run = run
-        wrapper.state = self.job_manager.state
+        wrapper.re_run = run
+        wrapper.dry_run = dry_run
+        wrapper.state = self.job_config.get("state")
+        self.func = func
         return wrapper
     
     def _process_output(self) -> List[Any]:
@@ -95,17 +128,17 @@ class DataFactory:
                 result.append(v.get("output"))
         return result
     
-    def _check_parameter_match(self, func: Callable, batches: Queue):
+    def _check_parameter_match(self):
         """Check if the parameters of the function match the parameters of the batches"""
         # Get the parameters of the function
         # func_params = inspect.signature(func).parameters
         # # Get the parameters of the batches
         # batches_params = inspect.signature(batches).parameters
         #from inspect import signature, Parameter
-        func_sig = signature(func)
+        func_sig = signature(self.func)
         
         # Validate batch items against function parameters
-        batch_item = batches.queue[0]
+        batch_item = self.input_data.queue[0]
         for param_name, param in func_sig.parameters.items():
             # Skip if parameter has a default value
             if param.default is not Parameter.empty:
@@ -114,21 +147,25 @@ class DataFactory:
             if param_name not in batch_item:
                 raise TypeError(
                     f"Batch item is missing required parameter '{param_name}' "
-                    f"for function {func.__name__}"
+                    f"for function {self.func.__name__}"
                 )
         # Check 2: Ensure all batch parameters exist in function signature
         for batch_param in batch_item.keys():
             if batch_param not in func_sig.parameters:
                 raise TypeError(
                     f"Batch items contains unexpected parameter '{batch_param}' "
-                    f"not found in function {func.__name__}"
+                    f"not found in function {self.func.__name__}"
                 )
             
     
-    
+    def _setup_storage_and_job_manager(self):
+        self.storage_setup()
+        
+        self.job_manager = JobManager(job_config=self.job_config, storage=self.factory_storage)
+
     def _process_batches(self) -> List[Any]:
         """Process batches with asyncio"""
-        self.update_master_job_status()
+        
         return self.job_manager.run_orchestration()
 
     async def _save_project(self):
@@ -142,14 +179,42 @@ class DataFactory:
     async def _save_request_config(self):
         logger.info("\n2. Creating master job...")
         # First save the request config
-        config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}}
+        config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}, "input_data": list(self.input_data.queue)}
         self.config_ref = await self.factory_storage.save_request_config(self.master_job_id, config_data)
         logger.debug(f"  - Saved request config to: {self.config_ref}")
     
     def save_request_config(self):
         asyncio.run(self._save_request_config())
-        #return run_in_event_loop(self._save_request_config())
 
+    async def _set_input_data_from_master_job(self):
+        master_job = await self.factory_storage.get_master_job(self.master_job_id)
+        if master_job:
+            master_job_config_data = await self.factory_storage.get_request_config(master_job.request_config_ref)
+            # Convert list to dict with count tracking using hash values
+            input_data  = master_job_config_data.get("input_data")
+        
+            input_dict = {}
+            for item in input_data:
+                self.input_data.put(item)
+                if isinstance(item, dict):
+                    input_data_str = json.dumps(item, sort_keys=True)
+                else:
+                    input_data_str = str(item)
+                input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
+                if input_data_hash in input_dict:
+                    input_dict[input_data_hash]["count"] += 1
+                else:
+                    input_dict[input_data_hash] = {
+                        "data": item,
+                        "data_str": input_data_str,
+                        "count": 1
+                    }
+            self.job_config["input_dict"] = input_dict
+            self.job_config[RUN_MODE] = RUN_MODE_RE_RUN
+
+
+    def set_input_data_from_master_job(self):
+        asyncio.run(self._set_input_data_from_master_job())
 
     async def _log_master_job_start(self):
         # Now create the master job
@@ -190,7 +255,7 @@ class DataFactory:
                     STATUS_DUPLICATE: self.job_manager.duplicate_count,
                     STATUS_FAILED: self.job_manager.failed_count}
         await self.factory_storage.log_master_job_end(self.master_job_id, STATUS_COMPLETED, summary, now, now)
-        logger.info(" master job as completed")
+        logger.info(f"Master job {self.master_job_id} as completed")
 
 
     def complete_master_job(self):
@@ -212,67 +277,80 @@ class DataFactory:
             self.factory_storage = InMemoryStorage()
             asyncio.run(self.factory_storage.setup())
 
-    def _init_progress_bar_update_job_config(self, func: Callable, batches: Queue):
-        target_acount = self.job_config.get("target_count")
-        new_target_count = batches.qsize() if target_acount == 0 else target_acount
-        self.job_config.update({"target_count": new_target_count})
+    def _init_progress_bar_update_job_config(self):
+        self._update_job_config()
         self._init_progress_bar()
         
+
+    def _update_job_config(self):
+        target_acount = self.job_config.get("target_count")
+        new_target_count = self.input_data.qsize() if target_acount == 0 else target_acount
+        self.job_config.update({"target_count": new_target_count})
         self.job_manager.update_job_config(
             {
                 "master_job_id": self.master_job_id,
-                "user_func": func,
-                "job_input_queue": batches,
+                "user_func": self.func,
+                "job_input_queue": self.input_data, 
                 "target_count": new_target_count,
-                "progress": self.progress,
-                "progress_tasks": self.progress_tasks,
+                RUN_MODE: self.job_config.get(RUN_MODE),
+                "input_dict": self.job_config.get("input_dict"),
             }
         )
+    
 
     def _init_progress_bar(self):
         self.progress = Progress(
             TextColumn("[bold blue]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
+            # BarColumn(),
+            # TaskProgressColumn(),
             TextColumn("•"),
             TextColumn("{task.fields[status]}"),
-            TimeRemainingColumn(),
+            # TimeRemainingColumn(),
         ) if self.job_config.get("show_progress") else None
         # Separate task IDs for each counter
         self.progress_tasks = {
             STATUS_COMPLETED: None,
             STATUS_FAILED: None,
             STATUS_FILTERED: None,
-            STATUS_DUPLICATE: None
+            STATUS_DUPLICATE: None,
+            STATUS_TOTAL: None
         }
         if self.job_config.get("show_progress"):
             #self.progress.start()
             #with self.progress_lock:
             target_count = self.job_config.get("target_count")
             self.progress_tasks[STATUS_COMPLETED] = self.progress.add_task(
-                "Completed", total=target_count, status="✅ 0"
+                "[green]Completed", total=target_count, status="✅ 0"
             )
             self.progress_tasks[STATUS_FAILED] = self.progress.add_task(
-                "Failed", total=target_count, status="❌ 0"
+                "[red]Failed", total=target_count, status="❌ 0"
             )
             self.progress_tasks[STATUS_FILTERED] = self.progress.add_task(
-                "Filtered", total=target_count, status="🚫 0"
+                "[yellow]Filtered", total=target_count, status="🚫 0"
             )
             self.progress_tasks[STATUS_DUPLICATE] = self.progress.add_task(
-                "Duplicated", total=target_count, status="🔁 0"
+                "[cyan]Duplicated", total=target_count, status="🔁 0"
             )
-            self.job_config["progress"] = self.progress
-            self.job_config["progress_tasks"] = self.progress_tasks
+            self.progress_tasks[STATUS_TOTAL] = self.progress.add_task(
+                "[white]Total", total=target_count, status="📊 0"
+            )
+            # self.job_config["progress"] = self.progress
+            # self.job_config["progress_tasks"] = self.progress_tasks
             
     
     def show_job_progress_status(self):
         if self.job_config.get("show_progress"):
             self.progress.start()
+            target_count = self.job_config.get("target_count")
             for counter_type, task_id in self.progress_tasks.items():
                 count = getattr(self.job_manager, f"{counter_type}_count")
                 emoji = STATUS_MOJO_MAP[counter_type]
-                #self.progress.update(task_id, completed=count, increment=count)
-                self.progress.update(task_id, completed=count, status=f"{emoji} {count}")
+                percentage = int((count / target_count) * 100) if target_count > 0 else 0
+                self.progress.update(
+                    task_id, 
+                    completed=count, 
+                    status=f"{emoji} {count}/{target_count} ({percentage}%)"
+                )
             self.progress.stop()
             
 

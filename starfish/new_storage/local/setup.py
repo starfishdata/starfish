@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS GenerationJob (
     master_job_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
     run_config TEXT,
+    run_config_hash TEXT NOT NULL,
     attempted_generations INTEGER NOT NULL DEFAULT 0,
     produced_outputs_count INTEGER NOT NULL DEFAULT 0,
     completed_record_count INTEGER NOT NULL DEFAULT 0,
