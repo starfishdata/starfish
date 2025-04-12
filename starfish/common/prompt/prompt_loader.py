@@ -194,9 +194,9 @@ You are asked to generate exactly {{ num_records }} records and please return th
                 render_vars[var] = f"|{var}| : {json.dumps(original_list)}"
                 break  # Stop after finding the first list
 
-        # Add default None for optional variables
+        # Add default None for optional variables (except for num_records which gets special treatment)
         for var in self.optional_vars:
-            if var not in render_vars:
+            if var != "num_records" and var not in render_vars:
                 render_vars[var] = None
 
         # Add list processing variables
@@ -204,9 +204,9 @@ You are asked to generate exactly {{ num_records }} records and please return th
         render_vars["list_input_variable"] = list_input_variable
         render_vars["input_list_length"] = input_list_length
 
-        # Add default num_records
+        # Add default num_records (always use default value of 1 if not specified)
         render_vars["num_records"] = render_vars.get("num_records", 1)
-        
+                
         return self._template.render(**render_vars)
 
     def construct_messages(self, variables: Dict[str, Any]) -> List[Dict[str, str]]:
