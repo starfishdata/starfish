@@ -6,6 +6,8 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from starfish.utils.constants import STATUS_COMPLETED, STATUS_FAILED, STATUS_FILTERED, STATUS_DUPLICATE
+
 import aiosqlite
 
 from starfish.new_storage.local.setup import (
@@ -257,10 +259,10 @@ class SQLiteMetadataHandler:
             end_time,
             update_time,
             summary_str,
-            summary.get("completed", 0) if summary else 0,
-            summary.get("filtered", 0) if summary else 0,
-            summary.get("duplicate", 0) if summary else 0,
-            summary.get("failed", 0) if summary else 0,
+            summary.get(STATUS_COMPLETED, 0) if summary else 0,
+            summary.get(STATUS_FILTERED, 0) if summary else 0,
+            summary.get(STATUS_DUPLICATE, 0) if summary else 0,
+            summary.get(STATUS_FAILED, 0) if summary else 0,
             master_job_id,
         )
         await self._execute_sql(sql, params)
@@ -339,10 +341,10 @@ class SQLiteMetadataHandler:
             end_time,
             update_time,
             error_message,
-            counts.get("completed", 0),
-            counts.get("filtered", 0),
-            counts.get("duplicate", 0),
-            counts.get("failed", 0),
+            counts.get(STATUS_COMPLETED, 0),
+            counts.get(STATUS_FILTERED, 0),
+            counts.get(STATUS_DUPLICATE, 0),
+            counts.get(STATUS_FAILED, 0),
             job_id,
         )
         await self._execute_sql(sql, params)
@@ -351,6 +353,11 @@ class SQLiteMetadataHandler:
         sql = "SELECT * FROM GenerationJob WHERE job_id = ?"
         row = await self._fetchone_sql(sql, (job_id,))
         return _row_to_pydantic(GenerationJob, row)
+
+    async def list_execution_jobs_by_master_id_and_config_hash_impl(self, master_job_id: str, config_hash: str, job_status: str) -> List[GenerationJob]:
+        sql = "SELECT * FROM GenerationJob WHERE master_job_id = ? AND run_config_hash = ? AND status = ?"
+        rows = await self._fetchall_sql(sql, (master_job_id, config_hash, job_status))
+        return [_row_to_pydantic(GenerationJob, row) for row in rows] if rows else []
 
     async def list_execution_jobs_impl(
         self, master_job_id: str, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None
@@ -393,6 +400,11 @@ class SQLiteMetadataHandler:
         sql = "SELECT * FROM Records WHERE record_uid = ?"
         row = await self._fetchone_sql(sql, (record_uid,))
         return _row_to_pydantic(Record, row)
+
+    async def list_record_metadata_impl(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
+        sql = "SELECT * FROM Records WHERE master_job_id = ? AND job_id = ?"
+        rows = await self._fetchall_sql(sql, (master_job_uuid, job_uuid))
+        return [_row_to_pydantic(Record, row) for row in rows]
 
     async def get_records_for_master_job_impl(
         self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None, limit: Optional[int] = None, offset: Optional[int] = None

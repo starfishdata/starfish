@@ -157,6 +157,16 @@ class Storage(ABC):
     async def count_records_for_master_job(self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None) -> Dict[str, int]:
         """Efficiently get counts of records grouped by status for a master job."""
         pass
+    
+    @abstractmethod
+    async def list_record_metadata(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
+        """Retrieve metadata for records belonging to a master job."""
+        pass
+
+    @abstractmethod
+    async def list_execution_jobs_by_master_id_and_config_hash(self, master_job_id: str, config_hash: str, job_status: str) -> Optional[GenerationJob]:
+        """Retrieve execution job details by master job id and config hash."""
+        pass
 
 
 from starfish.core.component_registry import Registry

@@ -126,6 +126,9 @@ class LocalStorage(Storage):
     async def get_execution_job(self, job_id: str) -> Optional[GenerationJob]:
         return await self._metadata_handler.get_execution_job_impl(job_id)
 
+    async def list_execution_jobs_by_master_id_and_config_hash(self, master_job_id: str, config_hash: str, job_status: str) -> List[GenerationJob]:
+        return await self._metadata_handler.list_execution_jobs_by_master_id_and_config_hash_impl(master_job_id, config_hash, job_status)
+
     async def list_execution_jobs(
         self, master_job_id: str, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None
     ) -> List[GenerationJob]:
@@ -136,6 +139,9 @@ class LocalStorage(Storage):
 
     async def get_record_metadata(self, record_uid: str) -> Optional[Record]:
         return await self._metadata_handler.get_record_metadata_impl(record_uid)
+    
+    async def list_record_metadata(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
+        return await self._metadata_handler.list_record_metadata_impl(master_job_uuid,job_uuid)
 
     async def get_records_for_master_job(
         self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None, limit: Optional[int] = None, offset: Optional[int] = None

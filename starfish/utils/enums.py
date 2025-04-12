@@ -1,7 +1,7 @@
-from enum import Enum, auto
+from enum import Enum
 
 class RecordStatus(Enum):
-    COMPLETED = auto()
-    DUPLICATE = auto()
-    FILTERED = auto()
-    FAILED = auto()
+    COMPLETED = "completed"
+    DUPLICATE = "duplicate"
+    FILTERED = "filtered"
+    FAILED = "failed"

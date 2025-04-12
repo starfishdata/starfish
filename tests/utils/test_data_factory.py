@@ -105,7 +105,7 @@ async def test_case_4():
 async def test_case_5():
     """Test if broadcast variables can override kwargs with a list of values"""
     @data_factory(max_concurrency=2)
-    async def test_func(city_name, num_records_per_city, fail_rate=0.01, sleep_time=0.05):
+    async def test_func(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     result = test_func.run(
