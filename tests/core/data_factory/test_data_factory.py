@@ -4,7 +4,7 @@ import asyncio
 import random
 
 nest_asyncio.apply()
-from starfish.common.env_loader import load_env_file
+from starfish.core.common.env_loader import load_env_file
 from starfish import data_factory
 
 load_env_file()

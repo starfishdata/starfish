@@ -2,8 +2,8 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel, ValidationError
 
-from starfish.common.exceptions import PydanticParserError
-from starfish.common.logger import get_logger
+from starfish.core.common.exceptions import PydanticParserError
+from starfish.core.common.logger import get_logger
 
 from .json_parser import JSONParser
 

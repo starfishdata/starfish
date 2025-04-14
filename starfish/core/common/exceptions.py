@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
 
-from starfish.common.logger import get_logger
+from starfish.core.common.logger import get_logger
 
 logger = get_logger(__name__)
 

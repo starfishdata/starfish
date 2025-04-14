@@ -6,7 +6,7 @@ from starfish.core.llm.proxy.litellm_adapter_ext import (
     OPENAI_COMPATIBLE_PROVIDERS_CONFIG,
     route_openai_compatible_request,
 )
-from starfish.common.logger import get_logger
+from starfish.core.common.logger import get_logger
 
 logger = get_logger(__name__)
 

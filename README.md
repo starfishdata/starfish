@@ -30,3 +30,6 @@ This project uses Poetry for dependency management.
    cp .env.template .env
    # Edit .env with your API keys and preferences
    ```
+
+
+This project is licensed under the [Apache License 2.0](./LICENSE).

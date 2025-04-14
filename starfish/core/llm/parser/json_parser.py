@@ -1,8 +1,8 @@
 import json
 from typing import Any, Dict, List, Optional
 
-from starfish.common.exceptions import JsonParserError, SchemaValidationError
-from starfish.common.logger import get_logger
+from starfish.core.common.exceptions import JsonParserError, SchemaValidationError
+from starfish.core.common.logger import get_logger
 
 logger = get_logger(__name__)
 

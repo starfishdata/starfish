@@ -1,7 +1,7 @@
 import asyncio
 import time
 from typing import Any, Callable, Dict, List
-from starfish.common.logger import get_logger
+from starfish.core.common.logger import get_logger
 logger = get_logger(__name__)
 #from starfish.common.logger_new import logger
 class TaskRunner:

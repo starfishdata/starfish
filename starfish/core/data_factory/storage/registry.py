@@ -6,7 +6,7 @@ from typing import Callable, Dict, Generic, List, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
-from starfish.common.logger import get_logger
+from starfish.core.common.logger import get_logger
 
 logger = get_logger(__name__)
 

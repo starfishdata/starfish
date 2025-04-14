@@ -1,4 +1,4 @@
-from starfish.common.logger import get_logger
+from starfish.core.common.logger import get_logger
 
 logger = get_logger(__name__)
 

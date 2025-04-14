@@ -15,7 +15,7 @@ from dotenv import dotenv_values
 from dotenv import find_dotenv as dotenv_find_dotenv
 from dotenv import load_dotenv as dotenv_load_dotenv
 
-from starfish.common.logger import get_logger
+from starfish.core.common.logger import get_logger
 
 logger = get_logger(__name__)
 

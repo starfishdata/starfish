@@ -18,7 +18,7 @@ from starfish.core.data_factory.storage.models import (
 )
 from starfish.core.data_factory.state import MutableSharedState
 from starfish.core.data_factory.storage.base import Storage    
-from starfish.common.logger import get_logger
+from starfish.core.common.logger import get_logger
 
 logger = get_logger(__name__)
 # from starfish.common.logger_new import logger

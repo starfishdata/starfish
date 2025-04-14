@@ -12,7 +12,7 @@ import aiohttp
 ##TODO we will need to move the dependencies of ollma to a seperate file so we can support other model hosting providers like vllm. but for now it is fine
 from starfish.core.llm.backend.ollama_adapter import delete_model as delete_ollama_model
 from starfish.core.llm.backend.ollama_adapter import is_model_available
-from starfish.common.logger import get_logger
+from starfish.core.common.logger import get_logger
 
 logger = get_logger(__name__)
 
