@@ -4,9 +4,6 @@ import traceback
 import uuid
 from typing import Any, Dict, Optional, Tuple
 
-from fastapi import Request, status
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from starfish.common.logger import get_logger
@@ -16,6 +13,20 @@ logger = get_logger(__name__)
 # Simple configuration flag (can be set from app config)
 # Default to False for production safety
 INCLUDE_TRACEBACK_IN_RESPONSE = os.environ.get("INCLUDE_TRACEBACK_IN_RESPONSE", False)
+
+#############################################
+# HTTP Status Codes
+#############################################
+
+class HTTPStatus:
+    """Standard HTTP status codes"""
+    OK = 200
+    BAD_REQUEST = 400
+    UNAUTHORIZED = 401
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    UNPROCESSABLE_ENTITY = 422
+    INTERNAL_SERVER_ERROR = 500
 
 #############################################
 # Error Response Model
@@ -40,7 +51,7 @@ class ErrorResponse(BaseModel):
 class StarfishException(Exception):
     """Base exception for all Starfish exceptions"""
 
-    status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
+    status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR
     default_message: str = "An unexpected error occurred"
 
     def __init__(self, message: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
@@ -55,38 +66,10 @@ class StarfishException(Exception):
         return self.message
 
 
-class BadRequestError(StarfishException):
-    """Exception raised for bad requests"""
-
-    status_code = status.HTTP_400_BAD_REQUEST
-    default_message = "Bad request"
-
-
-class UnauthorizedError(StarfishException):
-    """Exception raised for unauthorized access"""
-
-    status_code = status.HTTP_401_UNAUTHORIZED
-    default_message = "Unauthorized"
-
-
-class ForbiddenError(StarfishException):
-    """Exception raised when access is forbidden"""
-
-    status_code = status.HTTP_403_FORBIDDEN
-    default_message = "Forbidden"
-
-
-class NotFoundError(StarfishException):
-    """Exception raised when resource is not found"""
-
-    status_code = status.HTTP_404_NOT_FOUND
-    default_message = "Resource not found"
-
-
 class ValidationError(StarfishException):
     """Exception raised for validation errors"""
 
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
     default_message = "Validation error"
 
 
@@ -177,43 +160,10 @@ class PydanticValidationError(ValidationError):
         super().__init__(message=message, details=details)
 
 
-class PipelineValidationError(PydanticValidationError):
-    """Exception raised for pipeline validation errors.
-
-    This class extends PydanticValidationError to include pipeline-specific
-    context such as the step name.
-    """
-
-    default_message = "Pipeline configuration error"
-
-    def __init__(self, step_name: str, validation_error: ValidationError, message: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
-        # Create base details with step information
-        enhanced_details = details or {}
-        enhanced_details["step_name"] = step_name
-
-        # Get formatted message and details from parent class
-        if message is None:
-            formatted_message, error_details = self.format_validation_error(validation_error)
-            # Prepend step name to message
-            message = f"In step '{step_name}': {formatted_message}"
-            # Merge error details
-            enhanced_details = {**enhanced_details, **error_details}
-
-        # Initialize the base class
-        super().__init__(validation_error=validation_error, message=message, details=enhanced_details)
-
-
-class InternalServerError(StarfishException):
-    """Exception raised for internal server errors"""
-
-    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    default_message = "Internal server error"
-
-
 class ParserError(StarfishException):
     """Base exception for all parser-related errors."""
 
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
     default_message = "Parser error"
 
 
@@ -285,10 +235,10 @@ def format_error(exc: Exception, include_traceback: bool = INCLUDE_TRACEBACK_IN_
 
         return ErrorResponse(error_id=error_id, message=exc.message, error_type=type(exc).__name__, details=details if details else None), status_code
 
-    # Handle validation errors
-    elif isinstance(exc, RequestValidationError):
+    # Handle Pydantic validation errors
+    elif isinstance(exc, ValidationError):
         error_id = str(uuid.uuid4())
-        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        status_code = HTTPStatus.UNPROCESSABLE_ENTITY
         details = {"validation_errors": exc.errors()}
 
         if include_traceback:
@@ -301,7 +251,7 @@ def format_error(exc: Exception, include_traceback: bool = INCLUDE_TRACEBACK_IN_
     # Handle all other exceptions
     else:
         error_id = str(uuid.uuid4())
-        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        status_code = HTTPStatus.INTERNAL_SERVER_ERROR
         details = {}
 
         if include_traceback:
@@ -315,26 +265,6 @@ def format_error(exc: Exception, include_traceback: bool = INCLUDE_TRACEBACK_IN_
 
 
 #############################################
-# FastAPI Exception Handlers
-#############################################
-
-
-async def exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Global exception handler for FastAPI.
-
-    Args:
-        request: The FastAPI request
-        exc: The exception to handle
-
-    Returns:
-        JSONResponse with standardized error format
-    """
-    error_response, status_code = format_error(exc)
-
-    return JSONResponse(status_code=status_code, content=error_response.dict())
-
-
-#############################################
 # Utility Decorators
 #############################################
 
@@ -342,9 +272,8 @@ async def exception_handler(request: Request, exc: Exception) -> JSONResponse:
 def handle_exceptions(return_value=None):
     """Decorator to handle exceptions in both async and sync functions.
 
-    This is primarily intended for non-FastAPI contexts like CLI commands,
-    scripts, or background tasks. For FastAPI endpoints, let exceptions
-    bubble up to be handled by the global exception handler.
+    This decorator can be used with any function to catch exceptions,
+    log them, and return a default value instead of raising.
 
     Args:
         return_value: The value to return if an exception occurs
@@ -391,16 +320,3 @@ def handle_exceptions(return_value=None):
             return sync_wrapper
 
     return decorator
-
-
-def setup_exception_handlers(app):
-    """Register exception handlers with a FastAPI app.
-
-    Args:
-        app: The FastAPI app
-    """
-    # Handle all exceptions
-    app.add_exception_handler(Exception, exception_handler)
-
-    # Handle validation errors
-    app.add_exception_handler(RequestValidationError, exception_handler)
