@@ -1,9 +1,6 @@
 import os
 import sys
 from pathlib import Path
-from starfish.common.logger import get_logger
-
-logger = get_logger(__name__)
 
 RECORD_STATUS = "status"
 
@@ -28,9 +25,7 @@ RUN_MODE_DRY_RUN = "dry_run"
 STORAGE_TYPE_LOCAL = "local"
 STORAGE_TYPE_IN_MEMORY = "in_memory"
 
-PROGRESS_LOG_INTERVAL = 3
 
-TASK_RUNNER_TIMEOUT = 30
 
 # Define the function directly in constants to avoid circular imports
 def get_app_data_dir():

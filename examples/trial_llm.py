@@ -6,42 +6,33 @@ from starfish.data_factory.factory import data_factory
 from starfish.data_factory.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, STORAGE_TYPE_IN_MEMORY, STORAGE_TYPE_LOCAL
 from starfish.data_factory.state import MutableSharedState
 from starfish.common.logger import get_logger
+from starfish.data_factory.utils.mock import mock_llm_call
 logger = get_logger(__name__)
 # Add callback for error handling
 # todo state is a class with thread safe dict
-async def handle_error(data: Any, state: MutableSharedState):
+def handle_error(data: Any, state: MutableSharedState):
     logger.error(f"Error occurred: {data}")
     return STATUS_FAILED
 
-async def handle_record_complete(data: Any, state: MutableSharedState):
-    print(f"Record complete: {data}")
+def handle_record_complete(data: Any, state: MutableSharedState):
+    #print(f"Record complete: {data}")
 
-    await state.set("completed_count",  1)
-    await state.data
-    await state.update({"completed_count": 2})
+    state.set("completed_count",  1)
+    state_data = state.data
+    state.update({"completed_count": 2})
     return STATUS_COMPLETED
 
-async def handle_duplicate_record(data: Any, state: MutableSharedState):
+def handle_duplicate_record(data: Any, state: MutableSharedState):
     logger.debug(f"Record duplicated: {data}")
-    await state.set("completed_count",  1)
-    await state.data
-    await state.update({"completed_count": 2})
+    state.set("completed_count",  1)
+    state_data = state.data
+    state.update({"completed_count": 2})
     #return STATUS_DUPLICATE
     if random.random() < 0.9:
         return STATUS_COMPLETED
     return STATUS_DUPLICATE
 
-async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_time=0.1):
-    await asyncio.sleep(sleep_time)
 
-    if random.random() < fail_rate:
-        logger.debug(f"  {city_name}: Failed!")
-        raise ValueError(f"Mock LLM failed to process city: {city_name}")
-    
-    logger.debug(f"{city_name}: Successfully processed!")
-
-    result = [{"answer": f"{city_name}_{random.randint(1, 5)}"} for _ in range(num_records_per_city)]
-    return result
 
 @data_factory(
     storage=STORAGE_TYPE_LOCAL, max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], 
@@ -72,7 +63,7 @@ async def get_city_info_wf(city_name, region_code):
     # output = await validation_llm.run(data=output.data)
 
     #return output.data
-    return await mock_llm_call(city_name, num_records_per_city=3, fail_rate=0.5, sleep_time=0.01)
+    return await mock_llm_call(city_name, num_records_per_city=3, fail_rate=0.01, sleep_time=1)
 
 
 # Execute with batch processing
@@ -87,8 +78,8 @@ if user_case == "run":
     results = get_city_info_wf.run(
         #data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
         #[{"city_name": "Berlin"}, {"city_name": "Rome"}],
-    city_name=["San Francisco", "New York", "Los Angeles"]*10,
-    region_code=["DE", "IT", "US"]*10,
+    city_name=["San Francisco", "New York", "Los Angeles"]*50,
+    region_code=["DE", "IT", "US"]*50,
         # city_name="Beijing",  ### Overwrite the data key
         # num_records_per_city = 3
     )
@@ -102,7 +93,7 @@ elif user_case == "dry_run":
             # num_records_per_city = 3
         )
 elif user_case == "re_run":
-    results = get_city_info_wf.re_run( master_job_id="e342bb94-3784-45c7-beab-4e01cb059f1c")
+    results = get_city_info_wf.re_run( master_job_id="05668e16-6f47-4ccf-9f25-4ff7b7030bdb")
 
 #logger.info(f"Results: {results}")
     

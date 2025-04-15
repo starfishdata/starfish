@@ -8,7 +8,7 @@ from langchain_core.tools import tool
 
 from starfish import StructuredLLM, data_factory
 from starfish.data_factory.constants import RECORD_STATUS
-from starfish.data_factory.enums import RecordStatus
+from starfish.data_factory.utils.enums import RecordStatus
 
 # Define a simple tool
 @tool

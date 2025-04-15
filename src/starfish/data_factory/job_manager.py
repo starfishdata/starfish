@@ -5,8 +5,9 @@ import json
 from typing import Any, Dict, List
 import uuid
 from queue import Queue
-from starfish.data_factory.errors import DuplicateRecordError, FilterRecordError, RecordError
-from starfish.data_factory.constants import RECORD_STATUS, STATUS_MOJO_MAP, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_DRY_RUN, PROGRESS_LOG_INTERVAL
+from starfish.data_factory.utils.errors import DuplicateRecordError, FilterRecordError, RecordError
+from starfish.data_factory.constants import RECORD_STATUS, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_DRY_RUN
+from starfish.data_factory.config import PROGRESS_LOG_INTERVAL
 from starfish.data_factory.event_loop import run_in_event_loop
 from starfish.data_factory.task_runner import TaskRunner
 from starfish.data_factory.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED
@@ -18,9 +19,7 @@ from starfish.data_factory.storage.models import (
 )
 from starfish.data_factory.storage.base import Storage    
 from starfish.common.logger import get_logger
-
 logger = get_logger(__name__)
-# from starfish.common.logger_new import logger
 
 class JobManager:
     def __init__(self, job_config: Dict[str, Any], storage: Storage):
@@ -125,7 +124,8 @@ class JobManager:
                     records_metadata = await self.storage.list_record_metadata(self.job_config["master_job_id"], task.job_id)
                     for record in records_metadata:
                         record_data = await self.storage.get_record_data(record.output_ref)
-                        self.job_output.put(record_data)
+                        output_tmp = {RECORD_STATUS: STATUS_COMPLETED, "output": record_data}
+                        self.job_output.put(output_tmp)
                         self.total_count += 1
                         self.completed_count += 1
                 # run the rest of the tasks
@@ -139,10 +139,10 @@ class JobManager:
         """Log a message every 5 seconds"""
         while not self.is_job_to_stop():
             logger.info(
-                f"\033[1mProgress:\033[0m "
+                f"[JOB PROGRESS] "
                 f"\033[32mCompleted: {self.completed_count}/{self.target_count}\033[0m | "
-                f"\033[33mRunning: {self.semaphore._value}\033[0m | "
-                f"\033[36mAttempted: {self.total_count}\033[0m\n"
+                f"\033[33mRunning: {self.job_config.get('max_concurrency') - self.semaphore._value}\033[0m | "
+                f"\033[36mAttempted: {self.total_count}\033[0m"
                 f"    (\033[32mCompleted: {self.completed_count}\033[0m, "
                 f"\033[31mFailed: {self.failed_count}\033[0m, "
                 f"\033[35mFiltered: {self.filtered_count}\033[0m, "
@@ -154,6 +154,8 @@ class JobManager:
         """Main orchestration loop for the job"""
         # Start the ticker task
         _progress_ticker_task = asyncio.create_task(self._progress_ticker())
+        # Store all running tasks
+        running_tasks = set()
         
         try:
             while not self.is_job_to_stop():
@@ -163,7 +165,9 @@ class JobManager:
                     await self.semaphore.acquire()
                     logger.debug(f"Semaphore acquired, waiting for task to complete")
                     input_data = self.job_input_queue.get()
-                    self._create_single_task(input_data)
+                    task = self._create_single_task(input_data)
+                    running_tasks.add(task)
+                    task.add_done_callback(running_tasks.discard)
                 else:
                     await asyncio.sleep(1)
         finally:
@@ -173,11 +177,19 @@ class JobManager:
                 await _progress_ticker_task
             except asyncio.CancelledError:
                 pass
+            
+            # Cancel all running tasks
+            # todo whether openai call will close
+            for task in running_tasks:
+                task.cancel()
+            # Wait for all tasks to be cancelled
+            await asyncio.gather(*running_tasks, return_exceptions=True)
 
-    def _create_single_task(self, input_data):
+    def _create_single_task(self, input_data) -> asyncio.Task:
         task = asyncio.create_task(self._run_single_task(input_data))
         asyncio.create_task(self._handle_task_completion(task))
         logger.debug(f"Task created, waiting for task to complete")
+        return task
 
     async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
         """Run a single task with error handling and storage"""
@@ -190,7 +202,7 @@ class JobManager:
             hooks_output = []
             # class based hooks. use semaphore to ensure thread safe
             for hook in self.job_config.get("on_record_complete", []):
-                hooks_output.append(await hook(output, self.state))
+                hooks_output.append(hook(output, self.state))
             if hooks_output.count(STATUS_DUPLICATE) > 0:
                 # duplicate filtered need retry
                 task_status = STATUS_DUPLICATE
@@ -200,7 +212,7 @@ class JobManager:
         except Exception as e:
             logger.error(f"Error running task: {e}")
             for hook in self.job_config.get("on_record_error", []):
-                await hook(str(e), self.state)
+                hook(str(e), self.state)
             task_status = STATUS_FAILED
         finally:
             # if task is not completed, put the input data back to the job input queue
@@ -238,10 +250,3 @@ class JobManager:
         """Update job config by merging new values with existing config"""
         self.job_config = {**self.job_config, **job_config}
 
-    # async def _update_progress(self, counter_type: str, emoji: str):
-    #     """Update counters without showing live progress"""
-    #     if not self.show_progress:
-    #         return
-    #     # Update the internal counters
-    #     async with self.progress_lock:
-    #         self._counters[counter_type] = getattr(self, f"{counter_type}_count")
