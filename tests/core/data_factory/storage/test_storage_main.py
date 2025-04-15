@@ -12,7 +12,7 @@ import time
 import uuid
 
 # Import storage components
-from starfish.new_storage.local.local_storage import LocalStorage
+from starfish.core.data_factory.storage.local.local_storage import LocalStorage
 from starfish.core.data_factory.storage.models import (
     GenerationJob,
     GenerationMasterJob,

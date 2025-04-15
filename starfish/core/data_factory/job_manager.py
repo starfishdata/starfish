@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 import uuid
 from queue import Queue
 from starfish.core.data_factory.errors import DuplicateRecordError, FilterRecordError, RecordError
-from starfish.core.data_factory.constants import RECORD_STATUS, STATUS_MOJO_MAP, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_DRY_RUN
+from starfish.core.data_factory.constants import RECORD_STATUS, STATUS_MOJO_MAP, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_DRY_RUN, PROGRESS_LOG_INTERVAL
 from starfish.core.data_factory.event_loop import run_in_event_loop
 from starfish.core.data_factory.task_runner import TaskRunner
 from starfish.core.data_factory.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED
@@ -16,7 +16,6 @@ from starfish.core.data_factory.storage.models import (
     Project,
     Record,
 )
-from starfish.core.data_factory.state import MutableSharedState
 from starfish.core.data_factory.storage.base import Storage    
 from starfish.core.common.logger import get_logger
 
@@ -30,7 +29,7 @@ class JobManager:
         self.state = job_config.get("state", {})
         self.semaphore = asyncio.Semaphore(job_config.get("max_concurrency"))
         self.lock = asyncio.Lock()
-        self.task_runner = TaskRunner()
+        self.task_runner = TaskRunner(timeout=job_config.get("task_runner_timeout"))
         self.job_input_queue = Queue()
         # it shall be a thread safe queue
         self.job_output = Queue()
@@ -52,12 +51,6 @@ class JobManager:
         await self.storage.log_execution_job_start(self.job)
         logger.debug(f"  - Created execution job: {job_uuid}")
 
-    # async def update_execution_job_status(self):
-    #     now = datetime.datetime.now(datetime.timezone.utc)
-    #     self.job.status = "running"
-    #     self.job.start_time = now
-    #     await self.storage.log_execution_job_start(self.job)
-    #     logger.debug("  - Updated execution job status to: running")
 
     async def job_save_record_data(self, records, task_status:str, input_data: Dict[str, Any]) -> List[str]:
         
@@ -65,10 +58,10 @@ class JobManager:
         if self.job_config.get(RUN_MODE) == RUN_MODE_DRY_RUN:
             return output_ref_list
         logger.debug("\n5. Saving record data...")
-        storage_class_name = self.storage.__class__.__name__
-        job_uuid = str(uuid.uuid4())
-        await self.create_execution_job(job_uuid, input_data)
+        storage_class_name = self.storage.__class__.__name__ 
         if storage_class_name == "LocalStorage":
+            job_uuid = str(uuid.uuid4())
+            await self.create_execution_job(job_uuid, input_data)
             for i, record in enumerate(records):
                 record_uid = str(uuid.uuid4())
                 output_ref = await self.storage.save_record_data(record_uid, self.job_config["master_job_id"], job_uuid, record)
@@ -81,7 +74,7 @@ class JobManager:
                 await self.storage.log_record_metadata(record_model)
                 logger.debug(f"  - Saved data for record {i}: {output_ref}")
                 output_ref_list.append(output_ref) 
-        await self.complete_execution_job(job_uuid)
+            await self.complete_execution_job(job_uuid)
         return output_ref_list
 
     async def complete_execution_job(self,job_uuid: str):
@@ -95,12 +88,16 @@ class JobManager:
         logger.debug("  - Marked execution job as completed")
     
     def is_job_to_stop(self) -> bool:
-        # items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
-        # consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
-        #     item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check)
-        # #consecutive_not_completed and 
-        total_tasks_reach_target = (self.completed_count >= self.target_count)
-        return total_tasks_reach_target
+        items_check = list(self.job_output.queue)[-1*self.job_run_stop_threshold:]
+        consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(
+            item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check)
+        #consecutive_not_completed and 
+        completed_tasks_reach_target = (self.completed_count >= self.target_count)
+        #total_tasks_reach_target = (self.total_count >= self.target_count)
+        return consecutive_not_completed or completed_tasks_reach_target
+        #return completed_tasks_reach_target or (total_tasks_reach_target and consecutive_not_completed)
+    
+    
     
     
     def run_orchestration(self):
@@ -138,21 +135,35 @@ class JobManager:
                     #self._create_single_task(input_data["data"])
             await self._async_run_orchestration()
 
+    async def _progress_ticker(self):
+        """Log a message every 5 seconds"""
+        while not self.is_job_to_stop():
+            logger.info(f" Progress: Completed: {self.completed_count}/{self.target_count} | Running: {self.semaphore._value} | Attempted: {self.total_count} (Completed: {self.completed_count}, Failed: {self.failed_count}, Filtered: {self.filtered_count}, Duplicate: {self.duplicate_count})")
+            await asyncio.sleep(PROGRESS_LOG_INTERVAL)
+
     async def _async_run_orchestration(self):
         """Main orchestration loop for the job"""
+        # Start the ticker task
+        _progress_ticker_task = asyncio.create_task(self._progress_ticker())
         
-        while not self.is_job_to_stop():
-            logger.debug(f"Job is not to stop, checking job input queue")
-            if not self.job_input_queue.empty():
-                logger.debug(f"Job input queue is not empty, acquiring semaphore")
-                await self.semaphore.acquire()
-                logger.debug(f"Semaphore acquired, waiting for task to complete")
-                input_data = self.job_input_queue.get()
-                self._create_single_task(input_data)
-                
-            else:
-                logger.info(f"No task to run, waiting for task to complete")
-                await asyncio.sleep(1)
+        try:
+            while not self.is_job_to_stop():
+                logger.debug(f"Job is not to stop, checking job input queue")
+                if not self.job_input_queue.empty():
+                    logger.debug(f"Job input queue is not empty, acquiring semaphore")
+                    await self.semaphore.acquire()
+                    logger.debug(f"Semaphore acquired, waiting for task to complete")
+                    input_data = self.job_input_queue.get()
+                    self._create_single_task(input_data)
+                else:
+                    await asyncio.sleep(1)
+        finally:
+            # Ensure the ticker task is cancelled when the orchestration ends
+            _progress_ticker_task.cancel()
+            try:
+                await _progress_ticker_task
+            except asyncio.CancelledError:
+                pass
 
     def _create_single_task(self, input_data):
         task = asyncio.create_task(self._run_single_task(input_data))
@@ -176,7 +187,7 @@ class JobManager:
                 task_status = STATUS_DUPLICATE
             elif hooks_output.count(STATUS_FILTERED) > 0:
                 task_status = STATUS_FILTERED 
-            output_ref = await self.job_save_record_data(output,task_status,input_data)
+            output_ref = await self.job_save_record_data(output.copy(), task_status, input_data)
         except Exception as e:
             logger.error(f"Error running task: {e}")
             for hook in self.job_config.get("on_record_error", []):
