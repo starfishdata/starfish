@@ -315,7 +315,6 @@ class DataFactory:
             STATUS_FAILED: None,
             STATUS_FILTERED: None,
             STATUS_DUPLICATE: None,
-            STATUS_TOTAL: None
         }
         if self.job_config.get("show_progress"):
             #self.progress.start()
