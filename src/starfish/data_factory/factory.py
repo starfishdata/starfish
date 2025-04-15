@@ -10,7 +10,7 @@ from inspect import signature, Parameter
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
 from starfish.data_factory.event_loop import run_in_event_loop
 from starfish.data_factory.job_manager import JobManager
-from starfish.data_factory.constants import RECORD_STATUS, RUN_MODE_DRY_RUN, STATUS_MOJO_MAP, STATUS_TOTAL, TASK_RUNNER_TIMEOUT, TEST_DB_DIR, TEST_DB_URI, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_NORMAL, PROGRESS_LOG_INTERVAL
+from starfish.data_factory.constants import RECORD_STATUS, RUN_MODE_DRY_RUN, STATUS_MOJO_MAP, STATUS_TOTAL, TASK_RUNNER_TIMEOUT, LOCAL_STORAGE_URI, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_NORMAL, PROGRESS_LOG_INTERVAL
 from starfish.data_factory.storage.local.local_storage import LocalStorage
 from starfish.data_factory.storage.in_memory.in_memory_storage import InMemoryStorage
 from starfish.data_factory.state import MutableSharedState
@@ -242,7 +242,7 @@ class DataFactory:
             status="pending",
             request_config_ref=self.config_ref,
             output_schema={"type": "object", "properties": {"name": {"type": "string"}}},
-            storage_uri=TEST_DB_URI,
+            storage_uri=LOCAL_STORAGE_URI,
             target_record_count=10,
         )
         await self.factory_storage.log_master_job_start(master_job)
@@ -278,7 +278,7 @@ class DataFactory:
 
     def storage_setup(self):
         if self.storage == "local":
-            self.factory_storage = LocalStorage(TEST_DB_URI)
+            self.factory_storage = LocalStorage(LOCAL_STORAGE_URI)
             asyncio.run(self.factory_storage.setup())
         else:
             self.factory_storage = InMemoryStorage()
@@ -407,7 +407,7 @@ def default_input_converter(data : List[Dict[str, Any]]=[], **kwargs) -> Queue[D
 
 # Public decorator interface
 def data_factory(
-    storage: str = "filesystem",
+    storage: str = "local",
     batch_size: int = 1,
     target_count: int = 0,
     max_concurrency: int = 50,

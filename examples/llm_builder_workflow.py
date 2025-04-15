@@ -19,7 +19,7 @@ from starfish.utils import merge_structured_outputs
 # By adding the dectorator you now have a fully paralleization of the data factory that will produce 1000 of these data in very effeicent manner
 
 
-@data_factory(storage_option="filesystem", batch_size=5)
+@data_factory(storage="local", batch_size=5)
 def generate_city_info(cities: List[str], num_facts: int) -> List[Dict[str, Any]]:
     """LLM-powered city fact generation pipeline with validation"""
     results = []

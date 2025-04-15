@@ -1,14 +1,11 @@
 import os
+import sys
+from pathlib import Path
 from starfish.common.logger import get_logger
+
 logger = get_logger(__name__)
 
-
 RECORD_STATUS = "status"
-TEST_DB_DIR = os.environ.get("STARFISH_TEST_DB_DIR", "/Users/john/Documents/projects/aa/python/starfish/starfish/db")
-TEST_DB_URI = f"file://{TEST_DB_DIR}"
-# if os.path.exists(TEST_DB_DIR):
-#     logger.info(f"Cleaning up existing test directory: {TEST_DB_DIR}")
-#     shutil.rmtree(TEST_DB_DIR)
 
 STATUS_TOTAL = "total"
 STATUS_COMPLETED = "completed"
@@ -34,3 +31,48 @@ STORAGE_TYPE_IN_MEMORY = "in_memory"
 PROGRESS_LOG_INTERVAL = 3
 
 TASK_RUNNER_TIMEOUT = 30
+
+# Define the function directly in constants to avoid circular imports
+def get_app_data_dir():
+    """Returns a platform-specific directory for application data storage.
+    
+    Following platform conventions:
+    - Linux: ~/.local/share/starfish
+    - macOS: ~/Library/Application Support/starfish
+    - Windows: %LOCALAPPDATA%\starfish
+    
+    Environment variable STARFISH_LOCAL_STORAGE_DIR can override this location.
+    """
+    # Allow override through environment variable
+    env_dir = os.environ.get("STARFISH_LOCAL_STORAGE_DIR")
+    if env_dir:
+        return env_dir
+    
+    app_name = "starfish"
+    
+    # Get user's home directory
+    home = Path.home()
+    
+    # Platform-specific paths
+    if sys.platform == "win32":
+        # Windows: Use %LOCALAPPDATA% if available, otherwise construct from home
+        app_data = os.environ.get("LOCALAPPDATA")
+        if not app_data:
+            app_data = os.path.join(home, "AppData", "Local")
+        base_dir = os.path.join(app_data, app_name)
+    elif sys.platform == "darwin":
+        # macOS
+        base_dir = os.path.join(home, "Library", "Application Support", app_name)
+    else:
+        # Linux/Unix: follow XDG Base Directory Specification
+        xdg_data_home = os.environ.get("XDG_DATA_HOME")
+        if not xdg_data_home:
+            xdg_data_home = os.path.join(home, ".local", "share")
+        base_dir = os.path.join(xdg_data_home, app_name)
+    
+    return base_dir
+
+# Get application database directory
+APP_DATA_DIR = get_app_data_dir()
+LOCAL_STORAGE_PATH = os.path.join(APP_DATA_DIR, "db")
+LOCAL_STORAGE_URI = f"file://{LOCAL_STORAGE_PATH}"
