@@ -1,11 +1,12 @@
 import asyncio
 import time
 from typing import Any, Callable, Dict, List
+from starfish.data_factory.constants import TASK_RUNNER_TIMEOUT
 from starfish.common.logger import get_logger
 logger = get_logger(__name__)
 #from starfish.common.logger_new import logger
 class TaskRunner:
-    def __init__(self, max_retries: int = 1, timeout: int = 30, master_job_id: str = None):
+    def __init__(self, max_retries: int = 1, timeout: int = TASK_RUNNER_TIMEOUT, master_job_id: str = None):
         self.max_retries = max_retries
         self.timeout = timeout
         self.master_job_id = master_job_id

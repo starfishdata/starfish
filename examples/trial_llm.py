@@ -1,11 +1,11 @@
 import random
 import asyncio
 from typing import Any, Dict
-from starfish.core.structured_llm import StructuredLLM
-from starfish.utils.data_factory import data_factory
-from starfish.utils.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, STORAGE_TYPE_IN_MEMORY, STORAGE_TYPE_LOCAL
-from starfish.utils.state import MutableSharedState
-from starfish.common.logger import get_logger
+from starfish.core.llm.structured_llm import StructuredLLM
+from starfish.core.data_factory.factory import data_factory
+from starfish.core.data_factory.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, STORAGE_TYPE_IN_MEMORY, STORAGE_TYPE_LOCAL
+from starfish.core.data_factory.state import MutableSharedState
+from starfish.core.common.logger import get_logger
 logger = get_logger(__name__)
 # Add callback for error handling
 # todo state is a class with thread safe dict
@@ -27,11 +27,11 @@ async def handle_duplicate_record(data: Any, state: MutableSharedState):
     await state.data
     await state.update({"completed_count": 2})
     #return STATUS_DUPLICATE
-    if random.random() < 0.3:
+    if random.random() < 0.9:
         return STATUS_COMPLETED
     return STATUS_DUPLICATE
 
-async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_time=0.01):
+async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_time=0.1):
     await asyncio.sleep(sleep_time)
 
     if random.random() < fail_rate:
@@ -45,7 +45,7 @@ async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_ti
 
 @data_factory(
     storage=STORAGE_TYPE_LOCAL, max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], 
-    on_record_error=[handle_error],show_progress=True
+    on_record_error=[handle_error],show_progress=True, task_runner_timeout=10
 )
 async def get_city_info_wf(city_name, region_code):
     # structured_llm = StructuredLLM(
@@ -104,5 +104,5 @@ elif user_case == "dry_run":
 elif user_case == "re_run":
     results = get_city_info_wf.re_run( master_job_id="e342bb94-3784-45c7-beab-4e01cb059f1c")
 
-logger.info(f"Results: {results}")
+#logger.info(f"Results: {results}")
     

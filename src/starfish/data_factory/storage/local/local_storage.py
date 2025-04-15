@@ -128,6 +128,11 @@ class LocalStorage(Storage):
     async def count_records_for_master_job(self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None) -> Dict[str, int]:
          return await self._metadata_handler.count_records_for_master_job_impl(master_job_id, status_filter)
     
+    async def list_execution_jobs_by_master_id_and_config_hash(self, master_job_id: str, config_hash: str, job_status: str) -> List[GenerationJob]:
+        return await self._metadata_handler.list_execution_jobs_by_master_id_and_config_hash_impl(master_job_id, config_hash, job_status)
+    
+    async def list_record_metadata(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
+        return await self._metadata_handler.list_record_metadata_impl(master_job_uuid, job_uuid)
 
 @register_storage("local")
 def create_local_storage(storage_uri: str, data_storage_uri_override: Optional[str] = None) -> LocalStorage:

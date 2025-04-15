@@ -10,7 +10,7 @@ from inspect import signature, Parameter
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TaskProgressColumn
 from starfish.data_factory.event_loop import run_in_event_loop
 from starfish.data_factory.job_manager import JobManager
-from starfish.data_factory.constants import RECORD_STATUS, RUN_MODE_DRY_RUN, STATUS_MOJO_MAP, STATUS_TOTAL, TEST_DB_DIR, TEST_DB_URI, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_NORMAL
+from starfish.data_factory.constants import RECORD_STATUS, RUN_MODE_DRY_RUN, STATUS_MOJO_MAP, STATUS_TOTAL, TASK_RUNNER_TIMEOUT, TEST_DB_DIR, TEST_DB_URI, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, RUN_MODE, RUN_MODE_RE_RUN, RUN_MODE_NORMAL, PROGRESS_LOG_INTERVAL
 from starfish.data_factory.storage.local.local_storage import LocalStorage
 from starfish.data_factory.storage.in_memory.in_memory_storage import InMemoryStorage
 from starfish.data_factory.state import MutableSharedState
@@ -20,6 +20,7 @@ from starfish.data_factory.storage.models import (
     Project,
     Record,
 )
+from starfish.common.decorator import storage_action
 from starfish.common.logger import get_logger
 logger = get_logger(__name__)
 
@@ -36,6 +37,7 @@ class DataFactory:
         on_record_error: List[Callable],
         input_converter: Callable,
         show_progress: bool,
+        task_runner_timeout: int,
     ):
         # self.storage = storage
         self.batch_size = batch_size
@@ -48,6 +50,7 @@ class DataFactory:
             "on_record_complete": on_record_complete,   
             "on_record_error": on_record_error,
             "show_progress": show_progress,
+            "task_runner_timeout": task_runner_timeout,
         }
 
         self.storage = storage
@@ -61,12 +64,13 @@ class DataFactory:
         @wraps(func)
         def wrapper(*args, **kwargs):
             run_mode = self.job_config.get(RUN_MODE)
+            err = None
             try:
                 
                 # Check for master_job_id in kwargs and assign if present
                 if run_mode == RUN_MODE_RE_RUN:
                     self._setup_storage_and_job_manager()
-                    self.set_input_data_from_master_job()
+                    self._set_input_data_from_master_job()
                     
                     self._init_progress_bar_update_job_config()
                 elif run_mode == RUN_MODE_DRY_RUN:
@@ -86,21 +90,33 @@ class DataFactory:
                     # self.project_id = "8de05a58-c8a4-4c10-8c23-568679c88e65"
                     self.master_job_id = str(uuid.uuid4())
                     self._setup_storage_and_job_manager()
-                    self.save_project() 
-                    self.save_request_config()
-                    self.log_master_job_start()
+                    self._save_project() 
+                    self._save_request_config()
+                    self._log_master_job_start()
                     # Start progress bar before any operations
                     # Process batches and keep progress bar alive
                     self._init_progress_bar_update_job_config()
-                    self.update_master_job_status()
+                    self._update_master_job_status()
+                
                 self._process_batches()
+                
                 result = self._process_output()
+                if len(result) == 0:
+                    raise ValueError("No records generated")
                 return result
+            except TypeError as e:
+                err = e
+                logger.error(f"TypeError occurred: {str(e)}")
+                raise
+            except ValueError as e:
+                err = e
+                logger.error(f"ValueError occurred: {str(e)}")
+                raise
             finally:
-                # Ensure progress bar is properly closed
-                if run_mode != RUN_MODE_DRY_RUN:
-                    self.complete_master_job()
-                    self.close_storage()
+                # Only execute finally block if not TypeError
+                if err is  None and run_mode != RUN_MODE_DRY_RUN:
+                    self._complete_master_job()
+                    self._close_storage()
                     self.show_job_progress_status()
         # Add run method to the wrapped function
         def run(*args, **kwargs):
@@ -125,7 +141,7 @@ class DataFactory:
         output = self.job_manager.job_output.queue
         for v in output:
             if v.get(RECORD_STATUS) == STATUS_COMPLETED:
-                result.append(v.get("output"))
+                result.extend(v.get("output"))
         return result
     
     def _check_parameter_match(self):
@@ -165,27 +181,30 @@ class DataFactory:
 
     def _process_batches(self) -> List[Any]:
         """Process batches with asyncio"""
-        
+        logger.info(
+            f"[JOB PROGRESS] "
+            f"\033[1mJob started:\033[0m "
+            f"\033[36mMaster Job ID: {self.master_job_id}\033[0m | "
+            f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
+        )
         return self.job_manager.run_orchestration()
+        
 
+    @storage_action()
     async def _save_project(self):
         project = Project(project_id=self.project_id, name="Test Project", description="A test project for storage layer testing")
         await self.factory_storage.save_project(project)
 
-    def save_project(self):
-        asyncio.run(self._save_project())
-        #return run_in_event_loop(self._save_project())
-
+    @storage_action()
     async def _save_request_config(self):
-        logger.info("\n2. Creating master job...")
+        logger.debug("\n2. Creating master job...")
         # First save the request config
         config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}, "input_data": list(self.input_data.queue)}
         self.config_ref = await self.factory_storage.save_request_config(self.master_job_id, config_data)
         logger.debug(f"  - Saved request config to: {self.config_ref}")
     
-    def save_request_config(self):
-        asyncio.run(self._save_request_config())
 
+    @storage_action()
     async def _set_input_data_from_master_job(self):
         master_job = await self.factory_storage.get_master_job(self.master_job_id)
         if master_job:
@@ -213,9 +232,7 @@ class DataFactory:
             self.job_config[RUN_MODE] = RUN_MODE_RE_RUN
 
 
-    def set_input_data_from_master_job(self):
-        asyncio.run(self._set_input_data_from_master_job())
-
+    @storage_action()
     async def _log_master_job_start(self):
         # Now create the master job
         master_job = GenerationMasterJob(
@@ -231,20 +248,16 @@ class DataFactory:
         await self.factory_storage.log_master_job_start(master_job)
         logger.debug(f"  - Created master job: {master_job.name} ({self.master_job_id})")
     
-    def log_master_job_start(self):
-        asyncio.run(self._log_master_job_start())
-        #return run_in_event_loop(self._log_master_job_start())
 
+    @storage_action()
     async def _update_master_job_status(self):
         now = datetime.datetime.now(datetime.timezone.utc)
         await self.factory_storage.update_master_job_status(self.master_job_id, "running", now)
         logger.debug("  - Updated master job status to: running")
 
-    def update_master_job_status(self):
-        asyncio.run(self._update_master_job_status())
-        #return run_in_event_loop(self._update_master_job_status())
-    
+  
 
+    @storage_action()
     async def _complete_master_job(self):
         #  Complete the master job
         logger.debug("\n7. Completing master job...")
@@ -258,16 +271,10 @@ class DataFactory:
         logger.info(f"Master job {self.master_job_id} as completed")
 
 
-    def complete_master_job(self):
-        asyncio.run(self._complete_master_job())
-        #return run_in_event_loop(self._complete_master_job())
-
+    @storage_action()
     async def _close_storage(self): 
         await self.factory_storage.close()  
 
-    def close_storage(self):
-        asyncio.run(self._close_storage())
-        #return run_in_event_loop(self._close_storage())
 
     def storage_setup(self):
         if self.storage == "local":
@@ -313,7 +320,6 @@ class DataFactory:
             STATUS_FAILED: None,
             STATUS_FILTERED: None,
             STATUS_DUPLICATE: None,
-            STATUS_TOTAL: None
         }
         if self.job_config.get("show_progress"):
             #self.progress.start()
@@ -331,28 +337,31 @@ class DataFactory:
             self.progress_tasks[STATUS_DUPLICATE] = self.progress.add_task(
                 "[cyan]Duplicated", total=target_count, status="🔁 0"
             )
-            self.progress_tasks[STATUS_TOTAL] = self.progress.add_task(
-                "[white]Total", total=target_count, status="📊 0"
-            )
+            # self.progress_tasks[STATUS_TOTAL] = self.progress.add_task(
+            #     "[white]Attempted", total=target_count, status="📊 0"
+            # )
             # self.job_config["progress"] = self.progress
             # self.job_config["progress_tasks"] = self.progress_tasks
             
     
     def show_job_progress_status(self):
+        target_count = self.job_config.get("target_count")
+        #logger.info(f"Job finished. Final Stats: Completed: {self.job_manager.completed_count}/{target_count} | Attempted: {self.job_manager.total_count} (Failed: {self.job_manager.failed_count}, Filtered: {self.job_manager.filtered_count}, Duplicate: {self.job_manager.duplicate_count})")
         if self.job_config.get("show_progress"):
             self.progress.start()
-            target_count = self.job_config.get("target_count")
+            
             for counter_type, task_id in self.progress_tasks.items():
                 count = getattr(self.job_manager, f"{counter_type}_count")
                 emoji = STATUS_MOJO_MAP[counter_type]
                 percentage = int((count / target_count) * 100) if target_count > 0 else 0
+                if counter_type != STATUS_COMPLETED:
+                    target_count = self.job_manager.total_count
                 self.progress.update(
                     task_id, 
                     completed=count, 
                     status=f"{emoji} {count}/{target_count} ({percentage}%)"
                 )
             self.progress.stop()
-            
 
 
 def default_input_converter(data : List[Dict[str, Any]]=[], **kwargs) -> Queue[Dict[str, Any]]:
@@ -407,7 +416,8 @@ def data_factory(
     on_record_error: List[Callable] = [],
     show_progress: bool = True,
     input_converter=default_input_converter,
+    task_runner_timeout: int = TASK_RUNNER_TIMEOUT,
 ):
     state = MutableSharedState(initial_state_values)    
 
-    return DataFactory(storage, batch_size, max_concurrency, target_count, state, on_record_complete, on_record_error, input_converter=input_converter, show_progress=show_progress)
+    return DataFactory(storage, batch_size, max_concurrency, target_count, state, on_record_complete, on_record_error, input_converter=input_converter, show_progress=show_progress, task_runner_timeout=task_runner_timeout)
