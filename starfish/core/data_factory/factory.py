@@ -333,9 +333,9 @@ class DataFactory:
             self.progress_tasks[STATUS_DUPLICATE] = self.progress.add_task(
                 "[cyan]Duplicated", total=target_count, status="🔁 0"
             )
-            self.progress_tasks[STATUS_TOTAL] = self.progress.add_task(
-                "[white]Attempted", total=target_count, status="📊 0"
-            )
+            # self.progress_tasks[STATUS_TOTAL] = self.progress.add_task(
+            #     "[white]Attempted", total=target_count, status="📊 0"
+            # )
             # self.job_config["progress"] = self.progress
             # self.job_config["progress_tasks"] = self.progress_tasks
             
