@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install poetry
-          poetry install --with dev"
+          poetry install --with dev
 
       - name: Run ruff
         run: |
