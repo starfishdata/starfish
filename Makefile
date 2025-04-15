@@ -5,6 +5,11 @@ lint:
 	poetry run ruff format tests starfish examples
 
 test:
-	poetry run pytest tests/		
+	poetry run pytest tests/	
+
+install:
+	@echo "Installing dependencies..."
+	poetry install
+	poetry run pre-commit install	
 
 
