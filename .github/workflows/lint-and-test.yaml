@@ -1,0 +1,55 @@
+name: Curator testing workflow
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+
+      - name: Load cached Poetry installation
+        uses: actions/cache@v3
+        with:
+          path: ~/.local
+          key: poetry-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Load cached venv
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Set Locale
+        run: |
+          sudo locale-gen "en_US.UTF-8"
+          export LC_ALL=en_US.UTF-8
+          export LANG=en_US.UTF-8
+          export TELEMETRY_ENABLED=false
+
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install --with dev --extras "vllm code_execution"
+
+      - name: Run ruff
+        run: |
+          poetry run ruff check . --output-format=github
+          poetry run ruff format . --check
+
+      - name: Run tests with coverage
+        run: |
+          poetry run pytest --cov='bespokelabs' --cov-report=html --cov-fail-under=80  tests/
