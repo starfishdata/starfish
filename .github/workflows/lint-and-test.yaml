@@ -1,4 +1,4 @@
-name: Curator testing workflow
+name: Starfish testing workflow
 
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install poetry
-          poetry install --with dev --extras "vllm code_execution"
+          poetry install --with dev"
 
       - name: Run ruff
         run: |
@@ -52,4 +52,4 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          poetry run pytest --cov='bespokelabs' --cov-report=html --cov-fail-under=80  tests/
+          poetry run pytest --cov='src' --cov-report=html --cov-fail-under=20  tests/

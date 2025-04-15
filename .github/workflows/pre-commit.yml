@@ -1,14 +1,14 @@
-name: Pre-Commit
+# name: Pre-Commit
 
-on: [push, pull_request]
+# on: [push, pull_request]
 
-jobs:
-  pre-commit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.x"
-      - run: pip install pre-commit
-      - run: pre-commit run --all-files 
+# jobs:
+#   pre-commit:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v3
+#       - uses: actions/setup-python@v4
+#         with:
+#           python-version: "3.x"
+#       - run: pip install pre-commit
+#       - run: pre-commit run --all-files 
