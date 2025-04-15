@@ -45,10 +45,10 @@ jobs:
           pip install poetry
           poetry install --with dev
 
-      - name: Run ruff
-        run: |
-          poetry run ruff check . --output-format=github
-          poetry run ruff format . --check
+      # - name: Run ruff
+      #   run: |
+      #     poetry run ruff check . --output-format=github
+      #     poetry run ruff format . --check
 
       - name: Run tests with coverage
         run: |

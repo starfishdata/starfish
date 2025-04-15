@@ -1,4 +1,4 @@
-"""Ollama adapter"""
+"""Ollama adapter."""
 
 import asyncio
 import os
@@ -20,25 +20,25 @@ OLLAMA_BASE_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
 
 
 class OllamaError(Exception):
-    """Base exception for Ollama-related errors"""
+    """Base exception for Ollama-related errors."""
 
     pass
 
 
 class OllamaNotInstalledError(OllamaError):
-    """Error raised when Ollama is not installed"""
+    """Error raised when Ollama is not installed."""
 
     pass
 
 
 class OllamaConnectionError(OllamaError):
-    """Error raised when connection to Ollama server fails"""
+    """Error raised when connection to Ollama server fails."""
 
     pass
 
 
 async def is_ollama_running() -> bool:
-    """Check if Ollama server is running"""
+    """Check if Ollama server is running."""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{OLLAMA_BASE_URL}/api/version", timeout=aiohttp.ClientTimeout(total=2)) as response:
@@ -48,7 +48,7 @@ async def is_ollama_running() -> bool:
 
 
 async def start_ollama_server() -> bool:
-    """Start the Ollama server if it's not already running"""
+    """Start the Ollama server if it's not already running."""
     # Check if already running
     if await is_ollama_running():
         logger.info("Ollama server is already running")
@@ -89,7 +89,7 @@ async def start_ollama_server() -> bool:
 
 
 async def list_models() -> List[Dict[str, Any]]:
-    """List available models in Ollama using the API"""
+    """List available models in Ollama using the API."""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{OLLAMA_BASE_URL}/api/tags") as response:
@@ -105,7 +105,7 @@ async def list_models() -> List[Dict[str, Any]]:
 
 
 async def is_model_available(model_name: str) -> bool:
-    """Check if model is available using the CLI command"""
+    """Check if model is available using the CLI command."""
     try:
         # Use CLI for more reliable checking
         ollama_bin = shutil.which("ollama")
@@ -243,7 +243,7 @@ async def ensure_model_ready(model_name: str) -> bool:
 
 
 async def stop_ollama_server() -> bool:
-    """Stop the Ollama server"""
+    """Stop the Ollama server."""
     try:
         # Find the ollama executable (just to check if it's installed)
         ollama_bin = shutil.which("ollama")
@@ -316,7 +316,7 @@ async def stop_ollama_server() -> bool:
 
 
 async def delete_model(model_name: str) -> bool:
-    """Delete a model from Ollama
+    """Delete a model from Ollama.
 
     Args:
         model_name: The name of the model to delete

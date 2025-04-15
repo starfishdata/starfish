@@ -5,12 +5,12 @@ This script can be run directly to test the basic functionality.
 
 import asyncio
 import datetime
+import hashlib
 import json
 import os
 import shutil
 import traceback
 import uuid
-import hashlib
 
 from starfish.data_factory.storage.local.local_storage import LocalStorage
 from starfish.data_factory.storage.models import (
@@ -82,11 +82,11 @@ async def run_basic_test():
         run_config = {"batch_size": 5}
         run_config_str = json.dumps(run_config)
         job = GenerationJob(
-            job_id=job_id, 
-            master_job_id=master_job_id, 
-            status="pending", 
+            job_id=job_id,
+            master_job_id=master_job_id,
+            status="pending",
             run_config=run_config_str,
-            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
         )
         await storage.log_execution_job_start(job)
         print(f"✓ Execution job created: {job.job_id}")

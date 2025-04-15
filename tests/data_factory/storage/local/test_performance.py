@@ -1,13 +1,13 @@
 import argparse
 import asyncio
 import datetime
+import hashlib
+import json
 import os
 import random
 import shutil
 import time
 import uuid
-import json
-import hashlib
 from typing import Any, Dict
 
 import pytest
@@ -240,7 +240,9 @@ async def test_realistic_workflow(
             status="pending",
             worker_id=f"worker-{job_idx % (concurrency * 2)}",  # Simulate multiple workers
             run_config={"start_index": job_idx * batch_size, "count": actual_batch_size, "complexity": complexity},
-            run_config_hash=hashlib.sha256(json.dumps({"start_index": job_idx * batch_size, "count": actual_batch_size, "complexity": complexity}).encode()).hexdigest()
+            run_config_hash=hashlib.sha256(
+                json.dumps({"start_index": job_idx * batch_size, "count": actual_batch_size, "complexity": complexity}).encode()
+            ).hexdigest(),
         )
         execution_jobs.append(job)
 
@@ -309,7 +311,6 @@ async def test_realistic_workflow(
 
         # Create a list to hold data save tasks
         data_save_tasks = []
-        record_update_tasks = []
 
         # Process records for this job
         for i, record in enumerate(job_records):
@@ -422,7 +423,6 @@ async def test_realistic_workflow(
     # Paginated record retrieval (simulate UI pagination)
     page_size = 50
     page_count = (total_records + page_size - 1) // page_size
-    page_time_total = 0
 
     # Process page reads concurrently
     page_tasks = []
@@ -458,7 +458,7 @@ async def test_realistic_workflow(
         # Wait for all read tasks to complete
         for i, record, task in record_read_tasks:
             read_start = time.time()
-            record_data = await task
+            await task
             read_time = time.time() - read_start
             data_read_times.append(read_time)
             print(f"  - Record {i} data retrieval: {read_time:.4f}s")
@@ -546,7 +546,6 @@ async def test_read_performance():
     """
     # Configuration
     total_records = 500  # Can be adjusted
-    batch_size = 10
     complexity = "small"  # Use small data for faster test setup
 
     print(f"\nRunning read performance test with {total_records} total records")
@@ -612,12 +611,12 @@ async def test_read_performance():
         run_config = {"test_type": "read_performance"}
         run_config_str = json.dumps(run_config)
         job = GenerationJob(
-            job_id=job_id, 
-            master_job_id=master_job_id, 
-            status="running", 
+            job_id=job_id,
+            master_job_id=master_job_id,
+            status="running",
             worker_id="read-perf-worker",
             run_config=run_config_str,
-            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
         )
         await storage_instance.log_execution_job_start(job)
 
@@ -707,7 +706,7 @@ async def test_read_performance():
                     data_read_tasks.append(storage_instance.get_record_data(record.output_ref))
 
             # Read all data concurrently
-            all_data = await asyncio.gather(*data_read_tasks)
+            await asyncio.gather(*data_read_tasks)
             data_time = time.time() - data_start
 
             # Calculate timing for this iteration

@@ -48,6 +48,10 @@ starfish = "starfish.api.cli:main"
 [tool.ruff]
 line-length = 160
 
+# Auto-fix settings
+fix = true
+unsafe-fixes = true
+
 [tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors

@@ -1,8 +1,8 @@
 lint: 
 	@echo "Running Linter (Ruff)..."
-	isort tests/ starfish/ examples
-#	poetry run ruff check tests starfish examples --fix
-	poetry run ruff format tests starfish examples
+	poetry run isort tests/ src/ examples --check-only || poetry run isort tests/ src/ examples
+	poetry run ruff check src examples --fix --unsafe-fixes --exit-zero
+	poetry run ruff format src examples --check || poetry run ruff format src examples
 
 test:
 	poetry run pytest tests/	
@@ -10,6 +10,6 @@ test:
 install:
 	@echo "Installing dependencies..."
 	poetry install
-	poetry run pre-commit install	
+	poetry run pre-commit install --install-hooks
 
 

@@ -4,7 +4,6 @@ import nest_asyncio
 
 
 def run_in_event_loop(coroutine):
-
     try:
         # This call will raise an RuntimError if there is no event loop running.
         asyncio.get_running_loop()

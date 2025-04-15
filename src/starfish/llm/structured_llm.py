@@ -1,11 +1,10 @@
-import json
 from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
 
 from pydantic import BaseModel
 
-from starfish.llm.proxy.litellm_adapter import call_chat_model
 from starfish.llm.parser import JSONParser, PydanticParser
 from starfish.llm.prompt import PromptManager, get_partial_prompt
+from starfish.llm.proxy.litellm_adapter import call_chat_model
 from starfish.llm.utils import to_sync
 
 T = TypeVar("T")

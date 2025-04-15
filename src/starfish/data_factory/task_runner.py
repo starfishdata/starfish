@@ -1,19 +1,22 @@
 import asyncio
 import time
 from typing import Any, Callable, Dict, List
-from starfish.data_factory.config import TASK_RUNNER_TIMEOUT
+
 from starfish.common.logger import get_logger
+from starfish.data_factory.config import TASK_RUNNER_TIMEOUT
+
 logger = get_logger(__name__)
-#from starfish.common.logger_new import logger
+
+
+# from starfish.common.logger_new import logger
 class TaskRunner:
     def __init__(self, max_retries: int = 1, timeout: int = TASK_RUNNER_TIMEOUT, master_job_id: str = None):
         self.max_retries = max_retries
         self.timeout = timeout
         self.master_job_id = master_job_id
 
-
     async def run_task(self, func: Callable, input_data: Dict) -> List[Any]:
-        """Process a single task with asyncio"""
+        """Process a single task with asyncio."""
         retries = 0
         start_time = time.time()
         # maybe better to use retries in a single request instead in the batch level.
@@ -28,6 +31,6 @@ class TaskRunner:
             except Exception as e:
                 retries += 1
                 if retries > self.max_retries:
-                    #logger.error(f"Task execution failed after {self.max_retries} retries")
+                    # logger.error(f"Task execution failed after {self.max_retries} retries")
                     raise e
                 await asyncio.sleep(2**retries)  # exponential backoff

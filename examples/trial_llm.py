@@ -1,42 +1,53 @@
 import random
-import asyncio
-from typing import Any, Dict
-from starfish.llm.structured_llm import StructuredLLM
-from starfish.data_factory.factory import data_factory
-from starfish.data_factory.constants import STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FILTERED, STATUS_FAILED, STORAGE_TYPE_IN_MEMORY, STORAGE_TYPE_LOCAL
-from starfish.data_factory.state import MutableSharedState
+from typing import Any
+
 from starfish.common.logger import get_logger
+from starfish.data_factory.constants import (
+    STATUS_COMPLETED,
+    STATUS_DUPLICATE,
+    STATUS_FAILED,
+    STORAGE_TYPE_LOCAL,
+)
+from starfish.data_factory.factory import data_factory
+from starfish.data_factory.state import MutableSharedState
 from starfish.data_factory.utils.mock import mock_llm_call
+
 logger = get_logger(__name__)
+
+
 # Add callback for error handling
 # todo state is a class with thread safe dict
 def handle_error(data: Any, state: MutableSharedState):
     logger.error(f"Error occurred: {data}")
     return STATUS_FAILED
 
-def handle_record_complete(data: Any, state: MutableSharedState):
-    #print(f"Record complete: {data}")
 
-    state.set("completed_count",  1)
-    state_data = state.data
+def handle_record_complete(data: Any, state: MutableSharedState):
+    # print(f"Record complete: {data}")
+
+    state.set("completed_count", 1)
     state.update({"completed_count": 2})
     return STATUS_COMPLETED
 
+
 def handle_duplicate_record(data: Any, state: MutableSharedState):
     logger.debug(f"Record duplicated: {data}")
-    state.set("completed_count",  1)
-    state_data = state.data
+    state.set("completed_count", 1)
     state.update({"completed_count": 2})
-    #return STATUS_DUPLICATE
+    # return STATUS_DUPLICATE
     if random.random() < 0.9:
         return STATUS_COMPLETED
     return STATUS_DUPLICATE
 
 
-
 @data_factory(
-    storage=STORAGE_TYPE_LOCAL, max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], 
-    on_record_error=[handle_error],show_progress=True, task_runner_timeout=10
+    storage=STORAGE_TYPE_LOCAL,
+    max_concurrency=50,
+    initial_state_values={},
+    on_record_complete=[handle_record_complete, handle_duplicate_record],
+    on_record_error=[handle_error],
+    show_progress=True,
+    task_runner_timeout=10,
 )
 async def get_city_info_wf(city_name, region_code):
     # structured_llm = StructuredLLM(
@@ -62,7 +73,7 @@ async def get_city_info_wf(city_name, region_code):
     # )
     # output = await validation_llm.run(data=output.data)
 
-    #return output.data
+    # return output.data
     return await mock_llm_call(city_name, num_records_per_city=3, fail_rate=0.01, sleep_time=1)
 
 
@@ -76,24 +87,23 @@ async def get_city_info_wf(city_name, region_code):
 user_case = "run"
 if user_case == "run":
     results = get_city_info_wf.run(
-        #data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
-        #[{"city_name": "Berlin"}, {"city_name": "Rome"}],
-    city_name=["San Francisco", "New York", "Los Angeles"]*50,
-    region_code=["DE", "IT", "US"]*50,
+        # data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
+        # [{"city_name": "Berlin"}, {"city_name": "Rome"}],
+        city_name=["San Francisco", "New York", "Los Angeles"] * 50,
+        region_code=["DE", "IT", "US"] * 50,
         # city_name="Beijing",  ### Overwrite the data key
         # num_records_per_city = 3
     )
-elif user_case == "dry_run":    
+elif user_case == "dry_run":
     results = get_city_info_wf.dry_run(
-        #data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
-        #[{"city_name": "Berlin"}, {"city_name": "Rome"}],
-        city_name=["San Francisco", "New York", "Los Angeles"]*10,
-        region_code=["DE", "IT", "US"]*10,
-            # city_name="Beijing",  ### Overwrite the data key
-            # num_records_per_city = 3
-        )
+        # data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
+        # [{"city_name": "Berlin"}, {"city_name": "Rome"}],
+        city_name=["San Francisco", "New York", "Los Angeles"] * 10,
+        region_code=["DE", "IT", "US"] * 10,
+        # city_name="Beijing",  ### Overwrite the data key
+        # num_records_per_city = 3
+    )
 elif user_case == "re_run":
-    results = get_city_info_wf.re_run( master_job_id="05668e16-6f47-4ccf-9f25-4ff7b7030bdb")
+    results = get_city_info_wf.re_run(master_job_id="05668e16-6f47-4ccf-9f25-4ff7b7030bdb")
 
-#logger.info(f"Results: {results}")
-    
+# logger.info(f"Results: {results}")

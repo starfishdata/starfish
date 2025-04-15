@@ -26,28 +26,27 @@ STORAGE_TYPE_LOCAL = "local"
 STORAGE_TYPE_IN_MEMORY = "in_memory"
 
 
-
 # Define the function directly in constants to avoid circular imports
 def get_app_data_dir():
-    """Returns a platform-specific directory for application data storage.
-    
+    r"""Returns a platform-specific directory for application data storage.
+
     Following platform conventions:
     - Linux: ~/.local/share/starfish
     - macOS: ~/Library/Application Support/starfish
     - Windows: %LOCALAPPDATA%\starfish
-    
+
     Environment variable STARFISH_LOCAL_STORAGE_DIR can override this location.
     """
     # Allow override through environment variable
     env_dir = os.environ.get("STARFISH_LOCAL_STORAGE_DIR")
     if env_dir:
         return env_dir
-    
+
     app_name = "starfish"
-    
+
     # Get user's home directory
     home = Path.home()
-    
+
     # Platform-specific paths
     if sys.platform == "win32":
         # Windows: Use %LOCALAPPDATA% if available, otherwise construct from home
@@ -64,8 +63,9 @@ def get_app_data_dir():
         if not xdg_data_home:
             xdg_data_home = os.path.join(home, ".local", "share")
         base_dir = os.path.join(xdg_data_home, app_name)
-    
+
     return base_dir
+
 
 # Get application database directory
 APP_DATA_DIR = get_app_data_dir()

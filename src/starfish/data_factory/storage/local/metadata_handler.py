@@ -6,10 +6,14 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from starfish.data_factory.constants import STATUS_COMPLETED, STATUS_FAILED, STATUS_FILTERED, STATUS_DUPLICATE
-
 import aiosqlite
 
+from starfish.data_factory.constants import (
+    STATUS_COMPLETED,
+    STATUS_DUPLICATE,
+    STATUS_FAILED,
+    STATUS_FILTERED,
+)
 from starfish.data_factory.storage.local.setup import (
     initialize_db_schema,  # Import setup function
 )
@@ -451,7 +455,7 @@ class SQLiteMetadataHandler:
         sql = "SELECT * FROM GenerationJob WHERE master_job_id = ? AND run_config_hash = ? AND status = ?"
         rows = await self._fetchall_sql(sql, (master_job_id, config_hash, job_status))
         return [_row_to_pydantic(GenerationJob, row) for row in rows] if rows else []
-    
+
     async def list_record_metadata_impl(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
         sql = "SELECT * FROM Records WHERE master_job_id = ? AND job_id = ?"
         rows = await self._fetchall_sql(sql, (master_job_uuid, job_uuid))

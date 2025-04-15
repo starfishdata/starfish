@@ -24,7 +24,7 @@ Processing:
 {{ schema_instruction }}
 
 {% else %}
-You are asked to generate exactly {{ num_records }} records and please return the data in the following JSON format: 
+You are asked to generate exactly {{ num_records }} records and please return the data in the following JSON format:
 {{ schema_instruction }}
 {% endif %}
 """
@@ -177,12 +177,12 @@ You are asked to generate exactly {{ num_records }} records and please return th
 
         # Create a copy of variables to avoid modifying the original
         render_vars = variables.copy()
-        
+
         # Check for list inputs with priority given to required variables
         is_list_input = False
         list_input_variable = None
         input_list_length = None
-        
+
         # Check variables in priority order (required first, then optional)
         for var in list(self.required_vars) + list(self.optional_vars):
             if var in render_vars and isinstance(render_vars[var], list):
@@ -206,7 +206,7 @@ You are asked to generate exactly {{ num_records }} records and please return th
 
         # Add default num_records (always use default value of 1 if not specified)
         render_vars["num_records"] = render_vars.get("num_records", 1)
-                
+
         return self._template.render(**render_vars)
 
     def construct_messages(self, variables: Dict[str, Any]) -> List[Dict[str, str]]:

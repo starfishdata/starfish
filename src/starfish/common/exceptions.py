@@ -18,8 +18,10 @@ INCLUDE_TRACEBACK_IN_RESPONSE = os.environ.get("INCLUDE_TRACEBACK_IN_RESPONSE", 
 # HTTP Status Codes
 #############################################
 
+
 class HTTPStatus:
-    """Standard HTTP status codes"""
+    """Standard HTTP status codes."""
+
     OK = 200
     BAD_REQUEST = 400
     UNAUTHORIZED = 401
@@ -28,13 +30,14 @@ class HTTPStatus:
     UNPROCESSABLE_ENTITY = 422
     INTERNAL_SERVER_ERROR = 500
 
+
 #############################################
 # Error Response Model
 #############################################
 
 
 class ErrorResponse(BaseModel):
-    """Standardized error response format for API errors"""
+    """Standardized error response format for API errors."""
 
     status: str = "error"
     error_id: str = Field(..., description="Unique identifier for this error occurrence")
@@ -49,7 +52,7 @@ class ErrorResponse(BaseModel):
 
 
 class StarfishException(Exception):
-    """Base exception for all Starfish exceptions"""
+    """Base exception for all Starfish exceptions."""
 
     status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR
     default_message: str = "An unexpected error occurred"
@@ -67,7 +70,7 @@ class StarfishException(Exception):
 
 
 class ValidationError(StarfishException):
-    """Exception raised for validation errors"""
+    """Exception raised for validation errors."""
 
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
     default_message = "Validation error"

@@ -6,12 +6,13 @@ This script tests the core functionality of the storage layer in a sequence of o
 
 import asyncio
 import datetime
+import hashlib
+import json
 import os
 import shutil
 import time
 import uuid
-import json
-import hashlib
+
 import pytest
 
 # Import storage components
@@ -97,12 +98,12 @@ async def test_basic_workflow():
         run_config = {"test_param": "test_value"}
         run_config_str = json.dumps(run_config)
         job = GenerationJob(
-            job_id=job_id, 
-            master_job_id=master_job_id, 
-            status="pending", 
+            job_id=job_id,
+            master_job_id=master_job_id,
+            status="pending",
             worker_id="test-worker-1",
             run_config=run_config_str,
-            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
         )
         await storage.log_execution_job_start(job)
         print(f"  - Created execution job: {job.job_id}")
@@ -254,12 +255,12 @@ async def small_performance_test():
             run_config = {"job_idx": job_idx, "records_per_job": RECORDS_PER_JOB}
             run_config_str = json.dumps(run_config)
             job = GenerationJob(
-                job_id=job_id, 
-                master_job_id=master_job_id, 
-                status="running", 
+                job_id=job_id,
+                master_job_id=master_job_id,
+                status="running",
                 worker_id=f"worker-{job_idx}",
                 run_config=run_config_str,
-                run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+                run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
             )
             await storage.log_execution_job_start(job)
 
