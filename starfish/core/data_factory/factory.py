@@ -181,7 +181,12 @@ class DataFactory:
 
     def _process_batches(self) -> List[Any]:
         """Process batches with asyncio"""
-        logger.info(f"Job started. Master Job ID: {self.master_job_id}. Logging progress every {PROGRESS_LOG_INTERVAL} seconds.")
+        logger.info(
+            f"[JOB PROGRESS] "
+            f"\033[1mJob started:\033[0m "
+            f"\033[36mMaster Job ID: {self.master_job_id}\033[0m | "
+            f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
+        )
         return self.job_manager.run_orchestration()
         
 
@@ -341,7 +346,7 @@ class DataFactory:
     
     def show_job_progress_status(self):
         target_count = self.job_config.get("target_count")
-        logger.info(f"Job finished. Final Stats: Completed: {self.job_manager.completed_count}/{target_count} | Attempted: {self.job_manager.total_count} (Failed: {self.job_manager.failed_count}, Filtered: {self.job_manager.filtered_count}, Duplicate: {self.job_manager.duplicate_count})")
+        #logger.info(f"Job finished. Final Stats: Completed: {self.job_manager.completed_count}/{target_count} | Attempted: {self.job_manager.total_count} (Failed: {self.job_manager.failed_count}, Filtered: {self.job_manager.filtered_count}, Duplicate: {self.job_manager.duplicate_count})")
         if self.job_config.get("show_progress"):
             self.progress.start()
             

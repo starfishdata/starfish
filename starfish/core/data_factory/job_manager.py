@@ -138,7 +138,16 @@ class JobManager:
     async def _progress_ticker(self):
         """Log a message every 5 seconds"""
         while not self.is_job_to_stop():
-            logger.info(f" Progress: Completed: {self.completed_count}/{self.target_count} | Running: {self.semaphore._value} | Attempted: {self.total_count} (Completed: {self.completed_count}, Failed: {self.failed_count}, Filtered: {self.filtered_count}, Duplicate: {self.duplicate_count})")
+            logger.info(
+                f"\033[1mProgress:\033[0m "
+                f"\033[32mCompleted: {self.completed_count}/{self.target_count}\033[0m | "
+                f"\033[33mRunning: {self.semaphore._value}\033[0m | "
+                f"\033[36mAttempted: {self.total_count}\033[0m\n"
+                f"    (\033[32mCompleted: {self.completed_count}\033[0m, "
+                f"\033[31mFailed: {self.failed_count}\033[0m, "
+                f"\033[35mFiltered: {self.filtered_count}\033[0m, "
+                f"\033[34mDuplicate: {self.duplicate_count}\033[0m)"
+            )
             await asyncio.sleep(PROGRESS_LOG_INTERVAL)
 
     async def _async_run_orchestration(self):

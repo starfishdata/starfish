@@ -45,7 +45,7 @@ async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.5, sleep_ti
 
 @data_factory(
     storage=STORAGE_TYPE_LOCAL, max_concurrency=50, initial_state_values={}, on_record_complete=[handle_record_complete, handle_duplicate_record], 
-    on_record_error=[handle_error],show_progress=True
+    on_record_error=[handle_error],show_progress=True, task_runner_timeout=10
 )
 async def get_city_info_wf(city_name, region_code):
     # structured_llm = StructuredLLM(
