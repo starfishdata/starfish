@@ -1,9 +1,9 @@
 ### Prototype user flow for each user case
-from starfish.core.structured_llm import StructuredLLM
+from starfish import StructuredLLM, data_factory
 
 
 ### Use Case 1: Parallel Kwargs
-@generator()
+@data_factory()
 def workflow(city_name):
     structured_llm = StructuredLLM(
         model="gpt-4o", prompt="Given the city name {{city_name}}, please generate the country code", output_schema=[{"name": "country_code", "type": "string"}]
@@ -18,7 +18,7 @@ data = workflow.run(city_name=["San Francisco", "New York", "Los Angeles"])
 
 
 ### Use Case 2: Parallel + Broadcast Kwargs
-@generator()
+@data_factory()
 def workflow(city_name, num_records_per_city):
     structured_llm = StructuredLLM(
         model="gpt-4o",
@@ -47,7 +47,7 @@ data = workflow.run(data = [
 
 
 ### Use Case 5: data (List[Dict]) + Parallel Kwarg (Matching Lengths)
-@generator()
+@data_factory()
 def get_city_info_wf(city_name, region_code):
     structured_llm = StructuredLLM(
         model="gpt-4o", prompt="Get state/province for {{city_name}} in region {{region_code}}.", output_schema=[{"name": "state_province", "type": "string"}]
@@ -66,7 +66,7 @@ get_city_info_wf.run(
 
 
 ### Use Case 6: data + Parallel Kwarg + Broadcast Kwarg
-@generator()
+@data_factory()
 def get_city_info_wf(city_name, region_code, num_records_per_city):
     structured_llm = StructuredLLM(
         model="gpt-4o", prompt="Get state/province for {{city_name}} in region {{region_code}}.", output_schema=[{"name": "state_province", "type": "string"}]

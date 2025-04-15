@@ -6,10 +6,9 @@ from langgraph.graph import Graph, StateGraph
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
 
-from starfish.utils.data_factory import data_factory
-from starfish.core.structured_llm import StructuredLLM
-from starfish.utils.constants import RECORD_STATUS
-from starfish.utils.enums import RecordStatus
+from starfish import StructuredLLM, data_factory
+from starfish.data_factory.constants import RECORD_STATUS
+from starfish.data_factory.enums import RecordStatus
 
 # Define a simple tool
 @tool

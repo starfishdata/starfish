@@ -10,9 +10,10 @@ import os
 import shutil
 import traceback
 import uuid
+import hashlib
 
-from starfish.core.data_factory.storage.local.local_storage import LocalStorage
-from starfish.core.data_factory.storage.models import (
+from starfish.data_factory.storage.local.local_storage import LocalStorage
+from starfish.data_factory.storage.models import (
     GenerationJob,
     GenerationMasterJob,
     Project,
@@ -78,7 +79,15 @@ async def run_basic_test():
         # Create an execution job
         print("Step 6: Creating execution job")
         job_id = str(uuid.uuid4())
-        job = GenerationJob(job_id=job_id, master_job_id=master_job_id, status="pending", run_config={"batch_size": 5})
+        run_config = {"batch_size": 5}
+        run_config_str = json.dumps(run_config)
+        job = GenerationJob(
+            job_id=job_id, 
+            master_job_id=master_job_id, 
+            status="pending", 
+            run_config=run_config_str,
+            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+        )
         await storage.log_execution_job_start(job)
         print(f"✓ Execution job created: {job.job_id}")
 

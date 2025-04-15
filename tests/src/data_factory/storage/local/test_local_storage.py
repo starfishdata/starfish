@@ -2,12 +2,14 @@ import datetime
 import os
 import shutil
 import uuid
+import json
+import hashlib
 
 import pytest
 import pytest_asyncio
 
-from starfish.core.data_factory.storage.local.local_storage import LocalStorage
-from starfish.core.data_factory.storage.models import (
+from starfish.data_factory.storage.local.local_storage import LocalStorage
+from starfish.data_factory.storage.models import (
     GenerationJob,
     GenerationMasterJob,
     Project,
@@ -245,7 +247,15 @@ async def test_execution_job_lifecycle(storage, test_master_job):
     """Test the lifecycle of an execution job."""
     # Create execution job
     job_id = str(uuid.uuid4())
-    job = GenerationJob(job_id=job_id, master_job_id=test_master_job.master_job_id, status="pending", run_config={"batch_size": 10})
+    run_config = {"batch_size": 10}
+    run_config_str = json.dumps(run_config)
+    job = GenerationJob(
+        job_id=job_id, 
+        master_job_id=test_master_job.master_job_id, 
+        status="pending", 
+        run_config=run_config_str,
+        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+    )
 
     # Log job start
     await storage.log_execution_job_start(job)
@@ -278,7 +288,15 @@ async def test_list_execution_jobs(storage, test_master_job):
 
     for status, count in status_counts.items():
         for i in range(count):
-            job = GenerationJob(job_id=str(uuid.uuid4()), master_job_id=test_master_job.master_job_id, status=status, run_config={"batch": i})
+            run_config = {"batch": i}
+            run_config_str = json.dumps(run_config)
+            job = GenerationJob(
+                job_id=str(uuid.uuid4()), 
+                master_job_id=test_master_job.master_job_id, 
+                status=status, 
+                run_config=run_config_str,
+                run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+            )
             await storage.log_execution_job_start(job)
 
     # List all jobs for master
@@ -308,7 +326,15 @@ async def test_list_execution_jobs(storage, test_master_job):
 async def test_record_storage(storage, test_master_job):
     """Test saving and retrieving record data and metadata."""
     # Create execution job first
-    job = GenerationJob(job_id=str(uuid.uuid4()), master_job_id=test_master_job.master_job_id, status="running")
+    run_config = {"test": "record_storage"}
+    run_config_str = json.dumps(run_config)
+    job = GenerationJob(
+        job_id=str(uuid.uuid4()), 
+        master_job_id=test_master_job.master_job_id, 
+        status="running",
+        run_config=run_config_str,
+        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+    )
     await storage.log_execution_job_start(job)
 
     # Create record
@@ -348,7 +374,15 @@ async def test_record_storage(storage, test_master_job):
 async def test_get_records_for_master_job(storage, test_master_job):
     """Test retrieving records for a master job with filters."""
     # Create execution job
-    job = GenerationJob(job_id=str(uuid.uuid4()), master_job_id=test_master_job.master_job_id, status="running")
+    run_config = {"test": "get_records"}
+    run_config_str = json.dumps(run_config)
+    job = GenerationJob(
+        job_id=str(uuid.uuid4()), 
+        master_job_id=test_master_job.master_job_id, 
+        status="running",
+        run_config=run_config_str,
+        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+    )
     await storage.log_execution_job_start(job)
 
     # Create records with different statuses
@@ -445,7 +479,15 @@ async def test_complete_workflow(storage):
 
     # 4. Create execution job
     job_id = str(uuid.uuid4())
-    job = GenerationJob(job_id=job_id, master_job_id=master_job_id, status="pending", run_config={"batch_size": 10})
+    run_config = {"batch_size": 10}
+    run_config_str = json.dumps(run_config)
+    job = GenerationJob(
+        job_id=job_id, 
+        master_job_id=master_job_id, 
+        status="pending", 
+        run_config=run_config_str,
+        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+    )
     await storage.log_execution_job_start(job)
 
     # 5. Start execution job

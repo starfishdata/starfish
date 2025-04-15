@@ -119,8 +119,8 @@ class Registry(Generic[T]):
     def _get_module_name(self, type_name: str) -> str:
         """Get the module name to import for a given type name.
 
-        Current pattern supports components that are two levels deep under the "core" folder:
-        e.g., starfish.core.storage.prefixed_filesystem for prefixed_filesystem storage type
+        Current pattern supports components that are two levels deep under the "data_factory" folder:
+        e.g., starfish.data_factory.storage.prefixed_filesystem for prefixed_filesystem storage type
 
         Args:
             type_name: The name of the type to get the module for
@@ -132,12 +132,12 @@ class Registry(Generic[T]):
 
         # Components under core/ folder (standard pattern)
         module_parts = base_module.split(".")
-        core_index = module_parts.index("core")
+        core_index = module_parts.index("data_factory")
 
-        # Get the component type (e.g., "storage" from "starfish.core.storage.base")
+        # Get the component type (e.g., "storage" from "starfish.data_factory.storage.base")
         if core_index + 1 < len(module_parts):
             component_type = module_parts[core_index + 1]
-            return f"starfish.core.{component_type}.{type_name}"
+            return f"starfish.data_factory.{component_type}.{type_name}"
 
     def get_input_model(self, type_name: str) -> Optional[Type[BaseModel]]:
         """Get the input model associated with a component type.

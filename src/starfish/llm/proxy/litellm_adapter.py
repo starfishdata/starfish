@@ -46,7 +46,7 @@ Model router for directing requests to appropriate model backends
 import shutil
 from typing import Dict, List, Optional
 
-from starfish.core.common.logger import get_logger
+from starfish.common.logger import get_logger
 
 logger = get_logger(__name__)
 

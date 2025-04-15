@@ -1,7 +1,6 @@
-from starfish.core.structured_llm import StructuredLLM
+from starfish import StructuredLLM, data_factory
 from starfish.common.env_loader import load_env_file
-from starfish.common.utils import merge_structured_outputs
-from starfish.utils.data_factory import data_factory
+from starfish.llm.utils import merge_structured_outputs
 from datetime import datetime
 
 load_env_file()

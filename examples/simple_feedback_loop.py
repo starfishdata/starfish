@@ -2,10 +2,9 @@ import asyncio
 from typing import Dict, Optional, List
 from datetime import datetime
 
-from starfish.core.structured_llm import StructuredLLM
-from starfish.utils.constants import RECORD_STATUS
-from starfish.utils.enums import RecordStatus
-from starfish.utils.data_factory import data_factory
+from starfish import StructuredLLM, data_factory
+from starfish.data_factory.constants import RECORD_STATUS
+from starfish.data_factory.enums import RecordStatus
 
 # Create a StructuredLLM instance for city information generation
 city_facts_llm = StructuredLLM(

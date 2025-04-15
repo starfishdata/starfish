@@ -3,12 +3,12 @@ import nest_asyncio
 import asyncio
 import random
 
-from starfish.core.data_factory.constants import STATUS_COMPLETED
+from starfish.data_factory.constants import STATUS_COMPLETED
 
 nest_asyncio.apply()
-from starfish.core.common.env_loader import load_env_file
+from starfish.common.env_loader import load_env_file
 from starfish import data_factory
-from starfish.core.data_factory.state import MutableSharedState
+from starfish.data_factory.state import MutableSharedState
 load_env_file()
 ### Mock LLM call
 

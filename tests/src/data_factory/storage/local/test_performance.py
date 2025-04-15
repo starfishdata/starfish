@@ -6,13 +6,15 @@ import random
 import shutil
 import time
 import uuid
+import json
+import hashlib
 from typing import Any, Dict
 
 import pytest
 import pytest_asyncio
 
-from starfish.core.data_factory.storage.local.local_storage import LocalStorage
-from starfish.core.data_factory.storage.models import (
+from starfish.data_factory.storage.local.local_storage import LocalStorage
+from starfish.data_factory.storage.models import (
     GenerationJob,
     GenerationMasterJob,
     Project,
@@ -109,7 +111,7 @@ async def batch_operation(tasks, concurrency=DEFAULT_CONCURRENCY):
     return await asyncio.gather(*(task_with_semaphore(task) for task in tasks))
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(scope="function")
 async def storage(request):
     """Fixture to create and clean up a test storage for the entire module."""
     # Get test directory from the request object (passed from test function)
@@ -238,6 +240,7 @@ async def test_realistic_workflow(
             status="pending",
             worker_id=f"worker-{job_idx % (concurrency * 2)}",  # Simulate multiple workers
             run_config={"start_index": job_idx * batch_size, "count": actual_batch_size, "complexity": complexity},
+            run_config_hash=hashlib.sha256(json.dumps({"start_index": job_idx * batch_size, "count": actual_batch_size, "complexity": complexity}).encode()).hexdigest()
         )
         execution_jobs.append(job)
 
@@ -606,7 +609,16 @@ async def test_read_performance():
 
         # Create a single job for all records (for simplicity)
         job_id = str(uuid.uuid4())
-        job = GenerationJob(job_id=job_id, master_job_id=master_job_id, status="running", worker_id="read-perf-worker")
+        run_config = {"test_type": "read_performance"}
+        run_config_str = json.dumps(run_config)
+        job = GenerationJob(
+            job_id=job_id, 
+            master_job_id=master_job_id, 
+            status="running", 
+            worker_id="read-perf-worker",
+            run_config=run_config_str,
+            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+        )
         await storage_instance.log_execution_job_start(job)
 
         # Create and save all records with random data

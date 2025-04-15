@@ -10,10 +10,13 @@ import os
 import shutil
 import time
 import uuid
+import json
+import hashlib
+import pytest
 
 # Import storage components
-from starfish.core.data_factory.storage.local.local_storage import LocalStorage
-from starfish.core.data_factory.storage.models import (
+from starfish.data_factory.storage.local.local_storage import LocalStorage
+from starfish.data_factory.storage.models import (
     GenerationJob,
     GenerationMasterJob,
     Project,
@@ -35,6 +38,7 @@ def print_header(title):
     print("=" * 80)
 
 
+@pytest.mark.asyncio
 async def test_basic_workflow():
     """Test the basic workflow of the storage layer."""
     print_header("TESTING BASIC STORAGE WORKFLOW")
@@ -90,7 +94,16 @@ async def test_basic_workflow():
         # 3. Create an execution job
         print("\n3. Creating execution job...")
         job_id = str(uuid.uuid4())
-        job = GenerationJob(job_id=job_id, master_job_id=master_job_id, status="pending", worker_id="test-worker-1")
+        run_config = {"test_param": "test_value"}
+        run_config_str = json.dumps(run_config)
+        job = GenerationJob(
+            job_id=job_id, 
+            master_job_id=master_job_id, 
+            status="pending", 
+            worker_id="test-worker-1",
+            run_config=run_config_str,
+            run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+        )
         await storage.log_execution_job_start(job)
         print(f"  - Created execution job: {job.job_id}")
 
@@ -188,6 +201,7 @@ async def test_basic_workflow():
             print(f"\nLeaving test database in place for inspection: {TEST_DB_DIR}")
 
 
+@pytest.mark.asyncio
 async def small_performance_test():
     """Run a small performance test."""
     print_header("RUNNING SMALL PERFORMANCE TEST")
@@ -237,7 +251,16 @@ async def small_performance_test():
         for job_idx in range(NUM_JOBS):
             # Create job
             job_id = str(uuid.uuid4())
-            job = GenerationJob(job_id=job_id, master_job_id=master_job_id, status="running", worker_id=f"worker-{job_idx}")
+            run_config = {"job_idx": job_idx, "records_per_job": RECORDS_PER_JOB}
+            run_config_str = json.dumps(run_config)
+            job = GenerationJob(
+                job_id=job_id, 
+                master_job_id=master_job_id, 
+                status="running", 
+                worker_id=f"worker-{job_idx}",
+                run_config=run_config_str,
+                run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+            )
             await storage.log_execution_job_start(job)
 
             # Create records
@@ -303,6 +326,7 @@ async def small_performance_test():
             shutil.rmtree(TEST_DB_DIR)
 
 
+@pytest.mark.asyncio
 async def main():
     """Main test function."""
     print(f"Storage test mode: {TEST_MODE}")

@@ -1,10 +1,10 @@
 import pytest
 
-from starfish.core.llm.prompt import PromptManager
-from starfish.core.llm.prompt.prompt_loader import get_prompt, get_partial_prompt
+from starfish.llm.prompt import PromptManager
+from starfish.llm.prompt.prompt_loader import get_prompt, get_partial_prompt
 
 
-"""Tests for the PromptManager class and related functionality in starfish.core.llm.prompt.
+"""Tests for the PromptManager class and related functionality in starfish.llm.prompt.
 
 This test suite covers:
 1. Variable identification (required vs optional variables in templates)
@@ -389,7 +389,7 @@ class TestPromptManager:
 # Test the utility functions outside the class
 def test_get_prompt():
     """Test the get_prompt utility function."""
-    from starfish.core.llm.prompt.prompt_template import COMPLETE_PROMPTS
+    from starfish.llm.prompt.prompt_template import COMPLETE_PROMPTS
     
     # Get a key from COMPLETE_PROMPTS
     prompt_name = next(iter(COMPLETE_PROMPTS.keys()))
@@ -411,7 +411,7 @@ def test_get_prompt():
 
 def test_get_partial_prompt():
     """Test the get_partial_prompt utility function."""
-    from starfish.core.llm.prompt.prompt_template import PARTIAL_PROMPTS
+    from starfish.llm.prompt.prompt_template import PARTIAL_PROMPTS
     
     # Get a key from PARTIAL_PROMPTS
     prompt_name = next(iter(PARTIAL_PROMPTS.keys()))
