@@ -34,6 +34,18 @@ logger = get_logger(__name__)
 
 
 class DataFactory:
+    """Core class for managing data generation pipelines.
+
+    This class handles the orchestration of data generation tasks, including:
+    - Input data processing
+    - Job management and execution
+    - Storage configuration
+    - Progress tracking
+    - Error handling
+
+    It's typically instantiated through the @data_factory decorator.
+    """
+
     def __init__(
         self,
         storage: str,
@@ -47,6 +59,20 @@ class DataFactory:
         show_progress: bool,
         task_runner_timeout: int,
     ):
+        """Initialize the DataFactory instance.
+
+        Args:
+            storage: Storage backend to use ('local' or 'in_memory')
+            batch_size: Number of records to process in each batch
+            max_concurrency: Maximum number of concurrent tasks
+            target_count: Target number of records to generate (0 means process all input)
+            state: Shared state object for tracking job state
+            on_record_complete: List of callbacks to execute after successful record processing
+            on_record_error: List of callbacks to execute after failed record processing
+            input_converter: Function to convert input data to Queue format
+            show_progress: Whether to display progress bar
+            task_runner_timeout: Timeout in seconds for task execution
+        """
         # self.storage = storage
         self.batch_size = batch_size
         self.input_converter = input_converter
@@ -68,6 +94,20 @@ class DataFactory:
         self.err = None
 
     def __call__(self, func: Callable):
+        """Decorator implementation that wraps the data processing function.
+
+        This method handles the main execution flow for different run modes:
+        - Normal mode: Processes all input data
+        - Re-run mode: Re-runs a previous job using stored configuration
+        - Dry-run mode: Processes only the first input item for testing
+
+        Args:
+            func: The data processing function to be wrapped
+
+        Returns:
+            A wrapper function that handles the execution flow and provides
+            additional methods (run, re_run, dry_run) for different modes
+        """
         # self.job_manager.add_job(func)
 
         @wraps(func)
@@ -107,30 +147,42 @@ class DataFactory:
 
                 self._process_batches()
 
-                result = self._process_output()
-                if len(result) == 0:
-                    raise ValueError("No records generated")
-                return result
             except (TypeError, ValueError, KeyboardInterrupt) as e:
                 self.err = e
-                raise e
+                # raise e
             finally:
-                self._complete_master_job()
-                self._close_storage()
-                # Only execute finally block if not TypeError
-                if self.err:
-                    logger.error(f"Error occurred: {self.err}")
-                    logger.error(f"Please rerun the job with master_job_id {self.master_job_id}")
+                if not isinstance(self.err, TypeError):
+                    result = self._process_output()
+                    if len(result) == 0:
+                        self.err = ValueError("No records generated")
+
+                    self._complete_master_job()
+                    self._close_storage()
+                    # Only execute finally block if not TypeError
+                    if self.err and not isinstance(self.err, ValueError):
+                        logger.error(f"Error occurred: {self.err}")
+
+                        logger.info(f'Job stopped unexpectedly.You can resume the job using master_job_id by re_run("{self.master_job_id}")')
+                    self._show_job_progress_status()
+                    if isinstance(self.err, ValueError):
+                        raise self.err
+                    else:
+                        return result
                 else:
-                    if run_mode != RUN_MODE_DRY_RUN:
-                        self.show_job_progress_status()
+                    raise self.err
 
         # Add run method to the wrapped function
         def run(*args, **kwargs):
-            if "master_job_id" in kwargs:
-                # re_run mode
-                self.master_job_id = kwargs["master_job_id"]
-                self.job_config[RUN_MODE] = RUN_MODE_RE_RUN
+            return wrapper(*args, **kwargs)
+
+        def re_run(*args, **kwargs):
+            if len(args) == 1:
+                self.master_job_id = args[0]
+            elif "master_job_id" in kwargs:
+                self.master_job_id = kwargs.get("master_job_id")
+            else:
+                raise TypeError("Master job id is required")
+            self.job_config[RUN_MODE] = RUN_MODE_RE_RUN
             return wrapper(*args, **kwargs)
 
         def dry_run(*args, **kwargs):
@@ -138,7 +190,7 @@ class DataFactory:
             return wrapper(*args, **kwargs)
 
         wrapper.run = run
-        wrapper.re_run = run
+        wrapper.re_run = re_run
         wrapper.dry_run = dry_run
         wrapper.state = self.job_config.get("state")
         self.func = func
@@ -176,7 +228,7 @@ class DataFactory:
                 raise TypeError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
     def _setup_storage_and_job_manager(self):
-        self.storage_setup()
+        self._storage_setup()
 
         self.job_manager = JobManager(job_config=self.job_config, storage=self.factory_storage)
 
@@ -210,6 +262,13 @@ class DataFactory:
             master_job_config_data = await self.factory_storage.get_request_config(master_job.request_config_ref)
             # Convert list to dict with count tracking using hash values
             input_data = master_job_config_data.get("input_data")
+            logger.info(
+                f"\033[1mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n"
+                f"\033[1mSTATUS AT THE TIME OF RE-RUN:\033[0m "
+                f"\033[32mCompleted: {master_job.completed_record_count} / {len(input_data)}\033[0m | "
+                f"\033[31mFailed: {master_job.failed_record_count}\033[0m | "
+                f"\033[33mFiltered: {master_job.filtered_record_count}\033[0m"
+            )
 
             input_dict = {}
             for item in input_data:
@@ -272,7 +331,7 @@ class DataFactory:
         if self.factory_storage:
             await self.factory_storage.close()
 
-    def storage_setup(self):
+    def _storage_setup(self):
         if self.storage == "local":
             self.factory_storage = LocalStorage(LOCAL_STORAGE_URI)
             asyncio.run(self.factory_storage.setup())
@@ -329,7 +388,7 @@ class DataFactory:
             # self.job_config["progress"] = self.progress
             # self.job_config["progress_tasks"] = self.progress_tasks
 
-    def show_job_progress_status(self):
+    def _show_job_progress_status(self):
         target_count = self.job_config.get("target_count")
         logger.info(
             f"[JOB PROGRESS] "
@@ -357,7 +416,7 @@ class DataFactory:
         #     self.progress.stop()
 
 
-def default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Queue[Dict[str, Any]]:
+def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Queue[Dict[str, Any]]:
     # Determine parallel sources
     if data is None:
         data = []
@@ -410,9 +469,32 @@ def data_factory(
     on_record_complete: List[Callable] = None,
     on_record_error: List[Callable] = None,
     show_progress: bool = True,
-    input_converter=default_input_converter,
+    input_converter=_default_input_converter,
     task_runner_timeout: int = TASK_RUNNER_TIMEOUT,
 ):
+    """Decorator factory for creating data processing pipelines.
+
+    Args:
+        storage (str): Storage backend to use ('local' or 'in_memory'). Defaults to 'local'.
+        batch_size (int): Number of records to process in each batch. Defaults to 1.
+        target_count (int): Target number of records to generate. 0 means process all input. Defaults to 0.
+        max_concurrency (int): Maximum number of concurrent tasks. Defaults to 50.
+        initial_state_values (Dict[str, Any]): Initial values for shared state. Defaults to empty dict.
+        on_record_complete (List[Callable]): Callbacks to execute after each successful record processing.
+        on_record_error (List[Callable]): Callbacks to execute after each failed record processing.
+        show_progress (bool): Whether to display progress bar. Defaults to True.
+        input_converter (Callable): Function to convert input data to Queue format. Defaults to _default_input_converter.
+        task_runner_timeout (int): Timeout in seconds for task execution. Defaults to TASK_RUNNER_TIMEOUT.
+
+    Returns:
+        DataFactory: Configured data factory instance to be used as a decorator.
+
+    Example:
+        @data_factory(storage='local', max_concurrency=50)
+        def process_data(item):
+            # data processing logic
+            return processed_data
+    """
     if on_record_error is None:
         on_record_error = []
     if on_record_complete is None:

@@ -2,7 +2,6 @@ import asyncio
 from typing import Callable
 
 # from starfish.data_factory.constants import STORAGE_TYPE_LOCAL
-from starfish.data_factory.event_loop import run_in_event_loop
 
 
 def async_wrapper():
@@ -24,7 +23,7 @@ def async_to_sync_event_loop():
 
     def decorator(func: Callable):
         def wrapper(self, *args, **kwargs):
-            return run_in_event_loop(func(self, *args, **kwargs))
+            return asyncio.run(func(self, *args, **kwargs))
 
         return wrapper
 
