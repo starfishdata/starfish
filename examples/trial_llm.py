@@ -167,6 +167,6 @@ elif user_case == "dry_run":
         # num_records_per_city = 3
     )
 elif user_case == "re_run":
-    results = get_city_info_wf.re_run(master_job_id="c2f33f78-12f3-4cb2-9c64-7a656ef3cbb0")
+    results = get_city_info_wf.re_run(master_job_id="d63b24c0-91ae-4286-a5ae-cdc555f17d80")
 
 # logger.info(f"Results: {results}")

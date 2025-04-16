@@ -164,6 +164,7 @@ class JobManager:
 
                 output_tmp = {RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
                 self.job_output.put(output_tmp)
+                # to prevent db write actions still going on wehn job finished
                 self.total_count += 1
                 self.completed_count += 1
             # run the rest of the tasks

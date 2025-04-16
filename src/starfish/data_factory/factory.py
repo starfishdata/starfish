@@ -162,7 +162,7 @@ class DataFactory:
                     if self.err and not isinstance(self.err, ValueError):
                         logger.error(f"Error occurred: {self.err}")
 
-                        logger.info(f'Job stopped unexpectedly.You can resume the job using master_job_id by re_run("{self.master_job_id}")')
+                        logger.info(f'⚠️ Job stopped unexpectedly.You can resume the job using master_job_id by re_run("{self.master_job_id}")')
                     self._show_job_progress_status()
                     if isinstance(self.err, ValueError):
                         raise self.err
@@ -234,12 +234,12 @@ class DataFactory:
 
     def _process_batches(self) -> List[Any]:
         """Process batches with asyncio."""
-        logger.info(
-            f"[JOB PROGRESS] "
-            f"\033[1mJob Started:\033[0m "
-            f"\033[36mMaster Job ID: {self.master_job_id}\033[0m | "
-            f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
-        )
+        if self.job_config.get(RUN_MODE) != RUN_MODE_RE_RUN:
+            logger.info(
+                f"\033[1mJob START:\033[0m "
+                f"\033[36mMaster Job ID: {self.master_job_id}\033[0m | "
+                f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
+            )
         return self.job_manager.run_orchestration()
 
     @async_wrapper()
@@ -263,12 +263,19 @@ class DataFactory:
             # Convert list to dict with count tracking using hash values
             input_data = master_job_config_data.get("input_data")
             logger.info(
-                f"\033[1mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n"
+                f"\033[1mJob START:\033[0m "
+                f"\033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n"
                 f"\033[1mSTATUS AT THE TIME OF RE-RUN:\033[0m "
                 f"\033[32mCompleted: {master_job.completed_record_count} / {len(input_data)}\033[0m | "
                 f"\033[31mFailed: {master_job.failed_record_count}\033[0m | "
+                f"\033[31mDuplicate: {master_job.duplicate_record_count}\033[0m | "
                 f"\033[33mFiltered: {master_job.filtered_record_count}\033[0m"
             )
+            # update job manager counters; completed is not included; will be updated in the job manager
+            self.job_manager.total_count = master_job.failed_record_count + master_job.duplicate_record_count + master_job.filtered_record_count
+            self.job_manager.failed_count = master_job.failed_record_count
+            self.job_manager.duplicate_count = master_job.duplicate_record_count
+            self.job_manager.filtered_count = master_job.filtered_record_count
 
             input_dict = {}
             for item in input_data:
@@ -310,21 +317,21 @@ class DataFactory:
     @async_wrapper()
     async def _complete_master_job(self):
         #  Complete the master job
-        logger.debug("\n7. Stopping master job...")
-        now = datetime.datetime.now(datetime.timezone.utc)
-        status = STATUS_FAILED if self.err else STATUS_COMPLETED
-        if self.err:
-            summary = {}
-        else:
+        try:
+            logger.debug("\n7. Stopping master job...")
+            now = datetime.datetime.now(datetime.timezone.utc)
+            status = STATUS_FAILED if self.err else STATUS_COMPLETED
+
             summary = {
                 STATUS_COMPLETED: self.job_manager.completed_count,
                 STATUS_FILTERED: self.job_manager.filtered_count,
                 STATUS_DUPLICATE: self.job_manager.duplicate_count,
                 STATUS_FAILED: self.job_manager.failed_count,
             }
-        if self.factory_storage:
-            await self.factory_storage.log_master_job_end(self.master_job_id, status, summary, now, now)
-        logger.info(f"Master Job {self.master_job_id} has been ended")
+            if self.factory_storage:
+                await self.factory_storage.log_master_job_end(self.master_job_id, status, summary, now, now)
+        except Exception as e:
+            raise e
 
     @async_wrapper()
     async def _close_storage(self):
@@ -392,6 +399,7 @@ class DataFactory:
         target_count = self.job_config.get("target_count")
         logger.info(
             f"[JOB PROGRESS] "
+            f"\033[1mJob START:\033[0m "
             f"\033[1mJob Finished:\033[0m "
             f"\033[32mCompleted: {self.job_manager.completed_count}/{target_count}\033[0m | "
             f"\033[33mAttempted: {self.job_manager.total_count}\033[0m "
