@@ -2,7 +2,7 @@
   <img src="https://github.com/user-attachments/assets/3bec9453-0581-4d33-acbd-0f4e6954d8c8" alt="Starfish Logo" width="200"/>
 </p>
 <h1 align="center">Starfish</h1>
-<h4 align="center" style="font-size: 20px; margin-bottom: 2px">Synthetic Data Generation Made Easy</h4>
+<h2 align="center" style="font-size: 20px; margin-bottom: 10px">Synthetic Data Generation Made Easy</h2>
 
 
 ## Overview
