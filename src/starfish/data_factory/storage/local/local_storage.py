@@ -2,34 +2,34 @@
 import datetime
 import logging
 import os
-from typing import Dict, Any, Optional, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from starfish.data_factory.storage.base import Storage, register_storage
-from starfish.data_factory.storage.models import ( # Import Pydantic models
-    Project,
-    GenerationMasterJob,
-    GenerationJob,
-    Record,
-    StatusRecord
-)
-from starfish.data_factory.storage.local.metadata_handler import SQLiteMetadataHandler
 from starfish.data_factory.storage.local.data_handler import FileSystemDataHandler
+from starfish.data_factory.storage.local.metadata_handler import SQLiteMetadataHandler
 from starfish.data_factory.storage.local.utils import parse_uri_to_path
-
+from starfish.data_factory.storage.models import (  # Import Pydantic models
+    GenerationJob,
+    GenerationMasterJob,
+    Project,
+    Record,
+    StatusRecord,
+)
 
 logger = logging.getLogger(__name__)
 
+
 class LocalStorage(Storage):
-    """
-    Hybrid Local Storage Backend using SQLite for metadata and local JSON files
+    """Hybrid Local Storage Backend using SQLite for metadata and local JSON files
     for data artifacts and large configurations. Facade over internal handlers.
     """
+
     capabilities: Set[str] = {"QUERY_METADATA", "FILTER_STATUS", "STORE_LARGE_CONFIG"}
 
     def __init__(self, storage_uri: str, data_storage_uri_override: Optional[str] = None):
         logger.info(f"Initializing LocalStorage with URI: {storage_uri}")
         self.base_path = parse_uri_to_path(storage_uri)
-        self.metadata_db_path = os.path.join(self.base_path, "metadata.db") # Consistent name
+        self.metadata_db_path = os.path.join(self.base_path, "metadata.db")  # Consistent name
 
         if data_storage_uri_override:
             if not data_storage_uri_override.startswith("file://"):
@@ -48,7 +48,8 @@ class LocalStorage(Storage):
 
     async def setup(self) -> None:
         """Initializes both metadata DB schema and base file directories."""
-        if self._is_setup: return
+        if self._is_setup:
+            return
         logger.info("Setting up LocalStorage...")
         await self._metadata_handler.initialize_schema()
         await self._data_handler.ensure_base_dirs()
@@ -92,28 +93,42 @@ class LocalStorage(Storage):
     async def log_master_job_start(self, job_data: GenerationMasterJob) -> None:
         await self._metadata_handler.log_master_job_start_impl(job_data)
 
-    async def log_master_job_end(self, master_job_id: str, final_status: str, summary: Optional[Dict[str, Any]], end_time: datetime.datetime, update_time: datetime.datetime) -> None:
+    async def log_master_job_end(
+        self, master_job_id: str, final_status: str, summary: Optional[Dict[str, Any]], end_time: datetime.datetime, update_time: datetime.datetime
+    ) -> None:
         await self._metadata_handler.log_master_job_end_impl(master_job_id, final_status, summary, end_time, update_time)
 
     async def update_master_job_status(self, master_job_id: str, status: str, update_time: datetime.datetime) -> None:
-         await self._metadata_handler.update_master_job_status_impl(master_job_id, status, update_time)
+        await self._metadata_handler.update_master_job_status_impl(master_job_id, status, update_time)
 
     async def get_master_job(self, master_job_id: str) -> Optional[GenerationMasterJob]:
         return await self._metadata_handler.get_master_job_impl(master_job_id)
 
-    async def list_master_jobs(self, project_id: Optional[str] = None, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None) -> List[GenerationMasterJob]:
-         return await self._metadata_handler.list_master_jobs_impl(project_id, status_filter, limit, offset)
+    async def list_master_jobs(
+        self, project_id: Optional[str] = None, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None
+    ) -> List[GenerationMasterJob]:
+        return await self._metadata_handler.list_master_jobs_impl(project_id, status_filter, limit, offset)
 
     async def log_execution_job_start(self, job_data: GenerationJob) -> None:
         await self._metadata_handler.log_execution_job_start_impl(job_data)
 
-    async def log_execution_job_end(self, job_id: str, final_status: str, counts: Dict[str, int], end_time: datetime.datetime, update_time: datetime.datetime, error_message: Optional[str] = None) -> None:
+    async def log_execution_job_end(
+        self,
+        job_id: str,
+        final_status: str,
+        counts: Dict[str, int],
+        end_time: datetime.datetime,
+        update_time: datetime.datetime,
+        error_message: Optional[str] = None,
+    ) -> None:
         await self._metadata_handler.log_execution_job_end_impl(job_id, final_status, counts, end_time, update_time, error_message)
 
     async def get_execution_job(self, job_id: str) -> Optional[GenerationJob]:
         return await self._metadata_handler.get_execution_job_impl(job_id)
 
-    async def list_execution_jobs(self, master_job_id: str, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None) -> List[GenerationJob]:
+    async def list_execution_jobs(
+        self, master_job_id: str, status_filter: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None
+    ) -> List[GenerationJob]:
         return await self._metadata_handler.list_execution_jobs_impl(master_job_id, status_filter, limit, offset)
 
     async def log_record_metadata(self, record_data: Record) -> None:
@@ -122,17 +137,20 @@ class LocalStorage(Storage):
     async def get_record_metadata(self, record_uid: str) -> Optional[Record]:
         return await self._metadata_handler.get_record_metadata_impl(record_uid)
 
-    async def get_records_for_master_job( self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Record]:
+    async def get_records_for_master_job(
+        self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None, limit: Optional[int] = None, offset: Optional[int] = None
+    ) -> List[Record]:
         return await self._metadata_handler.get_records_for_master_job_impl(master_job_id, status_filter, limit, offset)
 
     async def count_records_for_master_job(self, master_job_id: str, status_filter: Optional[List[StatusRecord]] = None) -> Dict[str, int]:
-         return await self._metadata_handler.count_records_for_master_job_impl(master_job_id, status_filter)
-    
+        return await self._metadata_handler.count_records_for_master_job_impl(master_job_id, status_filter)
+
     async def list_execution_jobs_by_master_id_and_config_hash(self, master_job_id: str, config_hash: str, job_status: str) -> List[GenerationJob]:
         return await self._metadata_handler.list_execution_jobs_by_master_id_and_config_hash_impl(master_job_id, config_hash, job_status)
-    
+
     async def list_record_metadata(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
         return await self._metadata_handler.list_record_metadata_impl(master_job_uuid, job_uuid)
+
 
 @register_storage("local")
 def create_local_storage(storage_uri: str, data_storage_uri_override: Optional[str] = None) -> LocalStorage:

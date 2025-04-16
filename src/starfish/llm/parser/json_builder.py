@@ -15,7 +15,7 @@ class SimpleField(BaseModel):
     required: bool = Field(True, description="Whether the field is required")
 
     @field_validator("type")
-    def validate_field_type(cls, v):
+    def validate_field_type(self, v):
         valid_types = ["str", "int", "float", "bool", "list", "dict", "null"]
         if v not in valid_types:
             raise ValueError(f"Field type must be one of {valid_types}")
@@ -50,7 +50,7 @@ class JsonSchemaBuilder:
     """
 
     def __init__(self):
-        """Initialize an empty schema builder"""
+        """Initialize an empty schema builder."""
         self.fields = []
 
     def add_simple_field(self, name: str, field_type: str, description: str = "", required: bool = True) -> None:

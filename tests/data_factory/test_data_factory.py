@@ -1,15 +1,13 @@
-import pytest
 import nest_asyncio
-import asyncio
-import random
+import pytest
 
 from starfish.data_factory.constants import STATUS_COMPLETED
 
 nest_asyncio.apply()
-from starfish.common.env_loader import load_env_file
 from starfish import data_factory
-from starfish.data_factory.state import MutableSharedState
+from starfish.common.env_loader import load_env_file
 from starfish.data_factory.utils.mock import mock_llm_call
+
 load_env_file()
 ### Mock LLM call
 
@@ -22,7 +20,7 @@ load_env_file()
 #     if random.random() < fail_rate:
 #         print(f"  {city_name}: Failed!") ## For debugging
 #         raise ValueError(f"Mock LLM failed to process city: {city_name}")
-    
+
 #     print(f"{city_name}: Successfully processed!") ## For debugging
 
 #     result = [f"{city_name}_{random.randint(1, 5)}" for _ in range(num_records_per_city)]
@@ -36,18 +34,23 @@ async def test_case_1():
     - Broadcast: num_records_per_city
     - Expected: All cities processed successfully
     """
+
     @data_factory(max_concurrency=2)
     async def test1(city_name, num_records_per_city, fail_rate=0.5, sleep_time=1):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    result = test1.run(data=[
-        {'city_name': '1. New York'},
-        {'city_name': '2. Los Angeles'},
-        {'city_name': '3. Chicago'},
-        {'city_name': '4. Houston'},
-        {'city_name': '5. Miami'}
-    ], num_records_per_city=5)
+    result = test1.run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+            {"city_name": "3. Chicago"},
+            {"city_name": "4. Houston"},
+            {"city_name": "5. Miami"},
+        ],
+        num_records_per_city=5,
+    )
     assert len(result) == 25
+
 
 @pytest.mark.asyncio
 async def test_case_2():
@@ -56,13 +59,14 @@ async def test_case_2():
     - Broadcast: num_records_per_city
     - Expected: TypeError due to incorrect input format
     """
+
     @data_factory(max_concurrency=2)
     async def test1(city_name, num_records_per_city, fail_rate=0.5, sleep_time=1):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     with pytest.raises(TypeError):
-        test1.run(city=["1. New York", "2. Los Angeles", "3. Chicago", "4. Houston", "5. Miami"], 
-                       num_records_per_city=5)
+        test1.run(city=["1. New York", "2. Los Angeles", "3. Chicago", "4. Houston", "5. Miami"], num_records_per_city=5)
+
 
 @pytest.mark.asyncio
 async def test_case_3():
@@ -71,57 +75,56 @@ async def test_case_3():
     - Parameters: fail_rate=1 (100% failure)
     - Expected: Exception due to all requests failing
     """
+
     @data_factory(max_concurrency=2)
     async def test1(city_name, num_records_per_city, fail_rate=1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     with pytest.raises(Exception):
-        test1.run(data=[
-            {'city_name': '1. New York'},
-            {'city_name': '2. Los Angeles'},
-            {'city_name': '3. Chicago'},
-            {'city_name': '4. Houston'},
-            {'city_name': '5. Miami'}
-        ], num_records_per_city=5)
+        test1.run(
+            data=[
+                {"city_name": "1. New York"},
+                {"city_name": "2. Los Angeles"},
+                {"city_name": "3. Chicago"},
+                {"city_name": "4. Houston"},
+                {"city_name": "5. Miami"},
+            ],
+            num_records_per_city=5,
+        )
+
 
 @pytest.mark.asyncio
 async def test_case_4():
     """Test if broadcast variables can override kwargs with a single value"""
+
     @data_factory(max_concurrency=2)
     async def test_func(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    result = test_func.run(
-        data=[
-            {'city_name': '1. New York'},
-            {'city_name': '2. Los Angeles'}
-        ],
-        city_name='override_city_name',
-        num_records_per_city=1
-    )
-    
+    result = test_func.run(data=[{"city_name": "1. New York"}, {"city_name": "2. Los Angeles"}], city_name="override_city_name", num_records_per_city=1)
+
     # Verify all results contain the override value
     for item in result:
-        assert ('override_city_name' in item['answer'])
+        assert "override_city_name" in item["answer"]
+
 
 @pytest.mark.asyncio
 async def test_case_5():
     """Test if broadcast variables can override kwargs with a list of values"""
+
     @data_factory(max_concurrency=2)
     async def test_func(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     result = test_func.run(
-        data=[
-            {'city_name': '1. New York'},
-            {'city_name': '2. Los Angeles'}
-        ],
-        city_name=['1. override_city_name', '2. override_city_name'],
-        num_records_per_city=1
+        data=[{"city_name": "1. New York"}, {"city_name": "2. Los Angeles"}],
+        city_name=["1. override_city_name", "2. override_city_name"],
+        num_records_per_city=1,
     )
-    
+
     # Verify each result contains the corresponding override value
-    assert any('1. override_city_name' in item["answer"] or '2. override_city_name' in item["answer"] for item in result)
+    assert any("1. override_city_name" in item["answer"] or "2. override_city_name" in item["answer"] for item in result)
+
 
 @pytest.mark.asyncio
 async def test_case_6():
@@ -130,15 +133,20 @@ async def test_case_6():
     - Missing: Required num_records_per_city parameter
     - Expected: TypeError due to missing required parameter
     """
+
     @data_factory(max_concurrency=2)
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     with pytest.raises(TypeError):
-        test1.run(data=[
-            {'city_name': '1. New York'},
-            {'city_name': '2. Los Angeles'},
-        ], city_name='override_city_name')
+        test1.run(
+            data=[
+                {"city_name": "1. New York"},
+                {"city_name": "2. Los Angeles"},
+            ],
+            city_name="override_city_name",
+        )
+
 
 @pytest.mark.asyncio
 async def test_case_7():
@@ -147,15 +155,21 @@ async def test_case_7():
     - Extra: random_param not defined in workflow
     - Expected: TypeError due to unexpected parameter
     """
+
     @data_factory(max_concurrency=2)
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     with pytest.raises(TypeError):
-        test1.run(data=[
-            {'city_name': '1. New York'},
-            {'city_name': '2. Los Angeles'},
-        ], num_records_per_city=1, random_param='random_param')
+        test1.run(
+            data=[
+                {"city_name": "1. New York"},
+                {"city_name": "2. Los Angeles"},
+            ],
+            num_records_per_city=1,
+            random_param="random_param",
+        )
+
 
 @pytest.mark.asyncio
 async def test_case_8():
@@ -164,18 +178,21 @@ async def test_case_8():
     - Hook: test_hook modifies state
     - Expected: State variable should be modified by hook
     """
+
     def test_hook(data, state):
-        state.update({"variable": f'changed_state - {data}'})
+        state.update({"variable": f"changed_state - {data}"})
         return STATUS_COMPLETED
 
-
-    @data_factory(max_concurrency=2, on_record_complete=[test_hook], initial_state_values={'variable': 'initial_state'})
+    @data_factory(max_concurrency=2, on_record_complete=[test_hook], initial_state_values={"variable": "initial_state"})
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    result = test1.run(data=[
-        {'city_name': '1. New York'},
-        {'city_name': '2. Los Angeles'},
-    ], num_records_per_city=1)
-    state_value = test1.state.get('variable')
-    assert state_value.startswith('changed_state')
+    test1.run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+        ],
+        num_records_per_city=1,
+    )
+    state_value = test1.state.get("variable")
+    assert state_value.startswith("changed_state")

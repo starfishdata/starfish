@@ -1,9 +1,9 @@
 import datetime
+import hashlib
+import json
 import os
 import shutil
 import uuid
-import json
-import hashlib
 
 import pytest
 import pytest_asyncio
@@ -250,11 +250,11 @@ async def test_execution_job_lifecycle(storage, test_master_job):
     run_config = {"batch_size": 10}
     run_config_str = json.dumps(run_config)
     job = GenerationJob(
-        job_id=job_id, 
-        master_job_id=test_master_job.master_job_id, 
-        status="pending", 
+        job_id=job_id,
+        master_job_id=test_master_job.master_job_id,
+        status="pending",
         run_config=run_config_str,
-        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
     )
 
     # Log job start
@@ -291,11 +291,11 @@ async def test_list_execution_jobs(storage, test_master_job):
             run_config = {"batch": i}
             run_config_str = json.dumps(run_config)
             job = GenerationJob(
-                job_id=str(uuid.uuid4()), 
-                master_job_id=test_master_job.master_job_id, 
-                status=status, 
+                job_id=str(uuid.uuid4()),
+                master_job_id=test_master_job.master_job_id,
+                status=status,
                 run_config=run_config_str,
-                run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+                run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
             )
             await storage.log_execution_job_start(job)
 
@@ -329,11 +329,11 @@ async def test_record_storage(storage, test_master_job):
     run_config = {"test": "record_storage"}
     run_config_str = json.dumps(run_config)
     job = GenerationJob(
-        job_id=str(uuid.uuid4()), 
-        master_job_id=test_master_job.master_job_id, 
+        job_id=str(uuid.uuid4()),
+        master_job_id=test_master_job.master_job_id,
         status="running",
         run_config=run_config_str,
-        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
     )
     await storage.log_execution_job_start(job)
 
@@ -377,11 +377,11 @@ async def test_get_records_for_master_job(storage, test_master_job):
     run_config = {"test": "get_records"}
     run_config_str = json.dumps(run_config)
     job = GenerationJob(
-        job_id=str(uuid.uuid4()), 
-        master_job_id=test_master_job.master_job_id, 
+        job_id=str(uuid.uuid4()),
+        master_job_id=test_master_job.master_job_id,
         status="running",
         run_config=run_config_str,
-        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
     )
     await storage.log_execution_job_start(job)
 
@@ -482,11 +482,11 @@ async def test_complete_workflow(storage):
     run_config = {"batch_size": 10}
     run_config_str = json.dumps(run_config)
     job = GenerationJob(
-        job_id=job_id, 
-        master_job_id=master_job_id, 
-        status="pending", 
+        job_id=job_id,
+        master_job_id=master_job_id,
+        status="pending",
         run_config=run_config_str,
-        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest()
+        run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
     )
     await storage.log_execution_job_start(job)
 

@@ -2,11 +2,11 @@ from typing import Any, Dict, List, Optional
 
 import litellm
 
+from starfish.common.logger import get_logger
 from starfish.llm.proxy.litellm_adapter_ext import (
     OPENAI_COMPATIBLE_PROVIDERS_CONFIG,
     route_openai_compatible_request,
 )
-from starfish.common.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -68,7 +68,7 @@ After installation, restart your application.
 
 
 async def route_ollama_request(model_name: str, messages: List[Dict[str, str]], model_kwargs: Dict[str, Any]) -> Any:
-    """Handle Ollama-specific model requests
+    """Handle Ollama-specific model requests.
 
     Args:
         model_name: The full model name (e.g., "ollama/llama3")
@@ -114,7 +114,7 @@ async def route_ollama_request(model_name: str, messages: List[Dict[str, str]], 
 
 
 async def route_huggingface_request(model_name: str, messages: List[Dict[str, str]], model_kwargs: Dict[str, Any]) -> Any:
-    """Handle HuggingFace model requests by importing into Ollama
+    """Handle HuggingFace model requests by importing into Ollama.
 
     Args:
         model_name: The full model name (e.g., "hf/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")

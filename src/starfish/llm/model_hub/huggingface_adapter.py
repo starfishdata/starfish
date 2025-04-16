@@ -1,5 +1,6 @@
 """HuggingFace service for interacting with the HuggingFace API.
-This service focuses on model discovery, search, and downloading from HuggingFace."""
+This service focuses on model discovery, search, and downloading from HuggingFace.
+"""
 
 import asyncio
 import os
@@ -9,10 +10,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 
+from starfish.common.logger import get_logger
+
 ##TODO we will need to move the dependencies of ollma to a seperate file so we can support other model hosting providers like vllm. but for now it is fine
 from starfish.llm.backend.ollama_adapter import delete_model as delete_ollama_model
 from starfish.llm.backend.ollama_adapter import is_model_available
-from starfish.common.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -23,25 +25,25 @@ HF_API_BASE = "https://huggingface.co/api"
 # HuggingFace Exception Types
 #############################################
 class HuggingFaceError(Exception):
-    """Base exception for HuggingFace-related errors"""
+    """Base exception for HuggingFace-related errors."""
 
     pass
 
 
 class HuggingFaceAuthError(HuggingFaceError):
-    """Error raised when authentication is required but missing"""
+    """Error raised when authentication is required but missing."""
 
     pass
 
 
 class HuggingFaceModelNotFoundError(HuggingFaceError):
-    """Error raised when a model is not found"""
+    """Error raised when a model is not found."""
 
     pass
 
 
 class HuggingFaceAPIError(HuggingFaceError):
-    """Error raised for general API errors"""
+    """Error raised for general API errors."""
 
     pass
 
@@ -50,12 +52,12 @@ class HuggingFaceAPIError(HuggingFaceError):
 # Core HuggingFace API Functions
 #############################################
 def get_hf_token() -> Optional[str]:
-    """Get HuggingFace API token from environment variable"""
+    """Get HuggingFace API token from environment variable."""
     return os.environ.get("HUGGING_FACE_HUB_TOKEN")
 
 
 async def _make_hf_request(url: str, params: Optional[Dict] = None, check_auth: bool = True) -> Tuple[bool, Any]:
-    """Make a request to HuggingFace API with proper error handling
+    """Make a request to HuggingFace API with proper error handling.
 
     Args:
         url: API URL to request
@@ -85,7 +87,7 @@ async def _make_hf_request(url: str, params: Optional[Dict] = None, check_auth: 
 
 
 async def list_hf_models(query: str = "", limit: int = 20) -> List[Dict[str, Any]]:
-    """List/search models on HuggingFace
+    """List/search models on HuggingFace.
 
     Args:
         query: Optional search query
@@ -121,7 +123,7 @@ async def list_hf_models(query: str = "", limit: int = 20) -> List[Dict[str, Any
 
 
 async def get_imported_hf_models() -> List[str]:
-    """Get list of HuggingFace models that have been imported to Ollama
+    """Get list of HuggingFace models that have been imported to Ollama.
 
     Returns:
         List of model names in Ollama that originated from HuggingFace
@@ -133,7 +135,7 @@ async def get_imported_hf_models() -> List[str]:
 
 
 async def check_model_exists(model_id: str) -> bool:
-    """Check if a model exists on HuggingFace
+    """Check if a model exists on HuggingFace.
 
     Args:
         model_id: HuggingFace model ID (e.g., "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
@@ -146,7 +148,7 @@ async def check_model_exists(model_id: str) -> bool:
 
 
 async def find_gguf_files(model_id: str) -> List[Dict[str, Any]]:
-    """Find GGUF files available for a HuggingFace model
+    """Find GGUF files available for a HuggingFace model.
 
     Args:
         model_id: HuggingFace model ID
@@ -193,7 +195,7 @@ async def find_gguf_files(model_id: str) -> List[Dict[str, Any]]:
 
 
 async def download_gguf_file(model_id: str, file_path: str, target_path: str) -> bool:
-    """Download a GGUF file from HuggingFace
+    """Download a GGUF file from HuggingFace.
 
     Args:
         model_id: HuggingFace model ID
@@ -264,7 +266,7 @@ async def download_gguf_file(model_id: str, file_path: str, target_path: str) ->
 
 
 async def import_model_to_ollama(local_file_path: str, model_name: str) -> bool:
-    """Import a GGUF file into Ollama
+    """Import a GGUF file into Ollama.
 
     Args:
         local_file_path: Path to the downloaded GGUF file
@@ -317,7 +319,7 @@ async def get_best_gguf_file(gguf_files: List[Dict[str, Any]]) -> Optional[Dict[
     Prioritizes:
     1. Smaller quantization (q4_K > q5_K > q8_0)
     2. File size (prefers smaller files for same quantization level)
-    3. Avoid huge files unless necessary
+    3. Avoid huge files unless necessary.
 
     Args:
         gguf_files: List of GGUF file objects

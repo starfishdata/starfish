@@ -21,7 +21,7 @@ from starfish.utils import merge_structured_outputs
 
 @data_factory(storage="local", batch_size=5)
 def generate_city_info(cities: List[str], num_facts: int) -> List[Dict[str, Any]]:
-    """LLM-powered city fact generation pipeline with validation"""
+    """LLM-powered city fact generation pipeline with validation."""
     results = []
 
     for city in cities:

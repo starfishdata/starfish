@@ -1,0 +1,25 @@
+repos:
+  # - repo: local
+  #   hooks:
+  #     - id: pytest
+  #       name: Run pytest
+  #       entry: poetry run pytest tests/
+  #       language: system
+  #       types: [python]
+  #       pass_filenames: false
+  #       always_run: true 
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.8.6
+    hooks:
+      # Run the linter.
+      # - id: ruff
+      #   args: [ --fix ]
+      #   types: [python]
+      # Run the formatter.
+      - id: ruff-format
+        # args: [ --fix ]
+        #run even when no Python files are staged
+        #always_run: true
+        types: [python]

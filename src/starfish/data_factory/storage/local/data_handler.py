@@ -93,5 +93,3 @@ class FileSystemDataHandler:
 
     async def get_record_data_impl(self, output_ref: str) -> Dict[str, Any]:
         return await self._read_json_file(output_ref)  # Assumes ref is absolute path
-
-    

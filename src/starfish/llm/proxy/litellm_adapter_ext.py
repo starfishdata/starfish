@@ -32,7 +32,7 @@ OPENAI_COMPATIBLE_PROVIDERS_CONFIG: Dict[str, Dict[str, Any]] = {
 def _resolve_config_value(value: Any, description: str) -> Any:
     """Resolves a configuration value based on the '$' convention.
     '$VAR_NAME' -> os.getenv('VAR_NAME')
-    Other -> literal value
+    Other -> literal value.
     """
     if isinstance(value, str) and value.startswith("$"):
         # Environment Variable lookup: $VAR_NAME
