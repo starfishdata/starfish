@@ -1,21 +1,23 @@
-# Starfish
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/3bec9453-0581-4d33-acbd-0f4e6954d8c8" alt="Starfish Logo" width="200"/>
+</p>
+<h1 align="center">Starfish</h1>
+<h4 align="center" style="font-size: 20px; margin-bottom: 2px">Synthetic Data Generation Made Easy</h4>
 
-<!-- Optional: Add a logo image here -->
-<!-- ![Starfish Logo](path/to/logo.png) -->
-
-[![PyPI version](https://img.shields.io/pypi/v/starfish.svg)](https://pypi.org/project/starfish/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-<!-- Add more badges as needed: Tests, Documentation, etc. -->
 
 ## Overview
 
+Starfish is a Python library that helps you build synthetic data your way. We adapt to your workflow—not the other way around. By combining structured LLM outputs with efficient parallel processing, Starfish lets you define exactly how your data should look and scale seamlessly from experiments to production.
+   
+⭐ Star us on GitHub if you find this project useful!
 
-Starfish is a Python library that [FILL IN: brief description of what the library does and what problem it solves].
-
-Key features:
-- [FILL IN: key feature 1]
-- [FILL IN: key feature 2]
-- [FILL IN: key feature 3]
+Key Features:
+- **Structured Outputs**: First-class support for structured data through JSON schemas or Pydantic models.
+- **Model Flexibility**: Use any LLM provider—local models, OpenAI, Anthropic, or your own implementation via LiteLLM.
+- **Dynamic Prompts**: Dynamic prompts with built-in Jinja2 templates.
+- **Easy Scaling**: Transform any function to run in parallel across thousands of inputs with a single decorator.
+- **Resilient Pipeline**: Automatic retries, error handling, and job resumption—pause and continue your data generation anytime.
+- **Complete Control**: Share state across your pipeline, extend functionality with custom hooks.
 
 ## Installation
 
@@ -23,33 +25,88 @@ Key features:
 pip install starfish-core
 ```
 
+## Configuration
+
+Starfish uses environment variables for configuration. We provide a `.env.template` file to help you get started quickly:
+
+```bash
+# Copy the template to .env
+cp .env.template .env
+
+# Edit with your API keys and configuration
+nano .env  # or use your preferred editor
+```
+
+The template includes settings for API keys, model configurations, and other runtime parameters.
+
 ## Quick Start
 
-```python
-from starfish import [FILL IN: main module]
+### Structured LLM - Type-Safe Outputs from Any Model
 
-# [FILL IN: Simple example code that demonstrates the basic functionality]
+```python
+# 1. Define structured outputs with schema
+from starfish import StructuredLLM
+from pydantic import BaseModel
+
+# Option A: Use Pydantic for type safety
+class QnASchema(BaseModel):
+    question: str
+    answer: str
+
+# Option B: Or use simple JSON schema
+json_schema = [
+    {'name': 'question', 'type': 'str'},
+    {'name': 'answer', 'type': 'str'}, 
+]
+
+# 2. Create a structured LLM with your preferred output format
+qna_llm = StructuredLLM(
+    model_name="openai/gpt-4o-mini",
+    prompt="Generate facts about {{city}}",
+    output_schema=QnASchema  # or json_schema
+)
+
+# 3. Get structured responses
+response = await qna_llm.run(city="San Francisco")
+
+# Access typed data
+print(response.data)
+# [{'question': 'What is the iconic symbol of San Francisco?',
+#   'answer': 'The Golden Gate Bridge is the iconic symbol of San Francisco, completed in 1937.'}]
+
+# Access raw API response for complete flexibility
+print(response.raw)  # Full API object with function calls, reasoning tokens, etc.
+```
+
+### Data Factory - Scale Any Workflow with One Decorator
+
+```python
+# Turn any function into a scalable data pipeline
+from starfish import data_factory
+
+# Works with any function - simple or complex workflows
+@data_factory(max_concurrency=50)
+async def parallel_qna_llm(city):
+    # This could be any arbitrary complex workflow:
+    # - Pre-processing
+    # - Multiple LLM calls
+    # - Post-processing
+    # - Error handling
+    response = await qna_llm.run(city=city)
+    return response.data
+
+# Process 100 cities with 50 concurrent workers - finishes in seconds
+cities = ["San Francisco", "New York", "Tokyo", "Paris", "London"] * 20
+results = parallel_qna_llm(city=cities)
 ```
 
 ## Documentation
 
-For comprehensive documentation, visit [FILL IN: link to docs].
-
-### Examples
-
-[FILL IN: Add a few simple examples showing common use cases]
-
-## Features
-
-### [FILL IN: Feature Category 1]
-[FILL IN: Description of this feature category]
-
-### [FILL IN: Feature Category 2]
-[FILL IN: Description of this feature category]
+Comprehensive documentation is on the way!
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We'd love your help making Starfish better! Whether you're fixing bugs, adding features, or improving documentation, your contributions are welcome.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -57,23 +114,26 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+Contribution guidelines coming soon!
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
+## Contact
+
+If you have any questions or feedback, feel free to reach out to us at [founders@starfishdata.ai](mailto:founders@starfishdata.ai).
+
 ## Citation
 
-If you use Starfish in your research, please consider citing:
+If you use Starfish in your research, please consider citing us!
 
 ```
 @software{starfish,
-  author = {[FILL IN: Author names]},
-  title = {{Starfish}},
-  year = {[FILL IN: Year]},
-  url = {[FILL IN: Project URL]},
+  author = {Wendao, Jiang, Ayush},
+  title = {{Starfish: A Tool for Synthetic Data Generation}},
+  year = {2025},
+  url = {https://github.com/starfishdata/starfish},
 }
 ```
 
-## Acknowledgements
-
-[FILL IN: Any acknowledgements or credits]
