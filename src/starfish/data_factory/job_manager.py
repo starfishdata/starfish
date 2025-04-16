@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import datetime
 import hashlib
 import json
@@ -129,7 +130,7 @@ class JobManager:
         consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check)
         # consecutive_not_completed and
         completed_tasks_reach_target = self.completed_count >= self.target_count
-        # total_tasks_reach_target = (self.total_count >= self.target_count)
+
         return consecutive_not_completed or completed_tasks_reach_target
         # return completed_tasks_reach_target or (total_tasks_reach_target and consecutive_not_completed)
 
@@ -156,12 +157,15 @@ class JobManager:
             # put the runned tasks output to the job output
             for task in runned_tasks:
                 records_metadata = await self.storage.list_record_metadata(self.job_config["master_job_id"], task.job_id)
+                record_data_list = []
                 for record in records_metadata:
                     record_data = await self.storage.get_record_data(record.output_ref)
-                    output_tmp = {RECORD_STATUS: STATUS_COMPLETED, "output": record_data}
-                    self.job_output.put(output_tmp)
-                    self.total_count += 1
-                    self.completed_count += 1
+                    record_data_list.append(record_data)
+
+                output_tmp = {RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
+                self.job_output.put(output_tmp)
+                self.total_count += 1
+                self.completed_count += 1
             # run the rest of the tasks
             logger.debug("Task not runned, running task")
             for _ in range(input_data["count"] - len(runned_tasks)):
@@ -242,29 +246,29 @@ class JobManager:
             # Execute the main task
             output = await self.task_runner.run_task(self.job_config["user_func"], input_data)
 
-            # Run completion hooks
-            hooks_output = [hook(output, self.state) for hook in self.job_config.get("on_record_complete", [])]
-
-            # Determine task status based on hooks
-            if STATUS_DUPLICATE in hooks_output:
+            hooks_output = []
+            for hook in self.job_config.get("on_record_complete", []):
+                hooks_output.append(hook(output, self.state))
+            if hooks_output.count(STATUS_DUPLICATE) > 0:
+                # duplicate filtered need retry
                 task_status = STATUS_DUPLICATE
-            elif STATUS_FILTERED in hooks_output:
+            elif hooks_output.count(STATUS_FILTERED) > 0:
                 task_status = STATUS_FILTERED
 
-            # Save record data if task was successful
-            if task_status == STATUS_COMPLETED:
-                output_ref = await self._job_save_record_data(output.copy(), task_status, input_data)
+            output_ref = await self._job_save_record_data(copy.deepcopy(output), task_status, input_data)
 
         except Exception as e:
             logger.error(f"Error running task: {e}")
             # Run error hooks
             for hook in self.job_config.get("on_record_error", []):
                 hook(str(e), self.state)
+            # async with self.lock:  # Acquire lock for status update
             task_status = STATUS_FAILED
 
         # Handle incomplete tasks
         if task_status != STATUS_COMPLETED:
             logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
+            # async with self.lock:  # Acquire lock for queue operation
             self.job_input_queue.put(input_data)
 
         return {RECORD_STATUS: task_status, "output_ref": output_ref, "output": output}

@@ -48,6 +48,9 @@ async def test_case_1():
         ],
         num_records_per_city=5,
     )
+    for item in result:
+        assert "job_id" not in item
+        assert "master_job_id" not in item
     assert len(result) == 25
 
 
