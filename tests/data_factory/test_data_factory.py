@@ -9,23 +9,24 @@ nest_asyncio.apply()
 from starfish.common.env_loader import load_env_file
 from starfish import data_factory
 from starfish.data_factory.state import MutableSharedState
+from starfish.data_factory.utils.mock import mock_llm_call
 load_env_file()
 ### Mock LLM call
 
 
-async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.05, sleep_time=0.01):
-    # Simulate a slight delay (optional, feels more async-realistic)
-    await asyncio.sleep(sleep_time)
+# async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.05, sleep_time=0.01):
+#     # Simulate a slight delay (optional, feels more async-realistic)
+#     await asyncio.sleep(sleep_time)
 
-    # 5% chance of failure
-    if random.random() < fail_rate:
-        print(f"  {city_name}: Failed!") ## For debugging
-        raise ValueError(f"Mock LLM failed to process city: {city_name}")
+#     # 5% chance of failure
+#     if random.random() < fail_rate:
+#         print(f"  {city_name}: Failed!") ## For debugging
+#         raise ValueError(f"Mock LLM failed to process city: {city_name}")
     
-    print(f"{city_name}: Successfully processed!") ## For debugging
+#     print(f"{city_name}: Successfully processed!") ## For debugging
 
-    result = [f"{city_name}_{random.randint(1, 5)}" for _ in range(num_records_per_city)]
-    return result
+#     result = [f"{city_name}_{random.randint(1, 5)}" for _ in range(num_records_per_city)]
+#     return result
 
 
 @pytest.mark.asyncio
@@ -101,7 +102,7 @@ async def test_case_4():
     
     # Verify all results contain the override value
     for item in result:
-        assert ('override_city_name'  in item)
+        assert ('override_city_name' in item['answer'])
 
 @pytest.mark.asyncio
 async def test_case_5():
@@ -120,7 +121,7 @@ async def test_case_5():
     )
     
     # Verify each result contains the corresponding override value
-    assert any('1. override_city_name' in item or '2. override_city_name' in item for item in result)
+    assert any('1. override_city_name' in item["answer"] or '2. override_city_name' in item["answer"] for item in result)
 
 @pytest.mark.asyncio
 async def test_case_6():
@@ -163,8 +164,8 @@ async def test_case_8():
     - Hook: test_hook modifies state
     - Expected: State variable should be modified by hook
     """
-    async def test_hook(data, state):
-        await state.update({"variable": f'changed_state - {data}'})
+    def test_hook(data, state):
+        state.update({"variable": f'changed_state - {data}'})
         return STATUS_COMPLETED
 
 
@@ -176,5 +177,5 @@ async def test_case_8():
         {'city_name': '1. New York'},
         {'city_name': '2. Los Angeles'},
     ], num_records_per_city=1)
-    state_value = await test1.state.get('variable')
+    state_value = test1.state.get('variable')
     assert state_value.startswith('changed_state')

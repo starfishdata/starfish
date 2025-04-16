@@ -100,10 +100,9 @@ class SQLiteMetadataHandler:
         async with self._write_lock:
             conn = await self.connect()
             try:
-                # Use context manager for cursor and transaction
-                async with conn.execute("BEGIN IMMEDIATE;") as cursor:
-                    await cursor.execute(sql, params)
-                await conn.commit()
+                # Remove the explicit BEGIN IMMEDIATE since it's handled by the connection
+                async with conn.execute(sql, params) as _:
+                    await conn.commit()
                 logger.debug(f"Executed write SQL: {sql[:50]}... Params: {params}")
             except Exception as e:
                 try:
@@ -114,23 +113,13 @@ class SQLiteMetadataHandler:
                 raise e
 
     async def _execute_batch_sql(self, statements: List[Tuple[str, tuple]]):
-        """Execute multiple SQL statements in a single transaction.
-
-        Args:
-            statements: List of (sql, params) tuples to execute in one transaction
-        """
-        # Use the write lock to ensure only one write transaction at a time
+        """Execute multiple SQL statements in a single transaction."""
         async with self._write_lock:
             conn = await self.connect()
             try:
-                # Begin a single transaction for all statements
-                await conn.execute("BEGIN IMMEDIATE")
-
-                # Execute all statements
+                # Remove explicit BEGIN IMMEDIATE
                 for sql, params in statements:
                     await conn.execute(sql, params)
-
-                # Commit the transaction
                 await conn.commit()
                 logger.debug(f"Executed batch SQL: {len(statements)} statements")
             except Exception as e:

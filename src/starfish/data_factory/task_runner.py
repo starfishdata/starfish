@@ -1,7 +1,7 @@
 import asyncio
 import time
 from typing import Any, Callable, Dict, List
-from starfish.data_factory.constants import TASK_RUNNER_TIMEOUT
+from starfish.data_factory.config import TASK_RUNNER_TIMEOUT
 from starfish.common.logger import get_logger
 logger = get_logger(__name__)
 #from starfish.common.logger_new import logger
@@ -28,6 +28,6 @@ class TaskRunner:
             except Exception as e:
                 retries += 1
                 if retries > self.max_retries:
-                    logger.error(f"Task execution failed after {self.max_retries} retries")
+                    #logger.error(f"Task execution failed after {self.max_retries} retries")
                     raise e
                 await asyncio.sleep(2**retries)  # exponential backoff
