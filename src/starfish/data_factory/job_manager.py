@@ -7,7 +7,7 @@ from queue import Queue
 from typing import Any, Dict, List
 
 from starfish.common.logger import get_logger
-from starfish.data_factory.config import PROGRESS_LOG_INTERVAL
+from starfish.data_factory.config import MAX_CONCURRENT_TASKS, PROGRESS_LOG_INTERVAL
 from starfish.data_factory.constants import (
     RECORD_STATUS,
     RUN_MODE,
@@ -27,11 +27,34 @@ logger = get_logger(__name__)
 
 
 class JobManager:
+    """Manages the execution of data generation jobs.
+
+    This class handles the orchestration of tasks, including task execution,
+    progress tracking, and result storage. It manages concurrency and provides
+    mechanisms for job monitoring and control.
+
+    Args:
+        job_config (Dict[str, Any]): Configuration dictionary containing job parameters
+            including max_concurrency, target_count, and task configurations.
+        storage (Storage): Storage instance for persisting job results and metadata.
+    """
+
     def __init__(self, job_config: Dict[str, Any], storage: Storage):
+        """Initialize the JobManager with job configuration and storage.
+
+        Args:
+            job_config: Dictionary containing job configuration parameters including:
+                - max_concurrency: Maximum number of concurrent tasks
+                - target_count: Target number of records to generate
+                - user_func: Function to execute for each task
+                - on_record_complete: List of hooks to run after record completion
+                - on_record_error: List of hooks to run on record error
+            storage: Storage instance for persisting job results and metadata
+        """
         self.job_config = job_config
         self.storage = storage
         self.state = job_config.get("state", {})
-        self.semaphore = asyncio.Semaphore(job_config.get("max_concurrency"))
+        self.semaphore = asyncio.Semaphore(job_config.get("max_concurrency", MAX_CONCURRENT_TASKS))
         self.lock = asyncio.Lock()
         self.task_runner = TaskRunner(timeout=job_config.get("task_runner_timeout"))
         self.job_input_queue = Queue()
@@ -46,6 +69,12 @@ class JobManager:
         self.job_run_stop_threshold = 3
 
     async def create_execution_job(self, job_uuid: str, input_data: Dict[str, Any]):
+        """Create and log a new execution job in storage.
+
+        Args:
+            job_uuid: Unique identifier for the execution job
+            input_data: Dictionary containing input data for the job
+        """
         logger.debug("\n3. Creating execution job...")
         input_data_str = json.dumps(input_data)
         self.job = GenerationJob(
@@ -59,7 +88,7 @@ class JobManager:
         await self.storage.log_execution_job_start(self.job)
         logger.debug(f"  - Created execution job: {job_uuid}")
 
-    async def job_save_record_data(self, records, task_status: str, input_data: Dict[str, Any]) -> List[str]:
+    async def _job_save_record_data(self, records, task_status: str, input_data: Dict[str, Any]) -> List[str]:
         output_ref_list = []
         if self.job_config.get(RUN_MODE) == RUN_MODE_DRY_RUN:
             return output_ref_list
@@ -80,10 +109,10 @@ class JobManager:
                 await self.storage.log_record_metadata(record_model)
                 logger.debug(f"  - Saved data for record {i}: {output_ref}")
                 output_ref_list.append(output_ref)
-            await self.complete_execution_job(job_uuid)
+            await self._complete_execution_job(job_uuid)
         return output_ref_list
 
-    async def complete_execution_job(self, job_uuid: str):
+    async def _complete_execution_job(self, job_uuid: str):
         logger.debug("\n6. Completing execution job...")
         now = datetime.datetime.now(datetime.timezone.utc)
         counts = {
@@ -95,7 +124,7 @@ class JobManager:
         await self.storage.log_execution_job_end(job_uuid, STATUS_COMPLETED, counts, now, now)
         logger.debug("  - Marked execution job as completed")
 
-    def is_job_to_stop(self) -> bool:
+    def _is_job_to_stop(self) -> bool:
         items_check = list(self.job_output.queue)[-1 * self.job_run_stop_threshold :]
         consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check)
         # consecutive_not_completed and
@@ -142,7 +171,7 @@ class JobManager:
 
     async def _progress_ticker(self):
         """Log a message every 5 seconds."""
-        while not self.is_job_to_stop():
+        while not self._is_job_to_stop():
             logger.info(
                 f"[JOB PROGRESS] "
                 f"\033[32mCompleted: {self.completed_count}/{self.target_count}\033[0m | "
@@ -163,7 +192,7 @@ class JobManager:
         running_tasks = set()
 
         try:
-            while not self.is_job_to_stop():
+            while not self._is_job_to_stop():
                 logger.debug("Job is not to stop, checking job input queue")
                 if not self.job_input_queue.empty():
                     logger.debug("Job input queue is not empty, acquiring semaphore")
@@ -197,33 +226,48 @@ class JobManager:
         return task
 
     async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
-        """Run a single task with error handling and storage."""
+        """Run a single task with error handling and storage.
+
+        Args:
+            input_data: Input data for the task
+
+        Returns:
+            Dictionary containing task status, output references, and output data
+        """
         output = []
         output_ref = []
         task_status = STATUS_COMPLETED
+
         try:
+            # Execute the main task
             output = await self.task_runner.run_task(self.job_config["user_func"], input_data)
-            hooks_output = []
-            # class based hooks. use semaphore to ensure thread safe
-            for hook in self.job_config.get("on_record_complete", []):
-                hooks_output.append(hook(output, self.state))
-            if hooks_output.count(STATUS_DUPLICATE) > 0:
-                # duplicate filtered need retry
+
+            # Run completion hooks
+            hooks_output = [hook(output, self.state) for hook in self.job_config.get("on_record_complete", [])]
+
+            # Determine task status based on hooks
+            if STATUS_DUPLICATE in hooks_output:
                 task_status = STATUS_DUPLICATE
-            elif hooks_output.count(STATUS_FILTERED) > 0:
+            elif STATUS_FILTERED in hooks_output:
                 task_status = STATUS_FILTERED
-            output_ref = await self.job_save_record_data(output.copy(), task_status, input_data)
+
+            # Save record data if task was successful
+            if task_status == STATUS_COMPLETED:
+                output_ref = await self._job_save_record_data(output.copy(), task_status, input_data)
+
         except Exception as e:
             logger.error(f"Error running task: {e}")
+            # Run error hooks
             for hook in self.job_config.get("on_record_error", []):
                 hook(str(e), self.state)
             task_status = STATUS_FAILED
-        finally:
-            # if task is not completed, put the input data back to the job input queue
-            if task_status != STATUS_COMPLETED:
-                logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
-                self.job_input_queue.put(input_data)
-            return {RECORD_STATUS: task_status, "output_ref": output_ref, "output": output}
+
+        # Handle incomplete tasks
+        if task_status != STATUS_COMPLETED:
+            logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
+            self.job_input_queue.put(input_data)
+
+        return {RECORD_STATUS: task_status, "output_ref": output_ref, "output": output}
 
     async def _handle_task_completion(self, task):
         """Handle task completion and update counters."""
