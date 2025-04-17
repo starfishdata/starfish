@@ -9,6 +9,7 @@ logger = get_logger(__name__)
 
 class JSONParser:
     """Handles parsing and validation of JSON data against schemas.
+
     Provides utilities for JSON schema generation and formatting.
     """
 
@@ -185,43 +186,52 @@ class JSONParser:
                 nested_props = prop.get("properties", {})
                 nested_required = prop.get("required", [])
 
+                # Recursively format properties of the nested object
+                formatted_props = []
                 for i, (nested_name, nested_prop) in enumerate(nested_props.items()):
-                    nested_lines = format_property(nested_name, nested_prop, nested_required, indent_level + 1)
-                    if i < len(nested_props) - 1 and nested_lines:
-                        nested_lines[-1] = nested_lines[-1] + ","
-                    lines.extend(nested_lines)
+                    # Increase indent level for properties inside the object
+                    prop_lines = format_property(nested_name, nested_prop, nested_required, indent_level + 1)
+                    # Add comma if not the last property
+                    if i < len(nested_props) - 1 and prop_lines:
+                        prop_lines[-1] = prop_lines[-1] + ","
+                    formatted_props.extend(prop_lines)
+                lines.extend(formatted_props)
+                # End of recursive formatting
 
                 lines.append(f"{indent}}}")
 
             elif field_type == "array" and "items" in prop:
                 items = prop.get("items", {})
-                if items.get("type") == "object" and "properties" in items:
-                    lines.append(f'{indent}"{name}": [  {comment}')
-                    lines.append(f"{indent}  {{")
+                item_type = items.get("type")
+                lines.append(f'{indent}"{name}": [  {comment}')  # Start array
 
+                # Check if items are objects and have properties
+                if item_type == "object" and "properties" in items:
+                    lines.append(f"{indent}  {{")  # Start example object in array
                     nested_props = items.get("properties", {})
                     nested_required = items.get("required", [])
 
+                    # Recursively format the properties of the object within the array item
+                    formatted_props = []
                     for i, (nested_name, nested_prop) in enumerate(nested_props.items()):
-                        example_value = (
-                            '""'
-                            if nested_prop.get("type") == "string"
-                            else "number"
-                            if nested_prop.get("type") in ["integer", "number"]
-                            else "true or false"
-                            if nested_prop.get("type") == "boolean"
-                            else "[]"
-                            if nested_prop.get("type") == "array"
-                            else "{}"
-                        )
+                        # Increase indent level for properties inside the object
+                        prop_lines = format_property(nested_name, nested_prop, nested_required, indent_level + 2)
+                        # Add comma if not the last property
+                        if i < len(nested_props) - 1 and prop_lines:
+                            prop_lines[-1] = prop_lines[-1] + ","
+                        formatted_props.extend(prop_lines)
+                    lines.extend(formatted_props)
+                    # End of recursive formatting for array item properties
 
-                        nested_comment = f"// {nested_prop.get('description', '')}" + (" (required)" if nested_name in nested_required else " (optional)")
-                        lines.append(f'{indent}    "{nested_name}": {example_value}{"," if i < len(nested_props) - 1 else ""}  {nested_comment}')
-
-                    lines.append(f"{indent}  }}")
-                    lines.append(f"{indent}]")
+                    lines.append(f"{indent}  }}")  # End example object
+                    lines.append(f"{indent}  // ... more items ...")  # Indicate potential for more items
+                # Handle arrays of simple types (optional, could add examples here too)
+                # elif item_type in type_mapping:
+                #     lines.append(f"{indent}  // Example: {type_mapping[item_type]}")
                 else:
-                    lines.append(f'{indent}"{name}": []  {comment}')
+                    lines.append(f"{indent}  // Example items of type {item_type}")
+
+                lines.append(f"{indent}]")  # End array
             else:
                 example_value = (
                     '""'
@@ -418,7 +428,7 @@ class JSONParser:
         except json.JSONDecodeError as e:
             # Handle JSON syntax errors
             if strict:
-                raise JsonParserError(f"Invalid JSON syntax: {str(e)}")
+                raise JsonParserError(f"Invalid JSON syntax: {str(e)}") from e
             logger.warning(f"Invalid JSON syntax in LLM response: {str(e)}")
             return None
 
@@ -435,6 +445,6 @@ class JSONParser:
         except (TypeError, KeyError) as e:
             # Handle data structure errors
             if strict:
-                raise JsonParserError(f"Data structure error: {str(e)}")
+                raise JsonParserError(f"Data structure error: {str(e)}") from e
             logger.warning(f"Data structure error in LLM response: {str(e)}")
             return None
