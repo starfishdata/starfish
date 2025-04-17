@@ -109,6 +109,12 @@ results = parallel_qna_llm.dry_run(city=cities)
 results = parallel_qna_llm.re_run("8e07b4e8-4d4a-4355-82c3-04a5391ddbf5")
 ```
 
+### Examples
+
+Check out our example notebooks for detailed walkthroughs:
+- [Structured LLM Examples](examples/structured_llm.ipynb)
+- [Data Factory Examples](examples/data_factory.ipynb)
+
 ## Documentation
 
 Comprehensive documentation is on the way!
