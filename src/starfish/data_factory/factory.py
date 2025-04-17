@@ -331,6 +331,7 @@ def data_factory(
     show_progress: bool = True,
     input_converter=_default_input_converter,
     task_runner_timeout: int = TASK_RUNNER_TIMEOUT,
+    job_run_stop_threshold: int = 3,
 ):
     """Decorator factory for creating data processing pipelines.
 
@@ -345,6 +346,7 @@ def data_factory(
         show_progress (bool): Whether to display progress bar. Defaults to True.
         input_converter (Callable): Function to convert input data to Queue format. Defaults to _default_input_converter.
         task_runner_timeout (int): Timeout in seconds for task execution. Defaults to TASK_RUNNER_TIMEOUT.
+        job_run_stop_threshold (int): Number of times to retry a failed job. Defaults to 3.
 
     Returns:
         DataFactory: Configured data factory instance to be used as a decorator.
@@ -372,6 +374,7 @@ def data_factory(
         on_record_error=on_record_error,
         input_converter=input_converter,
         state=MutableSharedState(initial_state_values),
+        job_run_stop_threshold=job_run_stop_threshold,
     )
 
     def decorator(func: Callable):

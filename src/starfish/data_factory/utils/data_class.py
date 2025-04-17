@@ -24,6 +24,7 @@ class FactoryMasterConfig:
         input_converter: Function to convert input data
         state: Shared state object for job coordination
         run_mode: Execution mode for the job
+        job_run_stop_threshold: Number of times to retry a failed job
     """
 
     storage: str = STORAGE_TYPE_LOCAL
@@ -39,6 +40,7 @@ class FactoryMasterConfig:
     input_converter: Callable = None
     state: MutableSharedState = field(default_factory=MutableSharedState)
     run_mode: str = RUN_MODE_NORMAL
+    job_run_stop_threshold: int = 3
 
 
 @dataclass
@@ -56,6 +58,7 @@ class FactoryJobConfig:
         max_concurrency: Maximum number of concurrent tasks
         on_record_complete: List of callbacks for record completion
         on_record_error: List of callbacks for record errors
+        job_run_stop_threshold: Number of times to retry a failed job
     """
 
     master_job_id: str = None
@@ -68,3 +71,4 @@ class FactoryJobConfig:
     max_concurrency: int = 50
     on_record_complete: List[Callable] = field(default_factory=list)
     on_record_error: List[Callable] = field(default_factory=list)
+    job_run_stop_threshold: int = 3

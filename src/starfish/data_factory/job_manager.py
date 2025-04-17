@@ -74,6 +74,7 @@ class JobManager:
             max_concurrency=master_job_config.max_concurrency,
             on_record_complete=master_job_config.on_record_complete,
             on_record_error=master_job_config.on_record_error,
+            job_run_stop_threshold=master_job_config.job_run_stop_threshold,
         )
         self.storage = storage
         self.state = master_job_config.state
@@ -89,7 +90,6 @@ class JobManager:
         self.filtered_count = 0
         self.failed_count = 0
         self.total_count = 0
-        self.job_run_stop_threshold = 3
         self.active_operations = set()
         self._progress_ticker_task = None
 
@@ -172,10 +172,18 @@ class JobManager:
         logger.debug("  - Marked execution job as completed")
 
     def _is_job_to_stop(self) -> bool:
-        items_check = list(self.job_output.queue)[-1 * self.job_run_stop_threshold :]
-        consecutive_not_completed = len(items_check) == self.job_run_stop_threshold and all(item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check)
+        queue_size = len(self.job_output.queue)
+        if queue_size == 0:
+            return False
+
+        items_check = list(self.job_output.queue)[-min(self.job_config.job_run_stop_threshold, queue_size) :]
+        consecutive_not_completed = len(items_check) == self.job_config.job_run_stop_threshold and all(
+            item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check
+        )
         # consecutive_not_completed and
         completed_tasks_reach_target = self.completed_count >= self.job_config.target_count
+        if consecutive_not_completed:
+            logger.error(f"consecutive_not_completed: in {self.job_config.job_run_stop_threshold} times, stopping job")
 
         return consecutive_not_completed or completed_tasks_reach_target
         # return completed_tasks_reach_target or (total_tasks_reach_target and consecutive_not_completed)

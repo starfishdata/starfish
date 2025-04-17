@@ -242,3 +242,24 @@ async def test_case_re_run():
 
     with pytest.raises(TypeError):
         test1.re_run("123")
+
+
+@pytest.mark.asyncio
+async def test_case_job_run_stop_threshold():
+    """Test extra parameters not defined in workflow
+    - Input: List of dicts with city names
+    - Extra: random_param not defined in workflow
+    - Expected: TypeError due to unexpected parameter
+    """
+
+    @data_factory(max_concurrency=2, job_run_stop_threshold=2)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
+        return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
+
+    test1.run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+        ],
+        num_records_per_city=1,
+    )
