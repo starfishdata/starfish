@@ -151,7 +151,9 @@ class DataFactory:
                         err_msg = "KeyboardInterrupt"
 
                     logger.error(f"Error occurred: {err_msg}")
-                    logger.info(f'🚨 Job stopped unexpectedly. You can resume the job using master_job_id by re_run("{self.config.master_job_id}")')
+                    logger.info(
+                        f"[RE-RUN INFO] 🚨 Job stopped unexpectedly. You can resume the job using " f'master_job_id by re_run("{self.config.master_job_id}")'
+                    )
                 self._show_job_progress_status()
                 if isinstance(self.err, ValueError):
                     raise self.err
@@ -200,7 +202,7 @@ class DataFactory:
         """Process batches with asyncio."""
         if self.config.run_mode != RUN_MODE_RE_RUN:
             logger.info(
-                f"\033[1mJob START:\033[0m "
+                f"\033[1m[JOB START]\033[0m "
                 f"\033[36mMaster Job ID: {self.config.master_job_id}\033[0m | "
                 f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
             )
@@ -227,9 +229,9 @@ class DataFactory:
             # Convert list to dict with count tracking using hash values
             input_data = master_job_config_data.get("input_data")
             logger.info(
-                f"\033[1mJob START:\033[0m "
+                f"\033[1m[RE-RUN START]\033[0m "
                 f"\033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n"
-                f"\033[1mSTATUS AT THE TIME OF RE-RUN:\033[0m "
+                f"\033[1m[RE-RUN PROGRESS]STATUS AT THE TIME OF RE-RUN:\033[0m "
                 f"\033[32mCompleted: {master_job.completed_record_count} / {len(input_data)}\033[0m | "
                 f"\033[31mFailed: {master_job.failed_record_count}\033[0m | "
                 f"\033[31mDuplicate: {master_job.duplicate_record_count}\033[0m | "
@@ -348,8 +350,8 @@ class DataFactory:
     def _show_job_progress_status(self):
         target_count = self.config.target_count
         logger.info(
-            f"[JOB PROGRESS] "
-            f"\033[1mJob Finished:\033[0m "
+            f"[JOB FINISHED] "
+            f"\033[1mFinal Status:\033[0m "
             f"\033[32mCompleted: {self.job_manager.completed_count}/{target_count}\033[0m | "
             f"\033[33mAttempted: {self.job_manager.total_count}\033[0m "
             f"(Failed: {self.job_manager.failed_count}, "
