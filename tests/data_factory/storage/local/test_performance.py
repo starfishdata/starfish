@@ -270,8 +270,8 @@ async def test_realistic_workflow(
     async def process_job(job_idx, job):
         job_start_time = time.time()
 
-        # Mark job as running
-        job.status = "running"
+        # Mark job as pending
+        job.status = "pending"
         job.start_time = datetime.datetime.now(datetime.timezone.utc)
         await storage.log_execution_job_start(job)
 
@@ -456,7 +456,7 @@ async def test_realistic_workflow(
                 record_read_tasks.append((i + 1, record, storage.get_record_data(record.output_ref)))
 
         # Wait for all read tasks to complete
-        for i, record, task in record_read_tasks:
+        for i, _record, task in record_read_tasks:
             read_start = time.time()
             await task
             read_time = time.time() - read_start
@@ -613,7 +613,7 @@ async def test_read_performance():
         job = GenerationJob(
             job_id=job_id,
             master_job_id=master_job_id,
-            status="running",
+            status="pending",
             worker_id="read-perf-worker",
             run_config=run_config_str,
             run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),

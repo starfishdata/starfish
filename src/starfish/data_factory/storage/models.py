@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field, field_validator
 
 # --- Enums for Status Fields ---
 
+
 StatusMasterJob = Literal["pending", "running", "completed", "failed", "completed_with_errors", "cancelled"]
-StatusExecutionJob = Literal["pending", "running", "completed", "failed", "cancelled"]
+StatusExecutionJob = Literal["pending", "running", "completed", "duplicate", "filtered", "failed", "cancelled"]
 StatusRecord = Literal["pending", "running", "completed", "duplicate", "filtered", "failed", "cancelled"]
 
 
@@ -22,6 +23,16 @@ def utc_now() -> datetime.datetime:
 
 
 class Project(BaseModel):
+    """Represents a project that groups related data generation jobs.
+
+    Attributes:
+        project_id: Unique project identifier (auto-generated UUID).
+        name: User-friendly project name.
+        description: Optional project description.
+        created_when: Timestamp of project creation (UTC).
+        updated_when: Timestamp of last project update (UTC).
+    """
+
     project_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique project identifier.")
     name: str = Field(..., description="User-friendly project name.")
     description: Optional[str] = Field(None, description="Optional description.")
@@ -29,10 +40,35 @@ class Project(BaseModel):
     updated_when: datetime.datetime = Field(default_factory=utc_now)
 
     class Config:
+        """Configuration for Pydantic model."""
+
         from_attributes = True
 
 
 class GenerationMasterJob(BaseModel):
+    """Represents a master job that coordinates multiple generation jobs.
+
+    Attributes:
+        master_job_id: Unique job identifier (auto-generated UUID).
+        project_id: Foreign key to Projects table.
+        name: Optional user-friendly name for the job.
+        status: Overall status of the job request.
+        request_config_ref: Reference to external request config JSON.
+        output_schema: JSON definition of expected primary data structure.
+        storage_uri: Primary storage location config.
+        metadata_storage_uri_override: Optional override for metadata storage.
+        data_storage_uri_override: Optional override for data storage.
+        target_record_count: Number of unique, valid records requested.
+        completed_record_count: Count of completed records.
+        filtered_record_count: Count of filtered records.
+        duplicate_record_count: Count of duplicate records.
+        failed_record_count: Count of failed records.
+        creation_time: Job submission time.
+        start_time: Time when first execution work began.
+        end_time: Time when job reached terminal state.
+        last_update_time: Last modification time.
+    """
+
     master_job_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique job identifier.")
     project_id: str = Field(..., description="FK to Projects. Groups jobs.")
     name: Optional[str] = Field(None, description="Optional user-friendly name.")
@@ -54,20 +90,46 @@ class GenerationMasterJob(BaseModel):
     end_time: Optional[datetime.datetime] = Field(None, description="Time the job reached a terminal state.")
     last_update_time: datetime.datetime = Field(default_factory=utc_now, description="Last modification time.")
 
+    # ruff: noqa
+    # ruff: noformat
     @field_validator("output_schema", mode="before")
     def _parse_json_string(cls, value):
         if isinstance(value, str):
             try:
                 return json.loads(value)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON string provided")
+            except json.JSONDecodeError as err:
+                raise ValueError("Invalid JSON string provided") from err
         return value
 
     class Config:
+        """Configuration for Pydantic model."""
+
         from_attributes = True
 
 
 class GenerationJob(BaseModel):
+    """Represents an individual execution job within a master job.
+
+    Attributes:
+        job_id: Unique execution identifier (auto-generated UUID).
+        master_job_id: Foreign key to MasterJobs table.
+        status: Status of this specific execution run.
+        run_config: JSON of specific inputs/context for this run.
+        run_config_hash: Hash of the run_config.
+        attempted_generations: Generation cycles processed in this run.
+        produced_outputs_count: Raw data items returned by generator(s).
+        completed_record_count: Count of completed records from this run.
+        filtered_record_count: Count of filtered records from this run.
+        duplicate_record_count: Count of duplicate records from this run.
+        failed_record_count: Count of failed records from this run.
+        creation_time: Job creation time.
+        start_time: When this execution actually started.
+        end_time: When this execution finished.
+        last_update_time: Last modification time.
+        worker_id: Identifier of the worker (if applicable).
+        error_message: Error if the whole execution run failed.
+    """
+
     job_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique execution identifier.")
     master_job_id: str = Field(..., description="FK to MasterJobs.")
     status: StatusExecutionJob = Field(default="pending", description="Status of this specific execution run.")
@@ -87,14 +149,16 @@ class GenerationJob(BaseModel):
     worker_id: Optional[str] = Field(None, description="Identifier of the worker (if applicable).")
     error_message: Optional[str] = Field(None, description="Error if the whole execution run failed.")
 
+    # ruff: noqa
+    # ruff: noformat
     @field_validator("run_config", mode="before")
     def _parse_json_string(cls, value):
         # Same validator as above if stored as JSON string in DB
         if isinstance(value, str):
             try:
                 return json.loads(value)
-            except json.JSONDecodeError:
-                raise ValueError("Invalid JSON string provided for run_config")
+            except json.JSONDecodeError as err:
+                raise ValueError("Invalid JSON string provided for run_config") from err
         return value
 
     # Helper method to calculate duration if needed
@@ -107,10 +171,26 @@ class GenerationJob(BaseModel):
         return None
 
     class Config:
+        """Configuration for Pydantic model."""
+
         from_attributes = True
 
 
 class Record(BaseModel):
+    """Represents an individual data record generated by a job.
+
+    Attributes:
+        record_uid: Globally unique artifact ID (auto-generated UUID).
+        job_id: Foreign key to GenerationJob.
+        master_job_id: Denormalized foreign key to GenerationMasterJob.
+        status: Final determined status of this artifact.
+        output_ref: Reference to external data JSON.
+        start_time: Time generator function produced the data.
+        end_time: Time final status was assigned.
+        last_update_time: Last modification time.
+        error_message: Specific error related to this record.
+    """
+
     record_uid: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Globally unique artifact ID.")
     job_id: str = Field(..., description="FK to GenerationJob.")
     master_job_id: str = Field(..., description="Denormalized FK to GenerationMasterJob.")
@@ -122,6 +202,8 @@ class Record(BaseModel):
     error_message: Optional[str] = Field(None, description="Specific error related to this record.")
 
     class Config:
+        """Configuration for Pydantic model."""
+
         from_attributes = True
 
 
