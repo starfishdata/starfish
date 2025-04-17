@@ -34,14 +34,12 @@ def load_env_file(env_path: Optional[str] = None, override: bool = False) -> boo
     # Skip loading in production environments
     if os.getenv("ENV") == "PROD":
         logger.info("Production environment detected. Skipping .env file loading.")
-        return False
 
     # Find the .env file if path not provided
     if env_path is None:
         env_path = dotenv_find_dotenv(usecwd=True)
         if not env_path:
             logger.warning("No .env file found in the current or parent directories.")
-            return False
 
     # Load environment variables
     loaded = dotenv_load_dotenv(dotenv_path=env_path, override=override)
@@ -49,8 +47,6 @@ def load_env_file(env_path: Optional[str] = None, override: bool = False) -> boo
     if loaded:
         # Get the loaded variables to count and log them
         loaded_vars = dotenv_values(env_path)
-        logger.info(f"Loaded {len(loaded_vars)} environment variables from {env_path}")
+        logger.debug(f"Loaded {len(loaded_vars)} environment variables from {env_path}")
     else:
         logger.warning(f"Failed to load environment variables from {env_path}")
-
-    return loaded
