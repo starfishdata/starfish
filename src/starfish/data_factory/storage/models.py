@@ -90,8 +90,10 @@ class GenerationMasterJob(BaseModel):
     end_time: Optional[datetime.datetime] = Field(None, description="Time the job reached a terminal state.")
     last_update_time: datetime.datetime = Field(default_factory=utc_now, description="Last modification time.")
 
+    # ruff: noqa
+    # ruff: noformat
     @field_validator("output_schema", mode="before")
-    def _parse_json_string(self, value):
+    def _parse_json_string(cls, value):
         if isinstance(value, str):
             try:
                 return json.loads(value)
@@ -147,8 +149,10 @@ class GenerationJob(BaseModel):
     worker_id: Optional[str] = Field(None, description="Identifier of the worker (if applicable).")
     error_message: Optional[str] = Field(None, description="Error if the whole execution run failed.")
 
+    # ruff: noqa
+    # ruff: noformat
     @field_validator("run_config", mode="before")
-    def _parse_json_string(self, value):
+    def _parse_json_string(cls, value):
         # Same validator as above if stored as JSON string in DB
         if isinstance(value, str):
             try:
