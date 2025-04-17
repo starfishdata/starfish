@@ -4,7 +4,6 @@ from typing import Any, Callable, Dict, List
 
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import TASK_RUNNER_TIMEOUT
-from starfish.telemetry.posthog_client import TelemetryEvent, telemetry_client
 
 logger = get_logger(__name__)
 
@@ -51,11 +50,5 @@ class TaskRunner:
                     # logger.error(f"Task execution failed after {self.max_retries} retries")
                     raise e
                 await asyncio.sleep(2**retries)  # exponential backoff
-        # update anonymized telemetry
-        telemetry_client.capture(
-            TelemetryEvent(
-                event_type="batch_task_run",
-                metadata=input_data,
-            )
-        )
+
         return result
