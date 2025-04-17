@@ -1,9 +1,16 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/3bec9453-0581-4d33-acbd-0f4e6954d8c8" alt="Starfish Logo" width="200"/>
+  <img src="https://github.com/user-attachments/assets/744c666a-bb5c-418b-aab4-162072c0b8c8" alt="Starfish Logo" width="200"/>
 </p>
 <h1 align="center">Starfish</h1>
-<h2 align="center" style="font-size: 20px; margin-bottom: 10px">Synthetic Data Generation Made Easy</h2>
+<h3 align="center" style="font-size: 20px; margin-bottom: 4px">Synthetic Data Generation Made Easy</h2>
+</br>
 
+<div align="center">
+
+[![Github](https://img.shields.io/badge/starfish-black?style=for-the-badge&logo=github&color=black)](https://github.com/starfishdata/starfish) [![X](https://img.shields.io/badge/starfishdata-black?style=for-the-badge&logo=x&color=black&link=https%3A%2F%2Fx.com%2Fstarfishdata)](https://x.com/starfishdata) [![Hugging Face](https://img.shields.io/badge/starfishdata-yellow?style=for-the-badge&logo=huggingface&labelColor=black&color=black)](https://huggingface.co/starfishdata) [![Discord](https://img.shields.io/badge/starfishdata-yellow?style=for-the-badge&logo=discord&logoColor=white&labelColor=%235865F2&color=%235865F2)](https://discord.gg/qWKmeUtb)
+<br>
+[![Website](https://img.shields.io/badge/starfishdata-yellow?style=for-the-badge&label=SITE&labelColor=%23DB2777&color=%23FDF2F8)](https://starfishdata.ai/) 
+</div>
 
 ## Overview
 
