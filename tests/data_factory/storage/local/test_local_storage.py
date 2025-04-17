@@ -284,7 +284,7 @@ async def test_execution_job_lifecycle(storage, test_master_job):
 async def test_list_execution_jobs(storage, test_master_job):
     """Test listing execution jobs with filters."""
     # Create multiple jobs
-    status_counts = {"pending": 2, "running": 3, "completed": 4}
+    status_counts = {"pending": 2, "duplicate": 3, "completed": 4}
 
     for status, count in status_counts.items():
         for i in range(count):
@@ -308,7 +308,7 @@ async def test_list_execution_jobs(storage, test_master_job):
     assert len(completed) == 4
 
     # Multiple status
-    multi_status = await storage.list_execution_jobs(test_master_job.master_job_id, status_filter=["pending", "running"])
+    multi_status = await storage.list_execution_jobs(test_master_job.master_job_id, status_filter=["pending", "duplicate"])
     assert len(multi_status) == 5
 
     # Test limit and offset
@@ -331,7 +331,7 @@ async def test_record_storage(storage, test_master_job):
     job = GenerationJob(
         job_id=str(uuid.uuid4()),
         master_job_id=test_master_job.master_job_id,
-        status="running",
+        status="pending",
         run_config=run_config_str,
         run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
     )
@@ -379,7 +379,7 @@ async def test_get_records_for_master_job(storage, test_master_job):
     job = GenerationJob(
         job_id=str(uuid.uuid4()),
         master_job_id=test_master_job.master_job_id,
-        status="running",
+        status="pending",
         run_config=run_config_str,
         run_config_hash=hashlib.sha256(run_config_str.encode()).hexdigest(),
     )
@@ -491,7 +491,7 @@ async def test_complete_workflow(storage):
     await storage.log_execution_job_start(job)
 
     # 5. Start execution job
-    job.status = "running"
+    job.status = "pending"
     job.start_time = now
     await storage.log_execution_job_start(job)
 

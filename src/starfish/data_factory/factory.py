@@ -452,6 +452,12 @@ def data_factory(
             # data processing logic
             return processed_data
     """
+    if on_record_error is None:
+        on_record_error = []
+    if on_record_complete is None:
+        on_record_complete = []
+    if initial_state_values is None:
+        initial_state_values = {}
     master_job_config = FactoryMasterConfig(
         storage=storage,
         batch_size=batch_size,

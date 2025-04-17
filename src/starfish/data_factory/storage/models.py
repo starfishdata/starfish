@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 StatusMasterJob = Literal["pending", "running", "completed", "failed", "completed_with_errors", "cancelled"]
-StatusExecutionJob = Literal["pending", "completed", "duplicate", "filtered", "failed", "cancelled"]
+StatusExecutionJob = Literal["pending", "running", "completed", "duplicate", "filtered", "failed", "cancelled"]
 StatusRecord = Literal["pending", "running", "completed", "duplicate", "filtered", "failed", "cancelled"]
 
 

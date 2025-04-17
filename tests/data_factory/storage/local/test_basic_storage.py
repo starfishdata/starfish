@@ -96,7 +96,7 @@ async def run_basic_test():
         now = datetime.datetime.now(datetime.timezone.utc)
 
         # Update job fields
-        job.status = "running"
+        job.status = "pending"
         job.start_time = now
 
         try:
