@@ -11,21 +11,6 @@ load_env_file()
 ### Mock LLM call
 
 
-# async def mock_llm_call(city_name, num_records_per_city, fail_rate=0.05, sleep_time=0.01):
-#     # Simulate a slight delay (optional, feels more async-realistic)
-#     await asyncio.sleep(sleep_time)
-
-#     # 5% chance of failure
-#     if random.random() < fail_rate:
-#         print(f"  {city_name}: Failed!") ## For debugging
-#         raise ValueError(f"Mock LLM failed to process city: {city_name}")
-
-#     print(f"{city_name}: Successfully processed!") ## For debugging
-
-#     result = [f"{city_name}_{random.randint(1, 5)}" for _ in range(num_records_per_city)]
-#     return result
-
-
 @pytest.mark.asyncio
 async def test_case_1():
     """Test with input data and broadcast variables
@@ -35,7 +20,7 @@ async def test_case_1():
     """
 
     @data_factory(max_concurrency=2)
-    async def test1(city_name, num_records_per_city, fail_rate=0.5, sleep_time=1):
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=1):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     result = test1.run(
@@ -213,6 +198,65 @@ async def test_case_9():
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     test1.dry_run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+        ],
+        num_records_per_city=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_case_timeout():
+    """Test extra parameters not defined in workflow
+    - Input: List of dicts with city names
+    - Extra: random_param not defined in workflow
+    - Expected: TypeError due to unexpected parameter
+    """
+
+    @data_factory(max_concurrency=2, task_runner_timeout=0.01)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
+        return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
+
+    with pytest.raises(ValueError):
+        test1.dry_run(
+            data=[
+                {"city_name": "1. New York"},
+                {"city_name": "2. Los Angeles"},
+            ],
+            num_records_per_city=1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_case_re_run():
+    """Test extra parameters not defined in workflow
+    - Input: List of dicts with city names
+    - Extra: random_param not defined in workflow
+    - Expected: TypeError due to unexpected parameter
+    """
+
+    @data_factory(max_concurrency=2, task_runner_timeout=10)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
+        return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
+
+    with pytest.raises(TypeError):
+        test1.re_run("123")
+
+
+@pytest.mark.asyncio
+async def test_case_job_run_stop_threshold():
+    """Test extra parameters not defined in workflow
+    - Input: List of dicts with city names
+    - Extra: random_param not defined in workflow
+    - Expected: TypeError due to unexpected parameter
+    """
+
+    @data_factory(max_concurrency=2, job_run_stop_threshold=2)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
+        return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
+
+    test1.run(
         data=[
             {"city_name": "1. New York"},
             {"city_name": "2. Los Angeles"},

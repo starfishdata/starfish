@@ -1,21 +1,16 @@
 import asyncio
 import datetime
-import hashlib
-import json
 import uuid
 from functools import wraps
 from inspect import Parameter, signature
 from queue import Queue
 from typing import Any, Callable, Dict, List
 
-from rich.progress import Progress, TextColumn
-
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import PROGRESS_LOG_INTERVAL, TASK_RUNNER_TIMEOUT
 from starfish.data_factory.constants import (
     LOCAL_STORAGE_URI,
     RECORD_STATUS,
-    RUN_MODE,
     RUN_MODE_DRY_RUN,
     RUN_MODE_RE_RUN,
     STATUS_COMPLETED,
@@ -126,7 +121,7 @@ class DataFactory:
                 self.job_manager = JobManager(
                     master_job_config=self.config, storage=self.factory_storage, input_data_queue=self.input_data, user_func=self.func
                 )
-                # self._setup_storage_and_job_manager()
+
                 self._save_project()
                 self._save_request_config()
                 self._log_master_job_start()
@@ -160,6 +155,7 @@ class DataFactory:
                 else:
                     return result
             else:
+                self._close_storage()
                 raise self.err
 
     def _process_output(self) -> List[Any]:
@@ -193,11 +189,6 @@ class DataFactory:
             if batch_param not in func_sig.parameters:
                 raise TypeError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
-    def _setup_storage_and_job_manager(self):
-        self._storage_setup()
-
-        self.job_manager = JobManager(job_config=self.job_config, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data)
-
     def _process_batches(self) -> List[Any]:
         """Process batches with asyncio."""
         if self.config.run_mode != RUN_MODE_RE_RUN:
@@ -220,45 +211,6 @@ class DataFactory:
         config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}, "input_data": list(self.input_data.queue)}
         self.config_ref = await self.factory_storage.save_request_config(self.config.master_job_id, config_data)
         logger.debug(f"  - Saved request config to: {self.config_ref}")
-
-    @async_wrapper()
-    async def _set_input_data_from_master_job(self):
-        master_job = await self.factory_storage.get_master_job(self.config.master_job_id)
-        if master_job:
-            master_job_config_data = await self.factory_storage.get_request_config(master_job.request_config_ref)
-            # Convert list to dict with count tracking using hash values
-            input_data = master_job_config_data.get("input_data")
-            logger.info(
-                f"\033[1m[RE-RUN START]\033[0m "
-                f"\033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n"
-                f"\033[1m[RE-RUN PROGRESS]STATUS AT THE TIME OF RE-RUN:\033[0m "
-                f"\033[32mCompleted: {master_job.completed_record_count} / {len(input_data)}\033[0m | "
-                f"\033[31mFailed: {master_job.failed_record_count}\033[0m | "
-                f"\033[31mDuplicate: {master_job.duplicate_record_count}\033[0m | "
-                f"\033[33mFiltered: {master_job.filtered_record_count}\033[0m"
-            )
-            # update job manager counters; completed is not included; will be updated in the job manager
-            self.job_manager.total_count = (
-                master_job.completed_record_count + master_job.failed_record_count + master_job.duplicate_record_count + master_job.filtered_record_count
-            )
-            self.job_manager.failed_count = master_job.failed_record_count
-            self.job_manager.duplicate_count = master_job.duplicate_record_count
-            self.job_manager.filtered_count = master_job.filtered_record_count
-            self.job_manager.completed_count = master_job.completed_record_count
-            input_dict = {}
-            for item in input_data:
-                self.input_data.put(item)
-                if isinstance(item, dict):
-                    input_data_str = json.dumps(item, sort_keys=True)
-                else:
-                    input_data_str = str(item)
-                input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
-                if input_data_hash in input_dict:
-                    input_dict[input_data_hash]["count"] += 1
-                else:
-                    input_dict[input_data_hash] = {"data": item, "data_str": input_data_str, "count": 1}
-            self.job_config["input_dict"] = input_dict
-            self.job_config[RUN_MODE] = RUN_MODE_RE_RUN
 
     @async_wrapper()
     async def _log_master_job_start(self):
@@ -313,40 +265,6 @@ class DataFactory:
         new_target_count = self.input_data.qsize() if target_count == 0 else target_count
         self.config.target_count = new_target_count
 
-    def _init_progress_bar(self):
-        self.progress = (
-            Progress(
-                TextColumn("[bold blue]{task.description}"),
-                # BarColumn(),
-                # TaskProgressColumn(),
-                TextColumn("•"),
-                TextColumn("{task.fields[status]}"),
-                # TimeRemainingColumn(),
-            )
-            if self.job_config.get("show_progress")
-            else None
-        )
-        # Separate task IDs for each counter
-        self.progress_tasks = {
-            STATUS_COMPLETED: None,
-            STATUS_FAILED: None,
-            STATUS_FILTERED: None,
-            STATUS_DUPLICATE: None,
-        }
-        if self.job_config.get("show_progress"):
-            # self.progress.start()
-            # with self.progress_lock:
-            target_count = self.job_config.get("target_count")
-            self.progress_tasks[STATUS_COMPLETED] = self.progress.add_task("[green]Completed", total=target_count, status="✅ 0")
-            self.progress_tasks[STATUS_FAILED] = self.progress.add_task("[red]Failed", total=target_count, status="❌ 0")
-            self.progress_tasks[STATUS_FILTERED] = self.progress.add_task("[yellow]Filtered", total=target_count, status="🚫 0")
-            self.progress_tasks[STATUS_DUPLICATE] = self.progress.add_task("[cyan]Duplicated", total=target_count, status="🔁 0")
-            # self.progress_tasks[STATUS_TOTAL] = self.progress.add_task(
-            #     "[white]Attempted", total=target_count, status="📊 0"
-            # )
-            # self.job_config["progress"] = self.progress
-            # self.job_config["progress_tasks"] = self.progress_tasks
-
     def _show_job_progress_status(self):
         target_count = self.config.target_count
         logger.info(
@@ -358,21 +276,6 @@ class DataFactory:
             f"Filtered: {self.job_manager.filtered_count}, "
             f"Duplicate: {self.job_manager.duplicate_count})"
         )
-        # if self.job_config.get("show_progress"):
-        #     self.progress.start()
-
-        #     for counter_type, task_id in self.progress_tasks.items():
-        #         count = getattr(self.job_manager, f"{counter_type}_count")
-        #         emoji = STATUS_MOJO_MAP[counter_type]
-        #         percentage = int((count / target_count) * 100) if target_count > 0 else 0
-        #         if counter_type != STATUS_COMPLETED:
-        #             target_count = self.job_manager.total_count
-        #         self.progress.update(
-        #             task_id,
-        #             completed=count,
-        #             status=f"{emoji} {count}/{target_count} ({percentage}%)"
-        #         )
-        #     self.progress.stop()
 
 
 def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Queue[Dict[str, Any]]:
@@ -430,6 +333,7 @@ def data_factory(
     show_progress: bool = True,
     input_converter=_default_input_converter,
     task_runner_timeout: int = TASK_RUNNER_TIMEOUT,
+    job_run_stop_threshold: int = 3,
 ):
     """Decorator factory for creating data processing pipelines.
 
@@ -444,6 +348,7 @@ def data_factory(
         show_progress (bool): Whether to display progress bar. Defaults to True.
         input_converter (Callable): Function to convert input data to Queue format. Defaults to _default_input_converter.
         task_runner_timeout (int): Timeout in seconds for task execution. Defaults to TASK_RUNNER_TIMEOUT.
+        job_run_stop_threshold (int): Number of times to retry a failed job. Defaults to 3.
 
     Returns:
         DataFactory: Configured data factory instance to be used as a decorator.
@@ -471,6 +376,7 @@ def data_factory(
         on_record_error=on_record_error,
         input_converter=input_converter,
         state=MutableSharedState(initial_state_values),
+        job_run_stop_threshold=job_run_stop_threshold,
     )
 
     def decorator(func: Callable):

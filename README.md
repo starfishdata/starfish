@@ -82,10 +82,71 @@ print(response.raw)  # Full API object with function calls, reasoning tokens, et
 
 ```python
 # Turn any function into a scalable data pipeline
-from starfish import data_factory
+from typing import Any
+from starfish.data_factory.constants import (
+    STATUS_COMPLETED,
+    STATUS_DUPLICATE,
+    STATUS_FAILED,
+    STORAGE_TYPE_LOCAL,
+)
+from starfish.data_factory.factory import data_factory
+from starfish.data_factory.utils.state import MutableSharedState
+
+def handle_error(data: Any, state: MutableSharedState):
+    """Handle error cases during data processing.
+
+    Args:
+        data: The data that caused the error
+        state: Shared state object for tracking progress
+
+    Returns:
+        str: STATUS_FAILED constant
+    """
+    return STATUS_FAILED
+
+
+def handle_record_complete(data: Any, state: MutableSharedState):
+    """Handle successful completion of a record.
+
+    Args:
+        data: The successfully processed data
+        state: Shared state object for tracking progress
+
+    Returns:
+        str: STATUS_COMPLETED constant
+    """
+    # print(f"Record complete: {data}")
+
+    state.set("completed_count", 1)
+    state.update({"completed_count": 2})
+    return STATUS_COMPLETED
+
+
+def handle_duplicate_record(data: Any, state: MutableSharedState):
+    """Handle duplicate record detection.
+
+    Args:
+        data: The duplicate data record
+        state: Shared state object for tracking progress
+
+    Returns:
+        str: Either STATUS_COMPLETED or STATUS_DUPLICATE based on random chance
+    """
+    # any any key-value pair in the state.
+    state.set("completed_count", 1)
+    state.update({"completed_count": 2})
+    return STATUS_DUPLICATE
 
 # Works with any function - simple or complex workflows
-@data_factory(max_concurrency=50)
+@data_factory(
+    storage=STORAGE_TYPE_LOCAL,
+    max_concurrency=50,
+    initial_state_values={},
+    on_record_complete=[handle_record_complete, handle_duplicate_record],
+    on_record_error=[handle_error],
+    show_progress=True,
+    task_runner_timeout=60,
+)
 async def parallel_qna_llm(city):
     # This could be any arbitrary complex workflow:
     # - Pre-processing
@@ -97,7 +158,13 @@ async def parallel_qna_llm(city):
 
 # Process 100 cities with 50 concurrent workers - finishes in seconds
 cities = ["San Francisco", "New York", "Tokyo", "Paris", "London"] * 20
-results = parallel_qna_llm(city=cities)
+results = parallel_qna_llm.run(city=cities)
+# dry run to test the workflow and data
+results = parallel_qna_llm.dry_run(
+        ccity=cities
+    )
+# re-run job which pick up from where it left off.
+results = parallel_qna_llm.re_run(master_job_id="8e07b4e8-4d4a-4355-82c3-04a5391ddbf5")
 ```
 
 ## Documentation
@@ -130,7 +197,7 @@ If you use Starfish in your research, please consider citing us!
 
 ```
 @software{starfish,
-  author = {Wendao, Jiang, Ayush},
+  author = {Wendao, John, Ayush},
   title = {{Starfish: A Tool for Synthetic Data Generation}},
   year = {2025},
   url = {https://github.com/starfishdata/starfish},
