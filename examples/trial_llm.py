@@ -9,8 +9,8 @@ from starfish.data_factory.constants import (
     STORAGE_TYPE_LOCAL,
 )
 from starfish.data_factory.factory import data_factory
-from starfish.data_factory.state import MutableSharedState
 from starfish.data_factory.utils.mock import mock_llm_call
+from starfish.data_factory.utils.state import MutableSharedState
 
 logger = get_logger(__name__)
 
@@ -88,9 +88,9 @@ def handle_duplicate_record(data: Any, state: MutableSharedState):
     state.update({"completed_count": 2})
     # return STATUS_DUPLICATE
     if random.random() < 0.9:
-        print("going to return completed")
+        # print("going to return completed")
         return STATUS_COMPLETED
-    print("going to return duplicate")
+    # print("going to return duplicate")
     return STATUS_DUPLICATE
 
 
@@ -147,7 +147,7 @@ async def get_city_info_wf(city_name, region_code):
 # )
 
 # run re_run  dry_run
-user_case = "re_run"
+user_case = "run"
 if user_case == "run":
     results = get_city_info_wf.run(
         # data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
@@ -167,6 +167,6 @@ elif user_case == "dry_run":
         # num_records_per_city = 3
     )
 elif user_case == "re_run":
-    results = get_city_info_wf.re_run(master_job_id="d63b24c0-91ae-4286-a5ae-cdc555f17d80")
+    results = get_city_info_wf.re_run(master_job_id="8e07b4e8-4d4a-4355-82c3-04a5391ddbf5")
 
 # logger.info(f"Results: {results}")
