@@ -158,6 +158,7 @@ class DataFactory:
                 else:
                     return result
             else:
+                self._close_storage()
                 raise self.err
 
     def _process_output(self) -> List[Any]:

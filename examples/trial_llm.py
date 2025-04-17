@@ -155,7 +155,7 @@ if user_case == "run":
         city_name=["San Francisco", "New York", "Los Angeles"] * 50,
         region_code=["DE", "IT", "US"] * 50,
         # city_name="Beijing",  ### Overwrite the data key
-        # num_records_per_city = 3
+        num_records_per_city_city=3,
     )
 elif user_case == "dry_run":
     results = get_city_info_wf.dry_run(
