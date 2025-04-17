@@ -23,6 +23,7 @@ from starfish.data_factory.storage.models import GenerationJob, Record
 from starfish.data_factory.task_runner import TaskRunner
 from starfish.data_factory.utils.data_class import FactoryJobConfig, FactoryMasterConfig
 from starfish.data_factory.utils.decorator import async_wrapper
+from starfish.data_factory.utils.errors import TimeoutErrorAsyncio
 
 logger = get_logger(__name__)
 
@@ -293,7 +294,7 @@ class JobManager:
 
             output_ref = await self._save_record_data(copy.deepcopy(output), task_status, input_data)
 
-        except Exception as e:
+        except (Exception, TimeoutErrorAsyncio) as e:
             logger.error(f"Error running task: {e}")
             # Run error hooks
             for hook in self.job_config.on_record_error:

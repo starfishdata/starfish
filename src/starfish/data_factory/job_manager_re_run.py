@@ -124,3 +124,5 @@ class JobManagerRerun(JobManager):
                 logger.debug("Task not runned, running task")
                 for _ in range(input_data["count"] - len(runned_tasks)):
                     self.job_input_queue.put(input_data["data"])
+        else:
+            raise TypeError(f"Master job not found for master_job_id: {self.master_job_id}")

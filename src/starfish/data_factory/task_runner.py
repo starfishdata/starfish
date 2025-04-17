@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List
 
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import TASK_RUNNER_TIMEOUT
+from starfish.data_factory.utils.errors import TimeoutErrorAsyncio
 
 logger = get_logger(__name__)
 
@@ -42,8 +43,12 @@ class TaskRunner:
                 logger.debug(f"Task execution completed in {time.time() - start_time:.2f} seconds")
                 break
             except asyncio.TimeoutError as timeout_error:
-                logger.error(f"Task execution timed out after {self.timeout} seconds")
-                raise TimeoutError(f"Task execution timed out after {self.timeout} seconds") from timeout_error
+                logger.error(
+                    f"Task execution timed out after {self.timeout} seconds, "
+                    "please set the timeout in data_factory decorator like this: "
+                    "task_runner_timeout=60"
+                )
+                raise TimeoutErrorAsyncio(f"Task execution timed out after {self.timeout} seconds") from timeout_error
             except Exception as e:
                 retries += 1
                 if retries > self.max_retries:
