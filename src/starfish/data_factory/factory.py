@@ -69,6 +69,7 @@ class DataFactory:
             func (Callable): The data processing function to be wrapped
         """
         self.config = master_job_config
+        self.state = None
         self.func = func
         self.input_data = Queue()
         self.factory_storage = None
@@ -103,13 +104,15 @@ class DataFactory:
         try:
             # Check for master_job_id in kwargs and assign if present
             if run_mode == RUN_MODE_RE_RUN:
-                self.job_manager = JobManagerRerun(job_config=self.config, storage=self.factory_storage, user_func=self.func)
+                self.job_manager = JobManagerRerun(job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func)
             elif run_mode == RUN_MODE_DRY_RUN:
                 # dry run mode
                 self.input_data = self.config.input_converter(*args, **kwargs)
                 # Get only first item but maintain Queue structure
                 self._check_parameter_match()
-                self.job_manager = JobManagerDryRun(job_config=self.config, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data)
+                self.job_manager = JobManagerDryRun(
+                    job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data
+                )
             else:
                 self.input_data = self.config.input_converter(*args, **kwargs)
                 self._check_parameter_match()
@@ -119,7 +122,7 @@ class DataFactory:
                 self.config.master_job_id = str(uuid.uuid4())
 
                 self.job_manager = JobManager(
-                    master_job_config=self.config, storage=self.factory_storage, input_data_queue=self.input_data, user_func=self.func
+                    master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data, user_func=self.func
                 )
 
                 self._save_project()
@@ -208,7 +211,12 @@ class DataFactory:
     async def _save_request_config(self):
         logger.debug("\n2. Creating master job...")
         # First save the request config
-        config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}, "input_data": list(self.input_data.queue)}
+        config_data = {
+            "generator": "test_generator",
+            "config": self.config.to_dict(),
+            "state": self.state.to_dict(),
+            "input_data": list(self.input_data.queue),
+        }
         self.config_ref = await self.factory_storage.save_request_config(self.config.master_job_id, config_data)
         logger.debug(f"  - Saved request config to: {self.config_ref}")
 
@@ -375,18 +383,18 @@ def data_factory(
         on_record_complete=on_record_complete,
         on_record_error=on_record_error,
         input_converter=input_converter,
-        state=MutableSharedState(initial_state_values),
         job_run_stop_threshold=job_run_stop_threshold,
     )
 
     def decorator(func: Callable):
         factory = DataFactory(master_job_config, func)
+        factory.state = MutableSharedState(initial_data=initial_state_values)
 
         @wraps(func)
         def wrapper(*args, **kwargs):
             return factory(*args, **kwargs)
 
-        wrapper.state = factory.config.state
+        wrapper.state = factory.state
 
         # Add run method to the wrapped function
         def run(*args, **kwargs):

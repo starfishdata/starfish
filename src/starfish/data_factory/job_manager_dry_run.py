@@ -5,6 +5,7 @@ from starfish.common.logger import get_logger
 from starfish.data_factory.job_manager import JobManager
 from starfish.data_factory.storage.base import Storage
 from starfish.data_factory.utils.decorator import async_wrapper
+from starfish.data_factory.utils.state import MutableSharedState
 
 logger = get_logger(__name__)
 
@@ -29,7 +30,7 @@ class JobManagerDryRun(JobManager):
         Inherits all attributes from JobManager.
     """
 
-    def __init__(self, job_config: Dict[str, Any], storage: Storage, user_func: Callable, input_data_queue: Queue = None):
+    def __init__(self, job_config: Dict[str, Any], state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None):
         """Initialize the JobManager with job configuration and storage.
 
         Args:
@@ -39,11 +40,12 @@ class JobManagerDryRun(JobManager):
                 - user_func: Function to execute for each task
                 - on_record_complete: List of hooks to run after record completion
                 - on_record_error: List of hooks to run on record error
+            state: MutableSharedState instance for storing job state
             storage: Storage instance for persisting job results and metadata
             user_func: User-defined function to execute for each task
             input_data_queue: Queue containing input data for the job. Defaults to None.
         """
-        super().__init__(job_config, storage, user_func, input_data_queue)
+        super().__init__(job_config, state, storage, user_func, input_data_queue)
 
     @async_wrapper()
     async def setup_input_output_queue(self):

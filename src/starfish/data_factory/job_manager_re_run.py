@@ -10,7 +10,9 @@ from starfish.data_factory.constants import (
 )
 from starfish.data_factory.job_manager import JobManager
 from starfish.data_factory.storage.base import Storage
+from starfish.data_factory.utils.data_class import FactoryMasterConfig
 from starfish.data_factory.utils.decorator import async_wrapper
+from starfish.data_factory.utils.state import MutableSharedState
 
 logger = get_logger(__name__)
 
@@ -41,7 +43,7 @@ class JobManagerRerun(JobManager):
         - completed_count (int): Completed records from previous run
     """
 
-    def __init__(self, job_config: Dict[str, Any], storage: Storage, user_func: Callable, input_data_queue: Queue = None):
+    def __init__(self, job_config: Dict[str, Any], state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None):
         """Initialize the JobManager with job configuration and storage.
 
         Args:
@@ -51,11 +53,13 @@ class JobManagerRerun(JobManager):
                 - user_func: Function to execute for each task
                 - on_record_complete: List of hooks to run after record completion
                 - on_record_error: List of hooks to run on record error
+            state: MutableSharedState instance for storing job state
             storage: Storage instance for persisting job results and metadata
             user_func: User-defined function to execute for each task
             input_data_queue: Queue containing input data for the job. Defaults to an empty Queue.
         """
-        super().__init__(job_config, storage, user_func, input_data_queue)
+        self.setup_input_output_queue()
+        super().__init__(job_config, state, storage, user_func, input_data_queue)
 
     @async_wrapper()
     async def setup_input_output_queue(self):
@@ -76,6 +80,11 @@ class JobManagerRerun(JobManager):
             master_job_config_data = await self.storage.get_request_config(master_job.request_config_ref)
             # Convert list to dict with count tracking using hash values
             input_data = master_job_config_data.get("input_data")
+            self.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
+            FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
+            # not call setup_storage at the beginning
+            # setup_storage here
+            # set parent __init__ here
             logger.info("\033[1m[JOB RE-RUN START]\033[0m " "\033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n")
             logger.info(
                 f"\033[1m[RE-RUN PROGRESS] STATUS AT THE TIME OF RE-RUN:\033[0m "

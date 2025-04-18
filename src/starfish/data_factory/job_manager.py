@@ -24,6 +24,7 @@ from starfish.data_factory.task_runner import TaskRunner
 from starfish.data_factory.utils.data_class import FactoryJobConfig, FactoryMasterConfig
 from starfish.data_factory.utils.decorator import async_wrapper
 from starfish.data_factory.utils.errors import TimeoutErrorAsyncio
+from starfish.data_factory.utils.state import MutableSharedState
 
 logger = get_logger(__name__)
 
@@ -55,11 +56,14 @@ class JobManager:
         _progress_ticker_task (asyncio.Task): Task for progress logging
     """
 
-    def __init__(self, master_job_config: FactoryMasterConfig, storage: Storage, user_func: Callable, input_data_queue: Queue = None):
+    def __init__(
+        self, master_job_config: FactoryMasterConfig, state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None
+    ):
         """Initialize the JobManager with job configuration and storage.
 
         Args:
             master_job_config (FactoryMasterConfig): Configuration for the master job
+            state (MutableSharedState): Shared state object for job state management
             storage (Storage): Storage instance for persisting job results and metadata
             user_func (Callable): Function to execute for each task
             input_data_queue (Queue, optional): Queue for input data. Defaults to None.
@@ -77,7 +81,7 @@ class JobManager:
             job_run_stop_threshold=master_job_config.job_run_stop_threshold,
         )
         self.storage = storage
-        self.state = master_job_config.state
+        self.state = state
         self.semaphore = asyncio.Semaphore(master_job_config.max_concurrency)
         self.lock = asyncio.Lock()
         self.task_runner = TaskRunner(timeout=master_job_config.task_runner_timeout)
@@ -162,11 +166,20 @@ class JobManager:
     async def _complete_execution_job(self, job_uuid: str, status: str, num_records: int):
         logger.debug("\n6. Completing execution job...")
         now = datetime.datetime.now(datetime.timezone.utc)
+        completed_num_records = 0
+        fitered_num_records = 0
+        duplicated_num_records = 0
+        if status == STATUS_COMPLETED:
+            completed_num_records = num_records
+        elif status == STATUS_FILTERED:
+            fitered_num_records = num_records
+        elif status == STATUS_DUPLICATE:
+            duplicated_num_records = num_records
+
         counts = {
-            STATUS_COMPLETED: num_records,
-            STATUS_FILTERED: num_records,
-            STATUS_DUPLICATE: num_records,
-            STATUS_FAILED: num_records,
+            STATUS_COMPLETED: completed_num_records,
+            STATUS_FILTERED: fitered_num_records,
+            STATUS_DUPLICATE: duplicated_num_records,
         }
         await self.storage.log_execution_job_end(job_uuid, status, counts, now, now)
         logger.debug("  - Marked execution job as completed")
