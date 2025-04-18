@@ -28,6 +28,7 @@ from starfish.data_factory.storage.models import GenerationMasterJob, Project
 from starfish.data_factory.utils.data_class import FactoryMasterConfig
 from starfish.data_factory.utils.decorator import async_wrapper
 from starfish.data_factory.utils.state import MutableSharedState
+from starfish.telemetry.posthog_client import analytics
 
 logger = get_logger(__name__)
 
@@ -76,6 +77,7 @@ class DataFactory:
         self.config.master_job_id = None
         self.err = None
         self.config_ref = None
+        self.telemetry_enabled = True
 
     def __call__(self, *args, **kwargs):
         """Execute the data processing pipeline based on the configured run mode.
@@ -135,6 +137,7 @@ class DataFactory:
             self.err = e
             # raise e
         finally:
+            self._send_telemetry_event()
             if not isinstance(self.err, TypeError):
                 result = self._process_output()
                 if len(result) == 0:
@@ -160,6 +163,36 @@ class DataFactory:
             else:
                 self._close_storage()
                 raise self.err
+
+    def _send_telemetry_event(self):
+        logger.info("Sending telemetry event")
+        if self.telemetry_enabled:
+            properties = {
+                "job_id": self.config.master_job_id,
+                "status": "completed",
+                "run_mode": self.config.run_mode,
+                "num_inputs": self.input_data.qsize(),
+                "library_version": "starfish-core",  # This should be replaced with actual version
+                "config": {
+                    "batch_size": self.config.batch_size,
+                    "target_count": self.config.target_count,
+                    "max_concurrency": self.config.max_concurrency,
+                    "task_runner_timeout": self.config.task_runner_timeout,
+                    "job_run_stop_threshold": self.config.job_run_stop_threshold,
+                },
+                "execution_time": self.job_manager.execution_time if hasattr(self.job_manager, "execution_time") else None,
+                "count_summary": {
+                    "completed": self.job_manager.completed_count,
+                    "failed": self.job_manager.failed_count,
+                    "filtered": self.job_manager.filtered_count,
+                    "duplicate": self.job_manager.duplicate_count,
+                },
+                "error_summary": {
+                    "total_errors": self.job_manager.failed_count,
+                    "error_types": self.job_manager.error_counter if hasattr(self.job_manager, "error_counter") else {},
+                },
+            }
+            analytics.send_event(event_name="data_factory_job_completed", properties=properties)
 
     def _process_output(self) -> List[Any]:
         result = []
