@@ -27,7 +27,7 @@ from starfish.data_factory.job_manager_re_run import JobManagerRerun
 from starfish.data_factory.storage.in_memory.in_memory_storage import InMemoryStorage
 from starfish.data_factory.storage.local.local_storage import LocalStorage
 from starfish.data_factory.storage.models import GenerationMasterJob, Project
-from starfish.data_factory.utils.data_class import FactoryMasterConfig
+from starfish.data_factory.utils.data_class import FactoryMasterConfig, TelemetryData
 from starfish.data_factory.utils.decorator import async_wrapper, async_wrapper_func
 from starfish.data_factory.utils.state import MutableSharedState
 from starfish.telemetry.posthog_client import Event, analytics
@@ -88,6 +88,7 @@ class DataFactory:
         self.err = None
         self.config_ref = None
         self.telemetry_enabled = True
+        self.job_manager = None
 
     def __call__(self, *args, **kwargs):
         """Execute the data processing pipeline based on the configured run mode.
@@ -178,32 +179,38 @@ class DataFactory:
     def _send_telemetry_event(self):
         logger.info("Sending telemetry event")
         if self.telemetry_enabled:
-            data = {
-                "job_id": self.config.master_job_id,
-                "target_reached": self.job_manager.completed_count >= self.job_manager.job_config.target_count,
-                "run_mode": self.config.run_mode,
-                "num_inputs": self.job_manager.nums_input,
-                "library_version": "starfish-core",  # This should be replaced with actual version
-                "config": {
+            telemetry_data = TelemetryData(
+                job_id=self.config.master_job_id,
+                target_reached=False,
+                run_mode=self.config.run_mode,
+                num_inputs=self.input_data_queue.qsize(),
+                library_version="starfish-core",  # This should be replaced with actual version
+                config={
                     "batch_size": self.config.batch_size,
                     "target_count": self.config.target_count,
                     "max_concurrency": self.config.max_concurrency,
                     "task_runner_timeout": self.config.task_runner_timeout,
                     "job_run_stop_threshold": self.config.job_run_stop_threshold,
                 },
-                "execution_time": self.job_manager.execution_time,
-                "count_summary": {
+                error_summary={
+                    "err": str(self.err),
+                },
+            )
+            if self.job_manager:
+                telemetry_data.count_summary = {
                     "completed": self.job_manager.completed_count,
                     "failed": self.job_manager.failed_count,
                     "filtered": self.job_manager.filtered_count,
                     "duplicate": self.job_manager.duplicate_count,
-                },
-                "error_summary": {
+                }
+                telemetry_data.execution_time = self.job_manager.execution_time
+                telemetry_data.error_summary = {
                     "total_errors": self.job_manager.failed_count,
                     "error_types": self.job_manager.err_type_counter,
-                },
-            }
-            analytics.send_event(event=Event(data=data, name="starfish_job"))
+                }
+                telemetry_data.num_inputs = (self.job_manager.nums_input,)
+                telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
+            analytics.send_event(event=Event(data=telemetry_data, name="starfish_job"))
 
     def _process_output(self) -> List[Any]:
         result = []
@@ -472,6 +479,7 @@ async def _re_run_get_master_job_request_config(factory: DataFactory):
         # Convert list to dict with count tracking using hash values
         return master_job_config_data, master_job
     else:
+        factory._close_storage()
         raise TypeError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
 
 

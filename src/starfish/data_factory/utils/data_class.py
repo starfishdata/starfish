@@ -155,3 +155,35 @@ class FactoryJobConfig:
     on_record_complete: List[Callable] = field(default_factory=list)
     on_record_error: List[Callable] = field(default_factory=list)
     job_run_stop_threshold: int = 3
+
+
+@dataclass
+class TelemetryData:
+    """Class representing telemetry data for data processing jobs.
+
+    This class captures various metrics and statistics about the execution of data processing jobs,
+    including job configuration, execution time, and outcome summaries.
+
+    Attributes:
+        job_id (str): Identifier for the job
+        target_reached (bool): Whether the target count was achieved
+        run_mode (str): Execution mode of the job
+        num_inputs (int): Number of input records processed
+        library_version (str): Version of the processing library
+        config (dict): Configuration parameters used for the job
+        execution_time (float): Total execution time in seconds
+        count_summary (dict): Summary of record processing outcomes
+        error_summary (dict): Summary of errors encountered during processing
+    """
+
+    job_id: str = ""
+    target_reached: bool = False
+    run_mode: str = ""
+    num_inputs: int = 0
+    library_version: str = "starfish-core"
+    config: dict = field(
+        default_factory=lambda: {"batch_size": 0, "target_count": 0, "max_concurrency": 0, "task_runner_timeout": 0, "job_run_stop_threshold": 0}
+    )
+    execution_time: float = 0.0
+    count_summary: dict = field(default_factory=lambda: {"completed": 0, "failed": 0, "filtered": 0, "duplicate": 0})
+    error_summary: dict = field(default_factory=lambda: {"total_errors": 0, "error_types": {}})
