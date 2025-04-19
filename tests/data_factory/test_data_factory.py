@@ -229,7 +229,7 @@ async def test_case_timeout():
 
 
 @pytest.mark.asyncio
-async def test_case_re_run():
+async def test_case_re_run_master_id_not_found():
     """Test extra parameters not defined in workflow
     - Input: List of dicts with city names
     - Extra: random_param not defined in workflow

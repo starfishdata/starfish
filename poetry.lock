@@ -265,7 +265,7 @@ version = "2.2.1"
 description = "Function decoration for backoff and retry"
 optional = false
 python-versions = ">=3.7,<4.0"
-groups = ["main", "dev"]
+groups = ["main"]
 files = [
     {file = "backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8"},
     {file = "backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba"},
@@ -521,6 +521,18 @@ files = [
 
 [package.dependencies]
 colorama = {version = "*", markers = "platform_system == \"Windows\""}
+
+[[package]]
+name = "cloudpickle"
+version = "2.2.1"
+description = "Extended pickling support for Python objects"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+files = [
+    {file = "cloudpickle-2.2.1-py3-none-any.whl", hash = "sha256:61f594d1f4c295fa5cd9014ceb3a1fc4a70b0de1164b94fbc2d854ccba056f9f"},
+    {file = "cloudpickle-2.2.1.tar.gz", hash = "sha256:d89684b8de9e34a2a43b3460fbca07d09d6e25ce858df4d5a44240403b6178f5"},
+]
 
 [[package]]
 name = "colorama"
@@ -808,7 +820,7 @@ version = "1.9.0"
 description = "Distro - an OS platform information API"
 optional = false
 python-versions = ">=3.6"
-groups = ["main", "dev"]
+groups = ["main"]
 files = [
     {file = "distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2"},
     {file = "distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed"},
@@ -2014,7 +2026,7 @@ version = "1.6"
 description = "An implementation of time.monotonic() for Python 2 & < 3.3"
 optional = false
 python-versions = "*"
-groups = ["main", "dev"]
+groups = ["main"]
 files = [
     {file = "monotonic-1.6-py2.py3-none-any.whl", hash = "sha256:68687e19a14f11f26d140dd5c86f3dba4bf5df58003000ed467e0e2a69bca96c"},
     {file = "monotonic-1.6.tar.gz", hash = "sha256:3a55207bcfed53ddd5c5bae174524062935efed17792e9de2ad0205ce9ad63f7"},
@@ -2477,7 +2489,7 @@ version = "3.25.0"
 description = "Integrate PostHog into any python application."
 optional = false
 python-versions = "*"
-groups = ["main", "dev"]
+groups = ["main"]
 files = [
     {file = "posthog-3.25.0-py2.py3-none-any.whl", hash = "sha256:85db78c13d1ecb11aed06fad53759c4e8fb3633442c2f3d0336bc0ce8a585d30"},
     {file = "posthog-3.25.0.tar.gz", hash = "sha256:9168f3e7a0a5571b6b1065c41b3c171fbc68bfe72c3ac0bfd6e3d2fcdb7df2ca"},
@@ -4518,4 +4530,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<4.0"
-content-hash = "5704cf0b33bf4a823e0febbc4a2eada9e9749021dfb8f049a1685ebc16b03c02"
+content-hash = "7b9a697391692bbca0d16eeea0e8087f080938798ba49a0db3e1b06390e273a9"
