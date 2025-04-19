@@ -210,7 +210,7 @@ class DataFactory:
                 }
                 telemetry_data.num_inputs = (self.job_manager.nums_input,)
                 telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
-            analytics.send_event(event=Event(data=telemetry_data, name="starfish_job"))
+            analytics.send_event(event=Event(data=telemetry_data.to_dict(), name="starfish_job"))
 
     def _process_output(self) -> List[Any]:
         result = []

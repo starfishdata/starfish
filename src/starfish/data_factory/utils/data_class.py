@@ -187,3 +187,25 @@ class TelemetryData:
     execution_time: float = 0.0
     count_summary: dict = field(default_factory=lambda: {"completed": 0, "failed": 0, "filtered": 0, "duplicate": 0})
     error_summary: dict = field(default_factory=lambda: {"total_errors": 0, "error_types": {}})
+
+    def to_dict(self) -> dict:
+        """Convert the TelemetryData instance to a dictionary.
+
+        This method converts all the telemetry data fields into a dictionary format,
+        making it suitable for serialization or further processing.
+
+        Returns:
+            dict: Dictionary representation of the telemetry data containing:
+                - job_id: Identifier for the job
+                - target_reached: Whether the target count was achieved
+                - run_mode: Execution mode of the job
+                - num_inputs: Number of input records processed
+                - library_version: Version of the processing library
+                - config: Configuration parameters used for the job
+                - execution_time: Total execution time in seconds
+                - count_summary: Summary of record processing outcomes
+                - error_summary: Summary of errors encountered during processing
+        """
+        import dataclasses
+
+        return dataclasses.asdict(self)
