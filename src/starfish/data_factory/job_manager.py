@@ -89,6 +89,7 @@ class JobManager:
         # it shall be a thread safe queue
         self.job_output = Queue()
         # Job counters
+        self.prev_job = master_job_config.prev_job
         self.completed_count = 0
         self.duplicate_count = 0
         self.filtered_count = 0
@@ -96,6 +97,9 @@ class JobManager:
         self.total_count = 0
         self.active_operations = set()
         self._progress_ticker_task = None
+        self.execution_time = 0
+        self.err_type_counter = {}
+        self.nums_input = 0
 
     @async_wrapper()
     async def setup_input_output_queue(self):
@@ -196,7 +200,11 @@ class JobManager:
         # consecutive_not_completed and
         completed_tasks_reach_target = self.completed_count >= self.job_config.target_count
         if consecutive_not_completed:
-            logger.error(f"consecutive_not_completed: in {self.job_config.job_run_stop_threshold} times, stopping job")
+            logger.error(
+                f"consecutive_not_completed: in {self.job_config.job_run_stop_threshold} times, "
+                f"stopping this job; please adjust factory config and input data then "
+                f"re_run({self.master_job_id})"
+            )
 
         return consecutive_not_completed or completed_tasks_reach_target
         # return completed_tasks_reach_target or (total_tasks_reach_target and consecutive_not_completed)
@@ -208,7 +216,10 @@ class JobManager:
         and handling task completion. It runs until either the target count is reached or
         the stop threshold is triggered.
         """
+        self.nums_input = self.job_input_queue.qsize()
+        start_time = datetime.datetime.now(datetime.timezone.utc)
         run_in_event_loop(self._async_run_orchestration())
+        self.execution_time = int((datetime.datetime.now(datetime.timezone.utc) - start_time).total_seconds())  # Convert to seconds and cast to int
 
     async def _progress_ticker(self):
         """Log a message every 5 seconds."""
@@ -299,7 +310,7 @@ class JobManager:
         output = []
         output_ref = []
         task_status = STATUS_COMPLETED
-
+        err_str = ""
         try:
             # Execute the main task
             output = await self.task_runner.run_task(self.job_config.user_func, input_data)
@@ -316,10 +327,11 @@ class JobManager:
             output_ref = await self._save_record_data(copy.deepcopy(output), task_status, input_data)
 
         except (Exception, TimeoutErrorAsyncio) as e:
-            logger.error(f"Error running task: {e}")
+            err_str = str(e)
+            logger.error(f"Error running task: {err_str}")
             # Run error hooks
             for hook in self.job_config.on_record_error:
-                hook(str(e), self.state)
+                hook(err_str, self.state)
             # async with self.lock:  # Acquire lock for status update
             task_status = STATUS_FAILED
 
@@ -329,7 +341,7 @@ class JobManager:
             # async with self.lock:  # Acquire lock for queue operation
             self.job_input_queue.put(input_data)
 
-        return {RECORD_STATUS: task_status, "output_ref": output_ref, "output": output}
+        return {RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": err_str}
 
     async def _handle_task_completion(self, task):
         """Handle task completion and update counters.
@@ -346,7 +358,7 @@ class JobManager:
         async with self.lock:
             self.job_output.put(result)
             self.total_count += 1
-            task_status = result[RECORD_STATUS]
+            task_status = result.get(RECORD_STATUS)
             # Update counters based on task status
             if task_status == STATUS_COMPLETED:
                 self.completed_count += 1
@@ -354,7 +366,9 @@ class JobManager:
                 self.duplicate_count += 1
             elif task_status == STATUS_FILTERED:
                 self.filtered_count += 1
-            else:
+            elif task_status == STATUS_FAILED:
                 self.failed_count += 1
+                err_str = result.get("err")
+                self.err_type_counter[err_str] = self.err_type_counter.get(err_str, 0) + 1
             # await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
             self.semaphore.release()

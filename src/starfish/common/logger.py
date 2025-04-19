@@ -27,10 +27,10 @@ COLORED_FORMAT = (
     "<level>{level: <8}</level> | "
     "<cyan>{name}</cyan> | "
     "<blue>{file}:{line}</blue> | "
-    "<level>{message}</level>\n"
+    "<level>{message}</level>"
 )
 
-SIMPLE_COLORED_FORMAT = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | " "<level>{level: <8}</level> | " "<level>{message}</level>\n"
+SIMPLE_COLORED_FORMAT = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | " "<level>{level: <8}</level> | " "<level>{message}</level>"
 
 
 class LogManager:
@@ -47,25 +47,21 @@ class LogManager:
             cls._instance._initialize()
         return cls._instance
 
-    def _get_format_string(self, level: str):
-        """Return the appropriate format string based on log level."""
-        if level in ["DEBUG", "VERBOSE"]:
-            return COLORED_FORMAT
-        else:
+    def _get_format_string(self):
+        """Return the appropriate format string based on LOG_FORMAT_MODE."""
+        if simple_log_format_enabled:
+            if self.current_level == "DEBUG":
+                return COLORED_FORMAT
             return SIMPLE_COLORED_FORMAT
+        return COLORED_FORMAT
 
     def _initialize(self):
         """Initialize logging with console handler."""
         logger.remove()  # Remove default handler
-        # Add handler with dynamic format
-        self.handler_id = logger.add(sys.stdout, format=self._dynamic_format, level=self.current_level, colorize=True)
+        log_format = self._get_format_string()
+        self.handler_id = logger.add(sys.stdout, format=log_format, level=self.current_level, colorize=True)
         # Add custom level
         logger.level("VERBOSE", no=LogLevel.VERBOSE, color="<magenta>")
-
-    def _dynamic_format(self, record):
-        """Dynamic format function that selects format based on log level."""
-        format_string = self._get_format_string(record["level"].name)
-        return format_string
 
     def get_current_log_level(self):
         """Get the current log level."""
@@ -81,7 +77,7 @@ class LogManager:
             raise ValueError(f"Invalid log level: {level}")
         logger.remove(self.handler_id)
         self.current_level = level
-        log_format = self._get_format_string(level)
+        log_format = self._get_format_string()
         self.handler_id = logger.add(sys.stdout, format=log_format, level=self.current_level, colorize=True)
 
 
