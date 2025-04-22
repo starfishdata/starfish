@@ -45,7 +45,7 @@ T = TypeVar("T")
 class DataFactoryWrapper(Generic[T]):
     def __init__(self, factory: Any, func: Callable[..., T]):
         self.factory = factory
-        self.func = func
+        # self.func = func
         self.state = factory.state
 
     def run(self, *args: P.args, **kwargs: P.kwargs) -> T:
@@ -141,7 +141,6 @@ class DataFactory:
         """
         run_mode = self.config.run_mode
         try:
-            # Check for master_job_id in kwargs and assign if present
             if run_mode == RUN_MODE_RE_RUN:
                 self.job_manager = JobManagerRerun(
                     job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
@@ -514,12 +513,7 @@ def data_factory(
 
         wrapper = DataFactoryWrapper(factory, func)
 
-        # Attach methods to the original function
-        func.run = wrapper.run  # type: ignore
-        func.dry_run = wrapper.dry_run  # type: ignore
-        func.re_run = wrapper.re_run  # type: ignore
-
-        return cast(DataFactoryProtocol[P, T], func)  # Return the function with added methods
+        return cast(DataFactoryProtocol[P, T], wrapper)  # Return the function with added methods
 
     return decorator
 
