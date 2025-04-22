@@ -4,7 +4,7 @@ import inspect
 import uuid
 from inspect import Parameter, signature
 from queue import Queue
-from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast
+from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast, Protocol
 
 import cloudpickle
 
@@ -468,7 +468,15 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
     return results
 
 
-# -> Callable[[F], F]
+class DataFactoryProtocol(Protocol[P, T]):
+    """Protocol for the decorated function with additional methods."""
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def re_run(self, master_job_id: str, **kwargs) -> T: ...
+
+
 def data_factory(
     storage: str = STORAGE_TYPE_LOCAL,
     batch_size: int = 1,
@@ -480,24 +488,8 @@ def data_factory(
     show_progress: bool = True,
     task_runner_timeout: int = TASK_RUNNER_TIMEOUT,
     job_run_stop_threshold: int = NOT_COMPLETED_THRESHOLD,
-):
-    """Decorator for creating data processing pipelines.
-
-    Args:
-        storage (str): Storage backend to use ('local' or 'in_memory'). Defaults to 'local'.
-        batch_size (int): Number of records to process in each batch. Defaults to 1.
-        target_count (int): Target number of records to generate (0 means process all input). Defaults to 0.
-        max_concurrency (int): Maximum number of concurrent tasks. Defaults to 10.
-        initial_state_values (Dict[str, Any]): Initial values for shared state. Defaults to None.
-        on_record_complete (List[Callable]): Callbacks to execute after successful record processing. Defaults to None.
-        on_record_error (List[Callable]): Callbacks to execute after failed record processing. Defaults to None.
-        show_progress (bool): Whether to display progress bar. Defaults to True.
-        task_runner_timeout (int): Timeout in seconds for task execution. Defaults to 60.
-        job_run_stop_threshold (int): Number of consecutive failures before stopping job. Defaults to 3.
-
-    Returns:
-        Callable: Decorated function with data processing pipeline capabilities.
-    """
+) -> Callable[[Callable[P, T]], DataFactoryProtocol[P, T]]:
+    """Decorator for creating data processing pipelines."""
     if on_record_error is None:
         on_record_error = []
     if on_record_complete is None:
@@ -516,12 +508,18 @@ def data_factory(
         job_run_stop_threshold=job_run_stop_threshold,
     )
 
-    def decorator(func: F) -> F:
+    def decorator(func: Callable[P, T]) -> DataFactoryProtocol[P, T]:
         factory = DataFactory(master_job_config, func)
         factory.state = MutableSharedState(initial_data=initial_state_values)
 
         wrapper = DataFactoryWrapper(factory, func)
-        return cast(F, wrapper)
+
+        # Attach methods to the original function
+        func.run = wrapper.run  # type: ignore
+        func.dry_run = wrapper.dry_run  # type: ignore
+        func.re_run = wrapper.re_run  # type: ignore
+
+        return cast(DataFactoryProtocol[P, T], func)  # Return the function with added methods
 
     return decorator
 
