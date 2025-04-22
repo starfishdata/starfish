@@ -20,10 +20,15 @@ aiosqlite = ">=0.21.0,<0.22.0"
 aiofiles = ">=24.1.0,<25.0.0"
 typing-extensions = ">=4.0.0,<5.0.0"
 posthog = "^3.11.0"
+cloudpickle = "^2.2.0"
+
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=2.0.0,<3.0.0", "setuptools_scm[toml]>=7.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.setuptools_scm]
+write_to = "src/starfish/_version.py"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
@@ -41,7 +46,7 @@ langgraph = "^0.3.27"
 fastapi = ">=0.115.12,<0.116.0"
 uvicorn = ">=0.34.0,<0.35.0"
 typer = ">=0.15.2,<0.16.0"
-posthog = "^3.25.0"
+
 
 [tool.poetry.scripts]
 starfish = "starfish.api.cli:main"
@@ -93,4 +98,5 @@ line_length = 88
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
+
 

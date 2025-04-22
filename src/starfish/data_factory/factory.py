@@ -6,6 +6,8 @@ from inspect import Parameter, signature
 from queue import Queue
 from typing import Any, Callable, Dict, List
 
+import cloudpickle
+
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import PROGRESS_LOG_INTERVAL, TASK_RUNNER_TIMEOUT
 from starfish.data_factory.constants import (
@@ -25,9 +27,9 @@ from starfish.data_factory.job_manager_re_run import JobManagerRerun
 from starfish.data_factory.storage.in_memory.in_memory_storage import InMemoryStorage
 from starfish.data_factory.storage.local.local_storage import LocalStorage
 from starfish.data_factory.storage.models import GenerationMasterJob, Project
-from starfish.data_factory.utils.data_class import FactoryMasterConfig
-from starfish.data_factory.utils.decorator import async_wrapper
+from starfish.data_factory.utils.data_class import FactoryMasterConfig, TelemetryData
 from starfish.data_factory.utils.state import MutableSharedState
+from starfish.telemetry.posthog_client import Event, analytics
 
 logger = get_logger(__name__)
 
@@ -45,13 +47,16 @@ class DataFactory:
     Attributes:
         config (FactoryMasterConfig): Configuration for the data generation job
         func (Callable): The data processing function to be executed
-        input_data (Queue): Queue holding input data to be processed
+        input_data_queue (Queue): Queue holding input data to be processed
         factory_storage: Storage backend instance
         config_ref: Reference to the stored configuration
         err: Error object if any occurred during processing
+        telemetry_enabled (bool): Flag to control telemetry event sending
+        state: Shared state object for tracking job state
+        job_manager: Job manager instance handling the execution
     """
 
-    def __init__(self, master_job_config: FactoryMasterConfig, func: Callable):
+    def __init__(self, master_job_config: FactoryMasterConfig, func: Callable = None):
         """Initialize the DataFactory instance.
 
         Args:
@@ -64,19 +69,27 @@ class DataFactory:
                 - task_runner_timeout: Timeout in seconds for task execution
                 - on_record_complete: List of callbacks to execute after successful record processing
                 - on_record_error: List of callbacks to execute after failed record processing
-                - input_converter: Function to convert input data to Queue format
                 - state: Shared state object for tracking job state
-            func (Callable): The data processing function to be wrapped
+            func (Callable, optional): The data processing function to be wrapped. Defaults to None.
+
+        Initializes:
+            - Input data queue
+            - Storage backend
+            - Error tracking
+            - Configuration reference
+            - Telemetry settings
         """
         self.config = master_job_config
+        self.state = None
         self.func = func
-        self.input_data = Queue()
+        self.input_data_queue = Queue()
         self.factory_storage = None
-        self.config.master_job_id = None
         self.err = None
         self.config_ref = None
+        self.telemetry_enabled = True
+        self.job_manager = None
 
-    def __call__(self, *args, **kwargs):
+    async def __call__(self, *args, **kwargs):
         """Execute the data processing pipeline based on the configured run mode.
 
         This method handles the main execution flow for different run modes:
@@ -97,48 +110,49 @@ class DataFactory:
             ValueError: If no records are generated or if input data validation fails
             KeyboardInterrupt: If the job is interrupted by the user
         """
-        # self.job_manager.add_job(func)
-        self._storage_setup()
         run_mode = self.config.run_mode
         try:
             # Check for master_job_id in kwargs and assign if present
             if run_mode == RUN_MODE_RE_RUN:
-                self.job_manager = JobManagerRerun(job_config=self.config, storage=self.factory_storage, user_func=self.func)
+                self.job_manager = JobManagerRerun(
+                    job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
+                )
             elif run_mode == RUN_MODE_DRY_RUN:
                 # dry run mode
-                self.input_data = self.config.input_converter(*args, **kwargs)
+                self.input_data_queue = _default_input_converter(*args, **kwargs)
                 # Get only first item but maintain Queue structure
                 self._check_parameter_match()
-                self.job_manager = JobManagerDryRun(job_config=self.config, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data)
+                await self._storage_setup()
+                self.job_manager = JobManagerDryRun(
+                    job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
+                )
             else:
-                self.input_data = self.config.input_converter(*args, **kwargs)
+                self.input_data_queue = _default_input_converter(*args, **kwargs)
                 self._check_parameter_match()
+                await self._storage_setup()
                 self._update_job_config()
                 self.config.project_id = str(uuid.uuid4())
-                # self.project_id = "8de05a58-c8a4-4c10-8c23-568679c88e65"
                 self.config.master_job_id = str(uuid.uuid4())
-
                 self.job_manager = JobManager(
-                    master_job_config=self.config, storage=self.factory_storage, input_data_queue=self.input_data, user_func=self.func
+                    master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data_queue, user_func=self.func
                 )
-
-                self._save_project()
-                self._save_request_config()
-                self._log_master_job_start()
-            self.job_manager.setup_input_output_queue()
+                await self._save_project()
+                await self._save_request_config()
+                await self._log_master_job_start()
+            await self.job_manager.setup_input_output_queue()
             self._process_batches()
 
         except (TypeError, ValueError, KeyboardInterrupt) as e:
             self.err = e
-            # raise e
         finally:
+            self._send_telemetry_event()
             if not isinstance(self.err, TypeError):
                 result = self._process_output()
                 if len(result) == 0:
                     self.err = ValueError("No records generated")
 
-                self._complete_master_job()
-                self._close_storage()
+                await self._complete_master_job()
+                await self._close_storage()
                 # Only execute finally block if not TypeError
                 if self.err and not isinstance(self.err, ValueError):
                     err_msg = str(self.err)
@@ -155,10 +169,55 @@ class DataFactory:
                 else:
                     return result
             else:
-                self._close_storage()
+                await self._close_storage()
                 raise self.err
 
+    def _send_telemetry_event(self):
+        """Send telemetry data for the completed job.
+
+        Collects and sends job metrics and error information if telemetry is enabled.
+        """
+        logger.info("Sending telemetry event")
+        if self.telemetry_enabled:
+            telemetry_data = TelemetryData(
+                job_id=self.config.master_job_id,
+                target_reached=False,
+                run_mode=self.config.run_mode,
+                num_inputs=self.input_data_queue.qsize(),
+                library_version="starfish-core",  # This should be replaced with actual version
+                config={
+                    "batch_size": self.config.batch_size,
+                    "target_count": self.config.target_count,
+                    "max_concurrency": self.config.max_concurrency,
+                    "task_runner_timeout": self.config.task_runner_timeout,
+                    "job_run_stop_threshold": self.config.job_run_stop_threshold,
+                },
+                error_summary={
+                    "err": str(self.err),
+                },
+            )
+            if self.job_manager:
+                telemetry_data.count_summary = {
+                    "completed": self.job_manager.completed_count,
+                    "failed": self.job_manager.failed_count,
+                    "filtered": self.job_manager.filtered_count,
+                    "duplicate": self.job_manager.duplicate_count,
+                }
+                telemetry_data.execution_time = self.job_manager.execution_time
+                telemetry_data.error_summary = {
+                    "total_errors": self.job_manager.failed_count,
+                    "error_types": self.job_manager.err_type_counter,
+                }
+                telemetry_data.num_inputs = (self.job_manager.nums_input,)
+                telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
+            analytics.send_event(event=Event(data=telemetry_data.to_dict(), name="starfish_job"))
+
     def _process_output(self) -> List[Any]:
+        """Process and filter the job output queue to return only completed records.
+
+        Returns:
+            List[Any]: List of successfully processed outputs from completed records
+        """
         result = []
         output = self.job_manager.job_output.queue
         for v in output:
@@ -167,16 +226,15 @@ class DataFactory:
         return result
 
     def _check_parameter_match(self):
-        """Check if the parameters of the function match the parameters of the batches."""
-        # Get the parameters of the function
-        # func_params = inspect.signature(func).parameters
-        # # Get the parameters of the batches
-        # batches_params = inspect.signature(batches).parameters
-        # from inspect import signature, Parameter
+        """Validate that input data parameters match the wrapped function's signature.
+
+        Raises:
+            TypeError: If there's a mismatch between input data parameters and function parameters
+        """
         func_sig = signature(self.func)
 
         # Validate batch items against function parameters
-        batch_item = self.input_data.queue[0]
+        batch_item = self.input_data_queue.queue[0]
         for param_name, param in func_sig.parameters.items():
             # Skip if parameter has a default value
             if param.default is not Parameter.empty:
@@ -190,7 +248,14 @@ class DataFactory:
                 raise TypeError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
     def _process_batches(self) -> List[Any]:
-        """Process batches with asyncio."""
+        """Initiate batch processing through the job manager.
+
+        Returns:
+            List[Any]: Processed output from the job manager
+
+        Note:
+            Logs job start information and progress interval
+        """
         if self.config.run_mode != RUN_MODE_RE_RUN:
             logger.info(
                 f"\033[1m[JOB START]\033[0m "
@@ -199,21 +264,37 @@ class DataFactory:
             )
         return self.job_manager.run_orchestration()
 
-    @async_wrapper()
     async def _save_project(self):
+        """Save project metadata to storage.
+
+        Creates a new project entry with test data for storage layer testing.
+        """
         project = Project(project_id=self.config.project_id, name="Test Project", description="A test project for storage layer testing")
         await self.factory_storage.save_project(project)
 
-    @async_wrapper()
     async def _save_request_config(self):
+        """Save the job configuration and input data to storage.
+
+        Serializes and stores the function, configuration, state, and input data
+        for potential re-runs.
+        """
         logger.debug("\n2. Creating master job...")
         # First save the request config
-        config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}, "input_data": list(self.input_data.queue)}
+        config_data = {
+            "generator": "test_generator",
+            "config": self.config.to_dict(),
+            "state": self.state.to_dict(),
+            "func": cloudpickle.dumps(self.func).hex(),
+            "input_data": list(self.input_data_queue.queue),
+        }
         self.config_ref = await self.factory_storage.save_request_config(self.config.master_job_id, config_data)
         logger.debug(f"  - Saved request config to: {self.config_ref}")
 
-    @async_wrapper()
     async def _log_master_job_start(self):
+        """Log the start of a master job to storage.
+
+        Creates and stores a master job record with initial metadata.
+        """
         # Now create the master job
         master_job = GenerationMasterJob(
             master_job_id=self.config.master_job_id,
@@ -228,8 +309,14 @@ class DataFactory:
         await self.factory_storage.log_master_job_start(master_job)
         logger.debug(f"  - Created master job: {master_job.name} ({self.config.master_job_id})")
 
-    @async_wrapper()
     async def _complete_master_job(self):
+        """Finalize and log the completion of a master job.
+
+        Updates the job status and records summary statistics to storage.
+
+        Raises:
+            Exception: If there's an error during job completion
+        """
         #  Complete the master job
         try:
             logger.debug("\n7. Stopping master job...")
@@ -247,25 +334,40 @@ class DataFactory:
         except Exception as e:
             raise e
 
-    @async_wrapper()
     async def _close_storage(self):
+        """Clean up and close the storage connection.
+
+        Ensures proper closure of storage resources when the job completes.
+        """
         if self.factory_storage:
             await self.factory_storage.close()
 
-    def _storage_setup(self):
-        if self.config.storage == STORAGE_TYPE_LOCAL:
-            self.factory_storage = LocalStorage(LOCAL_STORAGE_URI)
-            asyncio.run(self.factory_storage.setup())
-        else:
-            self.factory_storage = InMemoryStorage()
-            asyncio.run(self.factory_storage.setup())
+    async def _storage_setup(self):
+        """Initialize the storage backend based on configuration.
+
+        Sets up either local or in-memory storage based on the config.
+        """
+        if not self.factory_storage:
+            if self.config.storage == STORAGE_TYPE_LOCAL:
+                self.factory_storage = LocalStorage(LOCAL_STORAGE_URI)
+            else:
+                self.factory_storage = InMemoryStorage()
+            await self.factory_storage.setup()
 
     def _update_job_config(self):
+        """Update job configuration based on input data.
+
+        Adjusts the target count based on the input queue size if target_count is 0.
+        """
         target_count = self.config.target_count
-        new_target_count = self.input_data.qsize() if target_count == 0 else target_count
+        new_target_count = self.input_data_queue.qsize() if target_count == 0 else target_count
         self.config.target_count = new_target_count
 
     def _show_job_progress_status(self):
+        """Display final job statistics and completion status.
+
+        Logs the final counts of completed, failed, filtered, and duplicate records.
+        """
         target_count = self.config.target_count
         logger.info(
             f"[JOB FINISHED] "
@@ -279,6 +381,22 @@ class DataFactory:
 
 
 def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Queue[Dict[str, Any]]:
+    """Convert input data into a queue of records for processing.
+
+    Args:
+        data (List[Dict[str, Any]], optional): List of input data records. Defaults to None.
+        **kwargs: Additional parameters that can be either parallel sources or broadcast values
+
+    Returns:
+        Queue[Dict[str, Any]]: Queue of records ready for processing
+
+    Raises:
+        ValueError: If parallel sources have different lengths
+
+    Note:
+        - Parallel sources are lists/tuples that will be zipped together
+        - Broadcast values are single values that will be added to all records
+    """
     # Determine parallel sources
     if data is None:
         data = []
@@ -331,7 +449,6 @@ def data_factory(
     on_record_complete: List[Callable] = None,
     on_record_error: List[Callable] = None,
     show_progress: bool = True,
-    input_converter=_default_input_converter,
     task_runner_timeout: int = TASK_RUNNER_TIMEOUT,
     job_run_stop_threshold: int = 3,
 ):
@@ -346,18 +463,22 @@ def data_factory(
         on_record_complete (List[Callable]): Callbacks to execute after each successful record processing.
         on_record_error (List[Callable]): Callbacks to execute after each failed record processing.
         show_progress (bool): Whether to display progress bar. Defaults to True.
-        input_converter (Callable): Function to convert input data to Queue format. Defaults to _default_input_converter.
         task_runner_timeout (int): Timeout in seconds for task execution. Defaults to TASK_RUNNER_TIMEOUT.
         job_run_stop_threshold (int): Number of times to retry a failed job. Defaults to 3.
 
     Returns:
-        DataFactory: Configured data factory instance to be used as a decorator.
+        Callable: A decorator that wraps the data processing function with the configured pipeline.
 
     Example:
         @data_factory(storage='local', max_concurrency=50)
         def process_data(item):
             # data processing logic
             return processed_data
+
+    The decorated function gains additional methods:
+        - run(): Execute the pipeline
+        - re_run(): Re-run a previous job
+        - dry_run(): Test run with limited data
     """
     if on_record_error is None:
         on_record_error = []
@@ -374,41 +495,157 @@ def data_factory(
         task_runner_timeout=task_runner_timeout,
         on_record_complete=on_record_complete,
         on_record_error=on_record_error,
-        input_converter=input_converter,
-        state=MutableSharedState(initial_state_values),
         job_run_stop_threshold=job_run_stop_threshold,
     )
 
     def decorator(func: Callable):
         factory = DataFactory(master_job_config, func)
+        factory.state = MutableSharedState(initial_data=initial_state_values)
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            return factory(*args, **kwargs)
+            return event_loop_manager(factory, *args, **kwargs)
 
-        wrapper.state = factory.config.state
+        wrapper.state = factory.state
 
         # Add run method to the wrapped function
         def run(*args, **kwargs):
             return wrapper(*args, **kwargs)
 
-        def re_run(*args, **kwargs):
-            if len(args) == 1:
-                factory.config.master_job_id = args[0]
-            elif "master_job_id" in kwargs:
-                factory.config.master_job_id = kwargs.get("master_job_id")
-            else:
-                raise TypeError("Master job id is required")
-            factory.config.run_mode = RUN_MODE_RE_RUN
-            return wrapper(*args, **kwargs)
+        def _re_run(*args, **kwargs):
+            kwargs["factory"] = factory
+            return re_run(*args, **kwargs)
 
         def dry_run(*args, **kwargs):
             factory.config.run_mode = RUN_MODE_DRY_RUN
             return wrapper(*args, **kwargs)
 
         wrapper.run = run
-        wrapper.re_run = re_run
+        wrapper.re_run = _re_run
         wrapper.dry_run = dry_run
         return wrapper
 
     return decorator
+
+
+async def _re_run_get_master_job_request_config(factory: DataFactory):
+    master_job = await factory.factory_storage.get_master_job(factory.config.master_job_id)
+    if master_job:
+        master_job_config_data = await factory.factory_storage.get_request_config(master_job.request_config_ref)
+        # Convert list to dict with count tracking using hash values
+        return master_job_config_data, master_job
+    else:
+        await factory._close_storage()
+        raise TypeError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
+
+
+async def async_re_run(*args, **kwargs):
+    """Re-run a previously executed data generation job.
+
+    Args:
+        *args: Positional arguments, where the first argument is treated as the master_job_id
+        **kwargs: Keyword arguments including:
+            - factory (DataFactory): Optional existing DataFactory instance
+            - master_job_id (str): ID of the job to re-run
+            - Any additional configuration parameters to override
+
+    Returns:
+        List[Any]: Processed output data from the re-run job
+
+    Raises:
+        TypeError: If master_job_id is not provided or job not found
+        ValueError: If there are issues with the job configuration or data
+
+    This function will:
+        1. Retrieve the original job configuration and input data
+        2. Initialize a new DataFactory instance with the same settings
+        3. Execute the job using the original processing function and data
+    """
+    # call with instance
+    if "factory" in kwargs:
+        factory = kwargs["factory"]
+    else:
+        factory = DataFactory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
+    if len(args) == 1:
+        factory.config.master_job_id = args[0]
+    # Update config with any additional kwargs
+    for key, value in kwargs.items():
+        if hasattr(factory.config, key):
+            setattr(factory.config, key, value)
+    if not factory.config.master_job_id:
+        raise TypeError("Master job id is required")
+
+    await factory._storage_setup()
+    master_job_config_data, master_job = await _re_run_get_master_job_request_config(factory=factory)
+    factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
+    factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
+    factory.config.run_mode = RUN_MODE_RE_RUN
+    factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
+    factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
+    factory.input_data = Queue()
+    factory.err = None
+    factory.config_ref = None
+    # move to env
+    factory.telemetry_enabled = True
+
+    # Call the __call__ method
+    result = await factory()  # This calls __call__ implicitly
+    return result
+
+
+def re_run(*args, **kwargs):
+    """Re-run a previously executed data generation job.
+
+    Args:
+        *args: Positional arguments, where the first argument is treated as the master_job_id
+        **kwargs: Keyword arguments including:
+            - master_job_id (str): ID of the job to re-run
+            - Any additional configuration parameters to override
+
+    Returns:
+        List[Any]: Processed output data from the re-run job
+
+    Note:
+        This is a synchronous wrapper around async_re_run
+    """
+    return event_loop_manager(async_re_run, *args, **kwargs)
+
+
+def event_loop_manager(callable_func: Callable, *args, **kwargs):
+    """Manage the event loop for executing an async callable.
+
+    Args:
+        callable_func (Callable): The async function to execute
+        *args: Positional arguments to pass to the callable
+        **kwargs: Keyword arguments to pass to the callable
+
+    Returns:
+        Any: The result of the callable function
+
+    Note:
+        Handles event loop creation and cleanup for synchronous contexts
+    """
+    # Clean up existing event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.close()
+    except RuntimeError:
+        pass
+
+    # Create new event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # Execute the callable
+    try:
+        result = loop.run_until_complete(callable_func(*args, **kwargs))
+        return result
+    finally:
+        # Clean up after execution
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.close()
+        except RuntimeError:
+            pass
