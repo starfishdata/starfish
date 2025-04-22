@@ -10,7 +10,6 @@ from starfish.data_factory.constants import (
 )
 from starfish.data_factory.job_manager import JobManager
 from starfish.data_factory.storage.base import Storage
-from starfish.data_factory.utils.decorator import async_wrapper
 from starfish.data_factory.utils.state import MutableSharedState
 
 logger = get_logger(__name__)
@@ -60,7 +59,6 @@ class JobManagerRerun(JobManager):
         # self.setup_input_output_queue()
         super().__init__(job_config, state, storage, user_func, input_data_queue)
 
-    @async_wrapper()
     async def setup_input_output_queue(self):
         """Initialize input/output queues for job rerun.
 

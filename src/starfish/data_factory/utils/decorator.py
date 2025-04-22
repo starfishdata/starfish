@@ -1,5 +1,6 @@
-import asyncio
 from typing import Callable
+
+from starfish.data_factory.event_loop import run_in_event_loop
 
 # from starfish.data_factory.constants import STORAGE_TYPE_LOCAL
 
@@ -33,10 +34,7 @@ def async_wrapper_func():
             Returns:
                 Any: The result of the original function execution.
             """
-            # if self.storage == STORAGE_TYPE_LOCAL:
-            return asyncio.run(func(*args, **kwargs))
-
-        return wrapper
+            return run_in_event_loop(func(*args, **kwargs))
 
     return decorator
 
@@ -72,7 +70,7 @@ def async_wrapper():
                 Any: The result of the original method execution.
             """
             # if self.storage == STORAGE_TYPE_LOCAL:
-            return asyncio.run(func(self, *args, **kwargs))
+            return run_in_event_loop(func(self, *args, **kwargs))
 
         return wrapper
 

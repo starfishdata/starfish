@@ -22,7 +22,6 @@ from starfish.data_factory.storage.base import Storage
 from starfish.data_factory.storage.models import GenerationJob, Record
 from starfish.data_factory.task_runner import TaskRunner
 from starfish.data_factory.utils.data_class import FactoryJobConfig, FactoryMasterConfig
-from starfish.data_factory.utils.decorator import async_wrapper
 from starfish.data_factory.utils.errors import TimeoutErrorAsyncio
 from starfish.data_factory.utils.state import MutableSharedState
 
@@ -101,7 +100,6 @@ class JobManager:
         self.err_type_counter = {}
         self.nums_input = 0
 
-    @async_wrapper()
     async def setup_input_output_queue(self):
         """Initialize and configure the input and output queues for the job.
 
@@ -372,3 +370,31 @@ class JobManager:
                 self.err_type_counter[err_str] = self.err_type_counter.get(err_str, 0) + 1
             # await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
             self.semaphore.release()
+
+    async def _async_run_orchestration_3_11(self):
+        """Main asynchronous orchestration loop for the job.
+
+        This method manages the core job execution loop, including:
+        - Starting the progress ticker
+        - Processing tasks from the input queue
+        - Managing concurrency with semaphores
+        - Handling task completion and cleanup
+        """
+        # Start the ticker task
+        if self.job_config.show_progress:
+            self._progress_ticker_task = asyncio.create_task(self._progress_ticker())
+
+        try:
+            async with asyncio.TaskGroup() as tg:
+                while not self._is_job_to_stop():
+                    logger.debug("Job is not to stop, checking job input queue")
+                    if not self.job_input_queue.empty():
+                        logger.debug("Job input queue is not empty, acquiring semaphore")
+                        await self.semaphore.acquire()
+                        logger.debug("Semaphore acquired, waiting for task to complete")
+                        input_data = self.job_input_queue.get()
+                        task = tg.create_task(self._run_single_task(input_data))
+                        asyncio.create_task(self._handle_task_completion(task))
+        finally:
+            await self._del_progress_ticker()
+            await self._cancel_operations()
