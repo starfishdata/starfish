@@ -43,22 +43,70 @@ T = TypeVar("T")
 
 
 class DataFactoryWrapper(Generic[T]):
+    """Wrapper class that provides execution methods for data factory pipelines.
+
+    This class acts as the interface returned by the @data_factory decorator,
+    providing methods to run, dry-run, and re-run data processing jobs.
+
+    Attributes:
+        factory (DataFactory): The underlying DataFactory instance
+        state: Shared state object for tracking job state
+    """
+
     def __init__(self, factory: Any, func: Callable[..., T]):
+        """Initialize the DataFactoryWrapper instance.
+
+        Args:
+            factory (Any): The DataFactory instance to wrap
+            func (Callable[..., T]): The data processing function to execute
+        """
         self.factory = factory
-        # self.func = func
         self.state = factory.state
 
     def run(self, *args: P.args, **kwargs: P.kwargs) -> T:
-        """Execute the data processing pipeline."""
+        """Execute the data processing pipeline with normal configuration.
+
+        Args:
+            *args: Positional arguments to pass to the data processing function
+            **kwargs: Keyword arguments to pass to the data processing function
+
+        Returns:
+            T: Processed output data
+        """
         return event_loop_manager(self.factory, *args, **kwargs)
 
     def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T:
-        """Test run with limited data."""
+        """Test run with limited data for validation purposes.
+
+        Args:
+            *args: Positional arguments to pass to the data processing function
+            **kwargs: Keyword arguments to pass to the data processing function
+
+        Returns:
+            T: Processed output data from the test run
+        """
         self.factory.config.run_mode = RUN_MODE_DRY_RUN
         return event_loop_manager(self.factory, *args, **kwargs)
 
     def re_run(self, master_job_id: str, **kwargs) -> T:
-        """Re-run a previously executed data generation job."""
+        """Re-run a previously executed data generation job.
+
+        Args:
+            master_job_id (str): ID of the master job to re-run
+            storage (str): Storage backend to use ('local' or 'in_memory')
+            batch_size (int): Number of records to process in each batch
+            target_count (int): Target number of records to generate (0 means process all input)
+            max_concurrency (int): Maximum number of concurrent tasks
+            initial_state_values (Optional[Dict[str, Any]]): Initial values for shared state
+            on_record_complete (Optional[List[Callable]]): Callbacks to execute after successful record processing
+            on_record_error (Optional[List[Callable]]): Callbacks to execute after failed record processing
+            show_progress (bool): Whether to display progress bar
+            task_runner_timeout (int): Timeout in seconds for task execution
+            job_run_stop_threshold (int): Threshold for stopping job if too many records fail
+
+        Returns:
+            T: Processed output data from the re-run
+        """
         kwargs["factory"] = self.factory
         return re_run(master_job_id, **kwargs)
 
@@ -119,7 +167,18 @@ class DataFactory:
         self.telemetry_enabled = True
         self.job_manager = None
 
-    async def __call__(self, *args, **kwargs):
+    def _clear_out_factory(self):
+        if self.err:
+            self.err = None
+        if self.config_ref:
+            self.config_ref = None
+        if self.factory_storage:
+            self.factory_storage = None
+        if self.job_manager:
+            self.job_manager = None
+        # todo reuse the state from last same-factory state or a new state
+
+    async def __call__(self, *args, **kwargs) -> List[Dict]:
         """Execute the data processing pipeline based on the configured run mode.
 
         This method handles the main execution flow for different run modes:
@@ -140,6 +199,7 @@ class DataFactory:
             ValueError: If no records are generated or if input data validation fails
             KeyboardInterrupt: If the job is interrupted by the user
         """
+        self._clear_out_factory()
         run_mode = self.config.run_mode
         try:
             if run_mode == RUN_MODE_RE_RUN:
@@ -490,7 +550,23 @@ def data_factory(
     task_runner_timeout: int = TASK_RUNNER_TIMEOUT,
     job_run_stop_threshold: int = NOT_COMPLETED_THRESHOLD,
 ) -> Callable[[Callable[P, T]], DataFactoryProtocol[P, T]]:
-    """Decorator for creating data processing pipelines."""
+    """Decorator for creating data processing pipelines.
+
+    Args:
+        storage (str): Storage backend to use ('local' or 'in_memory')
+        batch_size (int): Number of records to process in each batch
+        target_count (int): Target number of records to generate (0 means process all input)
+        max_concurrency (int): Maximum number of concurrent tasks
+        initial_state_values (Optional[Dict[str, Any]]): Initial values for shared state
+        on_record_complete (Optional[List[Callable]]): Callbacks to execute after successful record processing
+        on_record_error (Optional[List[Callable]]): Callbacks to execute after failed record processing
+        show_progress (bool): Whether to display progress bar
+        task_runner_timeout (int): Timeout in seconds for task execution
+        job_run_stop_threshold (int): Threshold for stopping job if too many records fail
+
+    Returns:
+        Callable[[Callable[P, T]], DataFactoryProtocol[P, T]]: Decorated function with additional execution methods
+    """
     if on_record_error is None:
         on_record_error = []
     if on_record_complete is None:
@@ -572,25 +648,36 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
     factory.telemetry_enabled = True
 
     # Get the loaded function's signature
-    if hasattr(factory.func, "__signature__"):
-        original_sig = factory.func.__signature__
-    else:
-        original_sig = inspect.signature(factory.func)
+    # if hasattr(factory.func, "__signature__"):
+    #     original_sig = factory.func.__signature__
+    # else:
+    #     original_sig = inspect.signature(factory.func)
 
-    async_re_run.__signature__ = original_sig
-    async_re_run.__annotations__ = factory.func.__annotations__
+    # async_re_run.__signature__ = original_sig
+    # async_re_run.__annotations__ = factory.func.__annotations__
 
     # Call the __call__ method
     result = await factory()
     return result
 
 
-def re_run(*args, **kwargs) -> List[Any]:
+def re_run(*args, **kwargs) -> List[Dict]:
     """Re-run a previously executed data generation job.
+
+    This is the synchronous interface for re-running jobs.
 
     Args:
         master_job_id (str): ID of the master job to re-run
-        **kwargs: Additional configuration overrides for the re-run
+        storage (str): Storage backend to use ('local' or 'in_memory')
+        batch_size (int): Number of records to process in each batch
+        target_count (int): Target number of records to generate (0 means process all input)
+        max_concurrency (int): Maximum number of concurrent tasks
+        initial_state_values (Optional[Dict[str, Any]]): Initial values for shared state
+        on_record_complete (Optional[List[Callable]]): Callbacks to execute after successful record processing
+        on_record_error (Optional[List[Callable]]): Callbacks to execute after failed record processing
+        show_progress (bool): Whether to display progress bar
+        task_runner_timeout (int): Timeout in seconds for task execution
+        job_run_stop_threshold (int): Threshold for stopping job if too many records fail
 
     Returns:
         List[Any]: Processed output data from the re-run
@@ -602,12 +689,12 @@ def re_run(*args, **kwargs) -> List[Any]:
 
 
 # # Copy signature and annotations to re_run
-re_run.__signature__ = inspect.signature(async_re_run)
-re_run.__annotations__ = async_re_run.__annotations__
+# re_run.__signature__ = inspect.signature(async_re_run)
+# re_run.__annotations__ = async_re_run.__annotations__
 
 
-def event_loop_manager(callable_func: Callable, *args, **kwargs):
-    """Manage the event loop for executing an async callable.
+def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[Dict]:
+    """Manage the event loop for executing an async callable in synchronous contexts.
 
     Args:
         callable_func (Callable): The async function to execute
@@ -618,7 +705,8 @@ def event_loop_manager(callable_func: Callable, *args, **kwargs):
         Any: The result of the callable function
 
     Note:
-        Handles event loop creation and cleanup for synchronous contexts
+        Handles event loop creation and cleanup, ensuring proper resource management
+        when calling async functions from synchronous code.
     """
     # Clean up existing event loop
     try:

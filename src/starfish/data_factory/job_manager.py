@@ -81,8 +81,8 @@ class JobManager:
         )
         self.storage = storage
         self.state = state
-        self.semaphore = None
-        self.lock = None
+        # self.semaphore = None
+        # self.lock = None
         self.task_runner = TaskRunner(timeout=master_job_config.task_runner_timeout)
         self.job_input_queue = input_data_queue if input_data_queue else Queue()
         # it shall be a thread safe queue
