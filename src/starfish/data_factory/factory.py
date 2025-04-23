@@ -88,27 +88,27 @@ class DataFactoryWrapper(Generic[T]):
         self.factory.config.run_mode = RUN_MODE_DRY_RUN
         return event_loop_manager(self.factory, *args, **kwargs)
 
-    def re_run(self, master_job_id: str, **kwargs) -> T:
-        """Re-run a previously executed data generation job.
+    # def re_run(self, master_job_id: str, **kwargs) -> T:
+    #     """Re-run a previously executed data generation job.
 
-        Args:
-            master_job_id (str): ID of the master job to re-run
-            storage (str): Storage backend to use ('local' or 'in_memory')
-            batch_size (int): Number of records to process in each batch
-            target_count (int): Target number of records to generate (0 means process all input)
-            max_concurrency (int): Maximum number of concurrent tasks
-            initial_state_values (Optional[Dict[str, Any]]): Initial values for shared state
-            on_record_complete (Optional[List[Callable]]): Callbacks to execute after successful record processing
-            on_record_error (Optional[List[Callable]]): Callbacks to execute after failed record processing
-            show_progress (bool): Whether to display progress bar
-            task_runner_timeout (int): Timeout in seconds for task execution
-            job_run_stop_threshold (int): Threshold for stopping job if too many records fail
+    #     Args:
+    #         master_job_id (str): ID of the master job to re-run
+    #         storage (str): Storage backend to use ('local' or 'in_memory')
+    #         batch_size (int): Number of records to process in each batch
+    #         target_count (int): Target number of records to generate (0 means process all input)
+    #         max_concurrency (int): Maximum number of concurrent tasks
+    #         initial_state_values (Optional[Dict[str, Any]]): Initial values for shared state
+    #         on_record_complete (Optional[List[Callable]]): Callbacks to execute after successful record processing
+    #         on_record_error (Optional[List[Callable]]): Callbacks to execute after failed record processing
+    #         show_progress (bool): Whether to display progress bar
+    #         task_runner_timeout (int): Timeout in seconds for task execution
+    #         job_run_stop_threshold (int): Threshold for stopping job if too many records fail
 
-        Returns:
-            T: Processed output data from the re-run
-        """
-        kwargs["factory"] = self.factory
-        return re_run(master_job_id, **kwargs)
+    #     Returns:
+    #         T: Processed output data from the re-run
+    #     """
+    #     kwargs["factory"] = self.factory
+    #     return re_run(master_job_id, **kwargs)
 
 
 class DataFactory:
@@ -199,7 +199,7 @@ class DataFactory:
             ValueError: If no records are generated or if input data validation fails
             KeyboardInterrupt: If the job is interrupted by the user
         """
-        self._clear_out_factory()
+
         run_mode = self.config.run_mode
         try:
             if run_mode == RUN_MODE_RE_RUN:
@@ -216,6 +216,7 @@ class DataFactory:
                     job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
                 )
             else:
+                self._clear_out_factory()
                 self.input_data_queue = _default_input_converter(*args, **kwargs)
                 self._check_parameter_match()
                 await self._storage_setup()
@@ -226,7 +227,7 @@ class DataFactory:
                     master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data_queue, user_func=self.func
                 )
                 await self._save_project()
-                await self._save_request_config()
+
                 await self._log_master_job_start()
             await self.job_manager.setup_input_output_queue()
             self._process_batches()
@@ -241,7 +242,7 @@ class DataFactory:
                     self.err = ValueError("No records generated")
 
                 await self._complete_master_job()
-                await self._close_storage()
+
                 # Only execute finally block if not TypeError
                 if self.err and not isinstance(self.err, ValueError):
                     err_msg = str(self.err)
@@ -252,7 +253,11 @@ class DataFactory:
                     logger.info(
                         f"[RE-RUN INFO] 🚨 Job stopped unexpectedly. You can resume the job using " f'master_job_id by re_run("{self.config.master_job_id}")'
                     )
+
                 self._show_job_progress_status()
+                # shall it be saved if run success, no re-run need
+                await self._save_request_config()
+                await self._close_storage()
                 if isinstance(self.err, ValueError):
                     raise self.err
                 else:
@@ -371,11 +376,16 @@ class DataFactory:
         # First save the request config
         config_data = {
             "generator": "test_generator",
-            "config": self.config.to_dict(),
-            "state": self.state.to_dict(),
-            "func": cloudpickle.dumps(self.func).hex(),
+            # "config": self.config.to_dict(),
+            # "state": self.state.to_dict(),
+            # "func": cloudpickle.dumps(self.func).hex(),
             "input_data": list(self.input_data_queue.queue),
         }
+        # if err, save config,state and func for re-run
+        if self.err:
+            config_data["config"] = self.config.to_dict()
+            config_data["state"] = self.state.to_dict()
+            config_data["func"] = cloudpickle.dumps(self.func).hex()
         self.config_ref = await self.factory_storage.save_request_config(self.config.master_job_id, config_data)
         logger.debug(f"  - Saved request config to: {self.config_ref}")
 
@@ -593,6 +603,21 @@ def data_factory(
 
         return cast(DataFactoryProtocol[P, T], wrapper)  # Return the function with added methods
 
+    # Add re_run as a method to the data_factory decorator
+    def _re_run(master_job_id: str, **kwargs) -> List[Dict]:
+        """Re-run a previously executed data generation job.
+
+        Args:
+            master_job_id (str): ID of the master job to re-run
+            **kwargs: Additional configuration overrides for the re-run
+
+        Returns:
+            List[Dict]: Processed output data from the re-run
+        """
+        return event_loop_manager(async_re_run, master_job_id, **kwargs)
+
+    data_factory.re_run = _re_run
+
     return decorator
 
 
@@ -686,11 +711,6 @@ def re_run(*args, **kwargs) -> List[Dict]:
         TypeError: If master job ID is not provided or job not found
     """
     return event_loop_manager(async_re_run, *args, **kwargs)
-
-
-# # Copy signature and annotations to re_run
-# re_run.__signature__ = inspect.signature(async_re_run)
-# re_run.__annotations__ = async_re_run.__annotations__
 
 
 def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[Dict]:
