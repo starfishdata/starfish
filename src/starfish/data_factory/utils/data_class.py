@@ -179,6 +179,7 @@ class TelemetryData:
     job_id: str = ""
     target_reached: bool = False
     run_mode: str = ""
+    is_using_jupyter: bool = False
     num_inputs: int = 0
     library_version: str = "starfish-core"
     config: dict = field(
