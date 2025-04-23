@@ -2,6 +2,10 @@ import asyncio
 
 import nest_asyncio
 
+from starfish.common.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def run_in_event_loop(coroutine):
     """Run a coroutine in the event loop, handling both nested and new loop cases.
@@ -22,11 +26,10 @@ def run_in_event_loop(coroutine):
 
         # If there is an event loop running (the call above doesn't raise an exception), we can use nest_asyncio to patch the event loop.
         nest_asyncio.apply()
-        print(f"Running nested coroutine: {coroutine.__name__}")
-        return asyncio.run(coroutine)
+        logger.debug(f"Running nested coroutine: {coroutine.__name__}")
     except RuntimeError as e:
         # If no event loop is running, asyncio
         # Explicitly pass, since we want to fallback to asyncio.run
-        print(str(e))
-        print(f"Running coroutine: {coroutine.__name__}")
-        return asyncio.run(coroutine)
+        logger.debug(str(e))
+        logger.debug(f"Running coroutine: {coroutine.__name__}")
+    return asyncio.run(coroutine)

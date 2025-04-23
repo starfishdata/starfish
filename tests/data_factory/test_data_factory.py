@@ -263,3 +263,43 @@ async def test_case_job_run_stop_threshold():
         ],
         num_records_per_city=1,
     )
+
+
+@pytest.mark.asyncio
+async def test_case_reuse_run_same_factory():
+    @data_factory(max_concurrency=10)
+    async def input_format_mock_llm(city_name: str, num_records_per_city: int):
+        return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=0.01)
+
+    result = input_format_mock_llm.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
+    assert len(result) == 4
+
+    result = input_format_mock_llm.run(city_name=["SF", "Shanghai", "yoyo"], num_records_per_city=2)
+    assert len(result) == 6
+
+    result = input_format_mock_llm.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=2)
+    assert len(result) == 120
+
+
+@pytest.mark.asyncio
+async def test_case_reuse_run_different_factory():
+    @data_factory(max_concurrency=10)
+    async def input_format_mock_llm(city_name: str, num_records_per_city: int):
+        return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=0.01)
+
+    @data_factory(max_concurrency=10)
+    async def input_format_mock_llm_1(city_name: str, num_records_per_city: int):
+        return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=0.01)
+
+    @data_factory(max_concurrency=10)
+    async def input_format_mock_llm_2(city_name: str, num_records_per_city: int):
+        return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=0.01)
+
+    result = input_format_mock_llm.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
+    assert len(result) == 4
+
+    result = input_format_mock_llm_1.run(city_name=["SF", "Shanghai", "yoyo"], num_records_per_city=2)
+    assert len(result) == 6
+
+    result = input_format_mock_llm_2.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=2)
+    assert len(result) == 120
