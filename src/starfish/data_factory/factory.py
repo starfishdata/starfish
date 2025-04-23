@@ -109,6 +109,7 @@ class DataFactory:
             - Telemetry settings
         """
         self.config = master_job_config
+        self.target_count = self.config.target_count
         self.state = None
         self.func = func
         self.input_data_queue = Queue()
@@ -369,6 +370,7 @@ class DataFactory:
         """
         if self.factory_storage:
             await self.factory_storage.close()
+            self.factory_storage = None
 
     async def _storage_setup(self):
         """Initialize the storage backend based on configuration.
@@ -387,7 +389,7 @@ class DataFactory:
 
         Adjusts the target count based on the input queue size if target_count is 0.
         """
-        target_count = self.config.target_count
+        target_count = self.target_count
         new_target_count = self.input_data_queue.qsize() if target_count == 0 else target_count
         self.config.target_count = new_target_count
 
@@ -622,9 +624,11 @@ def event_loop_manager(callable_func: Callable, *args, **kwargs):
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            loop.close()
-    except RuntimeError:
-        pass
+            loop.close()  # Close if running
+        elif not loop.is_closed():
+            loop.close()  # Close if not running and not closed
+    except RuntimeError:  # Handle case where loop is closed or doesn't exist
+        pass  # No loop to close, proceed to create a new one
 
     # Create new event loop
     loop = asyncio.new_event_loop()
@@ -639,6 +643,8 @@ def event_loop_manager(callable_func: Callable, *args, **kwargs):
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                loop.close()
+                loop.close()  # Close if running
+            elif not loop.is_closed():
+                loop.close()  # Close if not running and not closed
         except RuntimeError:
             pass

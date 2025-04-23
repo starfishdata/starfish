@@ -81,8 +81,8 @@ class JobManager:
         )
         self.storage = storage
         self.state = state
-        self.semaphore = asyncio.Semaphore(master_job_config.max_concurrency)
-        self.lock = asyncio.Lock()
+        self.semaphore = None
+        self.lock = None
         self.task_runner = TaskRunner(timeout=master_job_config.task_runner_timeout)
         self.job_input_queue = input_data_queue if input_data_queue else Queue()
         # it shall be a thread safe queue
@@ -217,6 +217,7 @@ class JobManager:
         self.nums_input = self.job_input_queue.qsize()
         start_time = datetime.datetime.now(datetime.timezone.utc)
         run_in_event_loop(self._async_run_orchestration())
+        # await self._async_run_orchestration()
         self.execution_time = int((datetime.datetime.now(datetime.timezone.utc) - start_time).total_seconds())  # Convert to seconds and cast to int
 
     async def _progress_ticker(self):
@@ -261,6 +262,16 @@ class JobManager:
         - Managing concurrency with semaphores
         - Handling task completion and cleanup
         """
+        # # Clean up existing semaphore and lock if they exist
+        if hasattr(self, "semaphore"):
+            del self.semaphore
+        if hasattr(self, "lock"):
+            del self.lock
+
+        # Create new instances
+        self.semaphore = asyncio.Semaphore(self.job_config.max_concurrency)
+        self.lock = asyncio.Lock()
+
         # Start the ticker task
         if self.job_config.show_progress:
             self._progress_ticker_task = asyncio.create_task(self._progress_ticker())
@@ -323,6 +334,7 @@ class JobManager:
                 task_status = STATUS_FILTERED
 
             output_ref = await self._save_record_data(copy.deepcopy(output), task_status, input_data)
+            # output_ref = await self._job_save_record_data(copy.deepcopy(output), task_status, input_data)
 
         except (Exception, TimeoutErrorAsyncio) as e:
             err_str = str(e)
