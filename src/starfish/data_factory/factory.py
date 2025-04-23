@@ -7,7 +7,7 @@ from queue import Queue
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast, Protocol
 
 import cloudpickle
-
+from starfish.version import __version__
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import NOT_COMPLETED_THRESHOLD, PROGRESS_LOG_INTERVAL, TASK_RUNNER_TIMEOUT
 from starfish.data_factory.constants import (
@@ -273,7 +273,7 @@ class DataFactory:
                 target_reached=False,
                 run_mode=self.config.run_mode,
                 num_inputs=self.input_data_queue.qsize(),
-                library_version="starfish-core",  # This should be replaced with actual version
+                library_version=__version__,  # Using the version here
                 config={
                     "batch_size": self.config.batch_size,
                     "target_count": self.config.target_count,

@@ -24,11 +24,8 @@ cloudpickle = "^2.2.0"
 
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0", "setuptools_scm[toml]>=7.0.0"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.setuptools_scm]
-write_to = "src/starfish/_version.py"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
