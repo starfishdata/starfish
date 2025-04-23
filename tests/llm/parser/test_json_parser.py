@@ -314,3 +314,71 @@ class TestJSONParser:
         # We need to use type_check=True to properly validate nested object fields
         with pytest.raises(SchemaValidationError):
             JSONParser.parse_llm_output(text, schema=schema, strict=True, type_check=True)
+
+    def test_preprocess_latex_json(self):
+        """Test preprocessing JSON text with LaTeX notation."""
+        # Normal JSON - should be returned as-is
+        json_text = '{"name": "John", "age": 30}'
+        result = JSONParser._try_parse_json(json_text)
+        assert result == {"name": "John", "age": 30}
+
+        # JSON with basic LaTeX notation
+        latex_json = '{"formula": "\\\\(x^2 + y^2 = z^2\\\\)"}'
+        result = JSONParser._try_parse_json(latex_json)
+        # The backslashes should be properly parsed
+        assert result["formula"] == "\\(x^2 + y^2 = z^2\\)"
+
+    def test_parse_llm_output_with_latex(self):
+        """Test parsing LLM output containing LaTeX notation."""
+        # JSON with LaTeX notation that would normally fail to parse
+        latex_input = """[
+  {
+    "problem": "Find positive integer solutions to the equation",
+    "answer": "5"
+  }
+]"""
+
+        # Define a simple schema for validation
+        fields = [{"name": "problem", "type": "str", "description": "Math problem"}, {"name": "answer", "type": "str", "description": "Answer to the problem"}]
+        schema = JSONParser.convert_to_schema(fields)
+
+        # This should parse successfully with our preprocessing
+        result = JSONParser.parse_llm_output(latex_input, schema=schema)
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["answer"] == "5"
+        assert "Find positive integer solutions" in result[0]["problem"]
+
+    def test_parse_complex_latex_math(self):
+        """Test parsing complex mathematical LaTeX notation in JSON."""
+        # The example with complex LaTeX split into parts for readability
+        latex_part1 = '[\n  {\n    "cot": "We are asked to find the number of '
+        latex_part2 = "positive integer solutions \\\\((x,y)\\\\) to the equation "
+        latex_part3 = "\\\\(7x + 11y = 2024\\\\) such that \\\\(x \\\\equiv y \\\\pmod{5}\\\\)."
+
+        # Define the remaining JSON parts
+        latex_ending = """",
+    "problem": "Find the number of positive integer solutions",
+    "answer": "5",
+    "reasoning": "First, express x in terms of y from the equation"
+  }
+]"""
+
+        # Concatenate all the parts to form the complete test data
+        complex_latex_json = latex_part1 + latex_part2 + latex_part3 + latex_ending
+
+        # This should parse successfully with our preprocessing
+        result = JSONParser.parse_llm_output(complex_latex_json)
+
+        # Check that parsing worked and content is preserved
+        assert result is not None
+        assert len(result) == 1
+        assert "cot" in result[0]
+        assert "problem" in result[0]
+        assert "answer" in result[0]
+        assert "reasoning" in result[0]
+        assert result[0]["answer"] == "5"
+
+        # Check that a LaTeX expression is present in the content
+        assert "Find the number of positive integer solutions" in result[0]["problem"]
+        assert "7x + 11y = 2024" in result[0]["cot"]

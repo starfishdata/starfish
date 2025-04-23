@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from starfish.common.exceptions import JsonParserError, SchemaValidationError
@@ -76,6 +77,88 @@ class JSONParser:
                         return text[i : j + 1].strip()
 
         raise JsonParserError("No valid JSON content found in the text")
+
+    @staticmethod
+    def _fix_latex_escapes(json_text: str) -> str:
+        """Apply targeted fixes for LaTeX-related escape sequences in JSON strings.
+
+        Escapes backslashes in LaTeX notation that would otherwise be invalid JSON.
+
+        Args:
+            json_text: JSON text that may contain LaTeX notation with backslashes
+
+        Returns:
+            JSON text with LaTeX escape sequences fixed
+        """
+        # Find string literals and fix backslashes that aren't part of valid JSON escapes
+        pattern = r'"((?:[^"\\]|\\.)*)"|\\\\([^"\\])'
+
+        def escape_backslashes(match):
+            if match.group(1) is not None:
+                # Handle string content
+                s = match.group(1)
+                # Escape only backslashes that aren't part of valid JSON escapes
+                s = re.sub(r'(?<!\\)\\(?=[^"\\\\/bfnrt])', r"\\\\", s)
+                return f'"{s}"'
+            else:
+                # Handle backslashes outside strings
+                return f"\\\\{match.group(2)}"
+
+        return re.sub(pattern, escape_backslashes, json_text)
+
+    @staticmethod
+    def _aggressive_escape_all_backslashes(json_text: str) -> str:
+        """Apply aggressive backslash escaping to all string literals in JSON.
+
+        This is a more heavy-handed approach when selective escaping fails.
+
+        Args:
+            json_text: JSON text with potentially problematic escape sequences
+
+        Returns:
+            JSON text with all backslashes doubled in string literals
+        """
+        pattern = r'"([^"]*(?:\\.[^"]*)*)"'
+
+        def replace_string_content(match):
+            string_content = match.group(1)
+            # Replace any single backslash with double backslash
+            escaped_content = string_content.replace("\\", "\\\\")
+            return f'"{escaped_content}"'
+
+        return re.sub(pattern, replace_string_content, json_text)
+
+    @staticmethod
+    def _try_parse_json(json_text: str) -> Optional[Any]:
+        """Try to parse JSON text using various strategies.
+
+        This method attempts multiple parsing strategies in sequence:
+        1. Parse the raw text directly
+        2. Try targeted escaping for LaTeX notation
+        3. Try aggressive escaping of all backslashes
+
+        Args:
+            json_text: JSON text to parse
+
+        Returns:
+            Parsed JSON object if successful, None if all strategies fail
+        """
+        # Strategy 1: Try parsing directly
+        try:
+            return json.loads(json_text)
+        except json.JSONDecodeError as e:
+            if "Invalid \\" not in str(e):
+                # If it's not an escape sequence issue, re-raise
+                raise
+
+            # Strategy 2: Try targeted LaTeX escape fixing
+            try:
+                fixed_text = JSONParser._fix_latex_escapes(json_text)
+                return json.loads(fixed_text)
+            except json.JSONDecodeError:
+                # Strategy 3: Try aggressive backslash escaping
+                aggressive_text = JSONParser._aggressive_escape_all_backslashes(json_text)
+                return json.loads(aggressive_text)
 
     @staticmethod
     def _unwrap_json_data(json_data: Any, json_wrapper_key: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -409,10 +492,18 @@ class JSONParser:
             json.JSONDecodeError: If JSON syntax is invalid in strict mode
         """
         try:
-            cleaned_text = JSONParser._extract_json_from_text(text)
-            parsed_json = json.loads(cleaned_text)
+            # Step 1: Extract potential JSON content from the text
+            extracted_json = JSONParser._extract_json_from_text(text)
+
+            # Step 2: Try to parse the JSON with multiple strategies
+            parsed_json = JSONParser._try_parse_json(extracted_json)
+            if parsed_json is None:
+                raise JsonParserError("Failed to parse JSON content after trying all strategies")
+
+            # Step 3: Unwrap the parsed JSON data
             data = JSONParser._unwrap_json_data(parsed_json, json_wrapper_key)
 
+            # Step 4: Validate against schema if provided
             if schema:
                 JSONParser.validate_against_schema(data, schema, type_check=type_check)
 
