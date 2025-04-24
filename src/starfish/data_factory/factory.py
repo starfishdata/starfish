@@ -1,6 +1,6 @@
 import asyncio
 import datetime
-import inspect
+from os import environ
 import uuid
 from inspect import Parameter, signature
 from queue import Queue
@@ -103,6 +103,15 @@ class DataFactoryWrapper(Generic[T]):
         return re_run(**kwargs)
 
 
+class DataFactoryProtocol(Protocol[P, T]):
+    """Protocol for the decorated function with additional methods."""
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def re_run(self, master_job_id: str, **kwargs) -> T: ...
+
+
 class DataFactory:
     """Core class for managing data generation pipelines.
 
@@ -150,13 +159,12 @@ class DataFactory:
         self.factory_storage = None
         self.err = None
         self.config_ref = None
-        self.telemetry_enabled = True
+        self.telemetry_enabled = environ.get("TELEMETRY_ENABLED", "false").lower() == "true"
         self.job_manager = None
         self.same_session = False
 
     def _clean_up_in_same_session(self):
         # same session, reset err and factory_storage
-
         if self.factory_storage or self.job_manager:
             self.same_session = True
         if self.same_session:
@@ -164,8 +172,6 @@ class DataFactory:
             self.factory_storage = None
             # self.config_ref = None
             self.job_manager = None
-        # if self.job_manager:
-        #
         # todo reuse the state from last same-factory state or a new state
 
     async def __call__(self, *args, **kwargs) -> List[Dict]:
@@ -197,7 +203,6 @@ class DataFactory:
                     job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
                 )
             elif run_mode == RUN_MODE_DRY_RUN:
-                # dry run mode
                 self.input_data_queue = _default_input_converter(*args, **kwargs)
                 # Get only first item but maintain Queue structure
                 self._check_parameter_match()
@@ -245,8 +250,6 @@ class DataFactory:
                     )
 
                 self._show_job_progress_status()
-                # shall it be saved if run success, no re-run need
-
                 await self._close_storage()
                 if isinstance(self.err, ValueError):
                     raise self.err
@@ -541,15 +544,6 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
     return results
 
 
-class DataFactoryProtocol(Protocol[P, T]):
-    """Protocol for the decorated function with additional methods."""
-
-    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def re_run(self, master_job_id: str, **kwargs) -> T: ...
-
-
 def data_factory(
     storage: str = STORAGE_TYPE_LOCAL,
     batch_size: int = 1,
@@ -672,20 +666,14 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
     if not factory.same_session:
         factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
         factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
+        func_serilized = master_job_config_data.get("func")
+        if func_serilized:
+            factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
     factory.config.run_mode = RUN_MODE_RE_RUN
     factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
-    func_serilized = master_job_config_data.get("func")
-    if func_serilized:
-        factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
     if not factory.func or not factory.config:
         await factory._close_storage()
         raise TypeError("do not support re_run, please update the function to support cloudpickle serilization")
-    factory.input_data = Queue()
-    factory.err = None
-    factory.config_ref = None
-    # move to env
-    factory.telemetry_enabled = True
-
     # Call the __call__ method
     result = await factory()
     return result
