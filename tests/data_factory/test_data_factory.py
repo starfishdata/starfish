@@ -2,7 +2,7 @@ import nest_asyncio
 import pytest
 import os
 
-from starfish.data_factory.factory import data_factory, re_run
+from starfish.data_factory.factory import data_factory, resume_from_checkpoint
 from starfish.common.env_loader import load_env_file
 from starfish.data_factory.constants import STATUS_COMPLETED
 from starfish.data_factory.utils.mock import mock_llm_call
@@ -187,12 +187,8 @@ async def test_case_8():
 
 
 @pytest.mark.asyncio
-async def test_case_9():
-    """Test extra parameters not defined in workflow
-    - Input: List of dicts with city names
-    - Extra: random_param not defined in workflow
-    - Expected: TypeError due to unexpected parameter
-    """
+async def test_case_dry_run():
+    """Test dry_run in workflow"""
 
     @data_factory(max_concurrency=2)
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
@@ -220,7 +216,7 @@ async def test_case_timeout():
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
     with pytest.raises(ValueError):
-        test1.dry_run(
+        test1.run(
             data=[
                 {"city_name": "1. New York"},
                 {"city_name": "2. Los Angeles"},
@@ -238,11 +234,43 @@ async def test_case_re_run_master_id_not_found():
     """
 
     with pytest.raises(TypeError):
-        re_run("123")
+        resume_from_checkpoint("123")
 
 
 @pytest.mark.asyncio
 async def test_case_job_re_run():
+    """Test extra parameters not defined in workflow
+    - Input: List of dicts with city names
+    - Extra: random_param not defined in workflow
+    - Expected: TypeError due to unexpected parameter
+    """
+
+    @data_factory(max_concurrency=2, job_run_stop_threshold=2)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
+        # global master_job_id
+        result = await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
+        # master_job_id = test1.factory.config.master_job_id
+        return result
+
+    result = test1.run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+        ],
+        num_records_per_city=1,
+    )
+    assert len(result) == 2
+    master_job_id = test1.factory.config.master_job_id
+    result = data_factory.resume_from_checkpoint(master_job_id)
+    assert len(result) == 2
+    result = test1.resume()
+    assert len(result) == 2
+    result = resume_from_checkpoint(master_job_id)
+    assert len(result) == 2
+
+
+@pytest.mark.asyncio
+async def test_case_job_re_run_catch_typeErr():
     """Test extra parameters not defined in workflow
     - Input: List of dicts with city names
     - Extra: random_param not defined in workflow
@@ -263,15 +291,15 @@ async def test_case_job_re_run():
         ],
         num_records_per_city=1,
     )
-    assert len(result) == 2
     master_job_id = test1.factory.config.master_job_id
-    result = data_factory.re_run(master_job_id)
-    assert len(result) == 2
-    result = test1.re_run()
+    result = test1.resume()
     assert len(result) == 2
     # TypeError
     with pytest.raises(TypeError):
-        re_run(master_job_id)
+        data_factory.resume_from_checkpoint(master_job_id)
+
+    with pytest.raises(TypeError):
+        resume_from_checkpoint(master_job_id)
 
 
 @pytest.mark.asyncio
@@ -309,8 +337,8 @@ async def test_case_reuse_run_same_factory():
 
     result = input_format_mock_llm.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=2)
     assert len(result) == 120
-    # -- input_format_mock_llm.re_run()
-    data_factory.re_run(input_format_mock_llm.factory.config.master_job_id)
+    # -- input_format_mock_llm.resume_from_checkpoint()
+    data_factory.resume_from_checkpoint(input_format_mock_llm.factory.config.master_job_id)
 
 
 @pytest.mark.asyncio

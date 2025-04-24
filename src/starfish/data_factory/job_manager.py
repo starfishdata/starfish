@@ -201,7 +201,7 @@ class JobManager:
             logger.error(
                 f"consecutive_not_completed: in {self.job_config.job_run_stop_threshold} times, "
                 f"stopping this job; please adjust factory config and input data then "
-                f"re_run({self.master_job_id})"
+                f"resume_from_checkpoint({self.master_job_id})"
             )
 
         return consecutive_not_completed or completed_tasks_reach_target

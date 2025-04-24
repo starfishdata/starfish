@@ -201,7 +201,8 @@ async def test_realistic_workflow(
         "generator": "qa_pair_generator",
         "parameters": {"total_records": total_records, "batch_size": batch_size, "style": "factual", "complexity": complexity},
     }
-    config_ref = await storage.save_request_config(master_job_id, config_data)
+    config_ref = storage.generate_request_config_path(master_job_id)
+    await storage.save_request_config(config_ref, config_data)
 
     # Create the master job
     master_job = GenerationMasterJob(
@@ -573,7 +574,8 @@ async def test_read_performance():
         # Create master job
         master_job_id = str(uuid.uuid4())
         config_data = {"generator": "qa_pair_generator", "parameters": {"total_records": total_records, "complexity": complexity}}
-        config_ref = await storage_instance.save_request_config(master_job_id, config_data)
+        config_ref = storage_instance.generate_request_config_path(master_job_id)
+        await storage_instance.save_request_config(config_ref, config_data)
 
         # Define the output schema for QA data
         output_schema = {

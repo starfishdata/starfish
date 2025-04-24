@@ -67,7 +67,8 @@ async def test_master_job(storage, test_project):
     )
 
     # Save config and update reference
-    config_ref = await storage.save_request_config(master_job.master_job_id, config_data)
+    config_ref = storage.generate_request_config_path(master_job.master_job_id)
+    await storage.save_request_config(config_ref, config_data)
     master_job.request_config_ref = config_ref
 
     # Save the master job
@@ -153,7 +154,8 @@ async def test_master_job_lifecycle(storage, test_project):
     master_job_id = str(uuid.uuid4())
 
     # Save request config
-    config_ref = await storage.save_request_config(master_job_id, config_data)
+    config_ref = storage.generate_request_config_path(master_job_id)
+    await storage.save_request_config(config_ref, config_data)
 
     master_job = GenerationMasterJob(
         master_job_id=master_job_id,
@@ -198,8 +200,8 @@ async def test_list_master_jobs(storage, test_project):
     for status, count in status_counts.items():
         for i in range(count):
             job_id = str(uuid.uuid4())
-            config_ref = await storage.save_request_config(job_id, {"test": i})
-
+            config_ref = storage.generate_request_config_path(job_id)
+            await storage.save_request_config(config_ref, {"test": i})
             job = GenerationMasterJob(
                 master_job_id=job_id,
                 project_id=test_project.project_id,
@@ -459,7 +461,8 @@ async def test_complete_workflow(storage):
     # 2. Create master job
     master_job_id = str(uuid.uuid4())
     config_data = {"generator": "workflow_test"}
-    config_ref = await storage.save_request_config(master_job_id, config_data)
+    config_ref = storage.generate_request_config_path(master_job_id)
+    await storage.save_request_config(config_ref, config_data)
 
     master_job = GenerationMasterJob(
         master_job_id=master_job_id,
