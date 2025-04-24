@@ -1,12 +1,13 @@
 import asyncio
 import datetime
-import inspect
+from os import environ
 import uuid
 from inspect import Parameter, signature
 from queue import Queue
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast, Protocol
 
 import cloudpickle
+from starfish.data_factory.utils.util import get_platform_name
 from starfish.version import __version__
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import NOT_COMPLETED_THRESHOLD, PROGRESS_LOG_INTERVAL, TASK_RUNNER_TIMEOUT
@@ -88,27 +89,27 @@ class DataFactoryWrapper(Generic[T]):
         self.factory.config.run_mode = RUN_MODE_DRY_RUN
         return event_loop_manager(self.factory, *args, **kwargs)
 
-    def re_run(self, master_job_id: str, **kwargs) -> T:
+    def re_run(self, **kwargs) -> T:
         """Re-run a previously executed data generation job.
 
         Args:
             master_job_id (str): ID of the master job to re-run
-            storage (str): Storage backend to use ('local' or 'in_memory')
-            batch_size (int): Number of records to process in each batch
-            target_count (int): Target number of records to generate (0 means process all input)
-            max_concurrency (int): Maximum number of concurrent tasks
-            initial_state_values (Optional[Dict[str, Any]]): Initial values for shared state
-            on_record_complete (Optional[List[Callable]]): Callbacks to execute after successful record processing
-            on_record_error (Optional[List[Callable]]): Callbacks to execute after failed record processing
-            show_progress (bool): Whether to display progress bar
-            task_runner_timeout (int): Timeout in seconds for task execution
-            job_run_stop_threshold (int): Threshold for stopping job if too many records fail
+
 
         Returns:
             T: Processed output data from the re-run
         """
         kwargs["factory"] = self.factory
-        return re_run(master_job_id, **kwargs)
+        return re_run(**kwargs)
+
+
+class DataFactoryProtocol(Protocol[P, T]):
+    """Protocol for the decorated function with additional methods."""
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+    def re_run(self, master_job_id: str, **kwargs) -> T: ...
 
 
 class DataFactory:
@@ -149,12 +150,6 @@ class DataFactory:
                 - state: Shared state object for tracking job state
             func (Callable, optional): The data processing function to be wrapped. Defaults to None.
 
-        Initializes:
-            - Input data queue
-            - Storage backend
-            - Error tracking
-            - Configuration reference
-            - Telemetry settings
         """
         self.config = master_job_config
         self.target_count = self.config.target_count
@@ -164,17 +159,18 @@ class DataFactory:
         self.factory_storage = None
         self.err = None
         self.config_ref = None
-        self.telemetry_enabled = True
+        self.telemetry_enabled = environ.get("TELEMETRY_ENABLED", "false").lower() == "true"
         self.job_manager = None
+        self.same_session = False
 
-    def _clear_out_factory(self):
-        if self.err:
+    def _clean_up_in_same_session(self):
+        # same session, reset err and factory_storage
+        if self.factory_storage or self.job_manager:
+            self.same_session = True
+        if self.same_session:
             self.err = None
-        if self.config_ref:
-            self.config_ref = None
-        if self.factory_storage:
             self.factory_storage = None
-        if self.job_manager:
+            # self.config_ref = None
             self.job_manager = None
         # todo reuse the state from last same-factory state or a new state
 
@@ -199,7 +195,7 @@ class DataFactory:
             ValueError: If no records are generated or if input data validation fails
             KeyboardInterrupt: If the job is interrupted by the user
         """
-        self._clear_out_factory()
+
         run_mode = self.config.run_mode
         try:
             if run_mode == RUN_MODE_RE_RUN:
@@ -207,7 +203,6 @@ class DataFactory:
                     job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
                 )
             elif run_mode == RUN_MODE_DRY_RUN:
-                # dry run mode
                 self.input_data_queue = _default_input_converter(*args, **kwargs)
                 # Get only first item but maintain Queue structure
                 self._check_parameter_match()
@@ -216,6 +211,7 @@ class DataFactory:
                     job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
                 )
             else:
+                self._clean_up_in_same_session()
                 self.input_data_queue = _default_input_converter(*args, **kwargs)
                 self._check_parameter_match()
                 await self._storage_setup()
@@ -241,7 +237,7 @@ class DataFactory:
                     self.err = ValueError("No records generated")
 
                 await self._complete_master_job()
-                await self._close_storage()
+
                 # Only execute finally block if not TypeError
                 if self.err and not isinstance(self.err, ValueError):
                     err_msg = str(self.err)
@@ -252,7 +248,9 @@ class DataFactory:
                     logger.info(
                         f"[RE-RUN INFO] 🚨 Job stopped unexpectedly. You can resume the job using " f'master_job_id by re_run("{self.config.master_job_id}")'
                     )
+
                 self._show_job_progress_status()
+                await self._close_storage()
                 if isinstance(self.err, ValueError):
                     raise self.err
                 else:
@@ -272,6 +270,7 @@ class DataFactory:
                 job_id=self.config.master_job_id,
                 target_reached=False,
                 run_mode=self.config.run_mode,
+                run_time_platform=get_platform_name(),
                 num_inputs=self.input_data_queue.qsize(),
                 library_version=__version__,  # Using the version here
                 config={
@@ -371,11 +370,28 @@ class DataFactory:
         # First save the request config
         config_data = {
             "generator": "test_generator",
-            "config": self.config.to_dict(),
             "state": self.state.to_dict(),
-            "func": cloudpickle.dumps(self.func).hex(),
             "input_data": list(self.input_data_queue.queue),
         }
+        func_hex = None
+        config_serialize = None
+
+        try:
+            func_hex = cloudpickle.dumps(self.func).hex()
+        except TypeError as e:
+            logger.warning(f"Cannot serialize function for re-run due to unsupported type: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Unexpected error serializing function: {str(e)}")
+
+        try:
+            config_serialize = self.config.to_dict()
+        except TypeError as e:
+            logger.warning(f"Cannot serialize config for re-run due to unsupported type: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Unexpected error serializing config: {str(e)}")
+
+        config_data["func"] = func_hex
+        config_data["config"] = config_serialize
         self.config_ref = await self.factory_storage.save_request_config(self.config.master_job_id, config_data)
         logger.debug(f"  - Saved request config to: {self.config_ref}")
 
@@ -430,7 +446,6 @@ class DataFactory:
         """
         if self.factory_storage:
             await self.factory_storage.close()
-            self.factory_storage = None
 
     async def _storage_setup(self):
         """Initialize the storage backend based on configuration.
@@ -529,15 +544,6 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
     return results
 
 
-class DataFactoryProtocol(Protocol[P, T]):
-    """Protocol for the decorated function with additional methods."""
-
-    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def re_run(self, master_job_id: str, **kwargs) -> T: ...
-
-
 def data_factory(
     storage: str = STORAGE_TYPE_LOCAL,
     batch_size: int = 1,
@@ -584,14 +590,40 @@ def data_factory(
         on_record_error=on_record_error,
         job_run_stop_threshold=job_run_stop_threshold,
     )
+    _factory = None
 
     def decorator(func: Callable[P, T]) -> DataFactoryProtocol[P, T]:
-        factory = DataFactory(master_job_config, func)
-        factory.state = MutableSharedState(initial_data=initial_state_values)
+        nonlocal _factory  # Use nonlocal instead of global for better scoping
+        if _factory is None:  # Only create new factory if one doesn't exist
+            factory = DataFactory(master_job_config, func)
+            factory.state = MutableSharedState(initial_data=initial_state_values)
+            _factory = factory
+        else:
+            # Update existing factory with new config
+            _factory.config = master_job_config
+            _factory.func = func
+            _factory.state = MutableSharedState(initial_data=initial_state_values)
 
-        wrapper = DataFactoryWrapper(factory, func)
+        wrapper = DataFactoryWrapper(_factory, func)
+        return cast(DataFactoryProtocol[P, T], wrapper)
 
-        return cast(DataFactoryProtocol[P, T], wrapper)  # Return the function with added methods
+    def _re_run(master_job_id: str, **kwargs) -> List[Dict]:
+        """Re-run a previously executed data generation job.
+
+        Args:
+            master_job_id (str): ID of the master job to re-run
+            **kwargs: Additional configuration overrides for the re-run
+
+        Returns:
+            List[Dict]: Processed output data from the re-run
+        """
+        nonlocal _factory
+        if _factory is None:
+            raise RuntimeError("Factory not initialized. Please decorate a function first.")
+        kwargs["factory"] = _factory
+        return re_run(master_job_id, **kwargs)
+
+    data_factory.re_run = _re_run
 
     return decorator
 
@@ -623,6 +655,7 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
     # call with instance
     if "factory" in kwargs:
         factory = kwargs["factory"]
+        factory._clean_up_in_same_session()
     else:
         factory = DataFactory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
     if len(args) == 1:
@@ -636,26 +669,17 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
 
     await factory._storage_setup()
     master_job_config_data, master_job = await _re_run_get_master_job_request_config(factory=factory)
-    factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
-    factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
+    if not factory.same_session:
+        factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
+        factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
+        func_serilized = master_job_config_data.get("func")
+        if func_serilized:
+            factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
     factory.config.run_mode = RUN_MODE_RE_RUN
     factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
-    factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
-    factory.input_data = Queue()
-    factory.err = None
-    factory.config_ref = None
-    # move to env
-    factory.telemetry_enabled = True
-
-    # Get the loaded function's signature
-    # if hasattr(factory.func, "__signature__"):
-    #     original_sig = factory.func.__signature__
-    # else:
-    #     original_sig = inspect.signature(factory.func)
-
-    # async_re_run.__signature__ = original_sig
-    # async_re_run.__annotations__ = factory.func.__annotations__
-
+    if not factory.func or not factory.config:
+        await factory._close_storage()
+        raise TypeError("do not support re_run, please update the function to support cloudpickle serilization")
     # Call the __call__ method
     result = await factory()
     return result
@@ -686,11 +710,6 @@ def re_run(*args, **kwargs) -> List[Dict]:
         TypeError: If master job ID is not provided or job not found
     """
     return event_loop_manager(async_re_run, *args, **kwargs)
-
-
-# # Copy signature and annotations to re_run
-# re_run.__signature__ = inspect.signature(async_re_run)
-# re_run.__annotations__ = async_re_run.__annotations__
 
 
 def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[Dict]:

@@ -1,14 +1,15 @@
 import nest_asyncio
 import pytest
+import os
 
-from starfish import data_factory
+from starfish.data_factory.factory import data_factory, re_run
 from starfish.common.env_loader import load_env_file
 from starfish.data_factory.constants import STATUS_COMPLETED
 from starfish.data_factory.utils.mock import mock_llm_call
+from starfish.llm.structured_llm import StructuredLLM
 
 nest_asyncio.apply()
 load_env_file()
-### Mock LLM call
 
 
 @pytest.mark.asyncio
@@ -236,12 +237,41 @@ async def test_case_re_run_master_id_not_found():
     - Expected: TypeError due to unexpected parameter
     """
 
-    @data_factory(max_concurrency=2, task_runner_timeout=10)
-    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
-        return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
-
     with pytest.raises(TypeError):
-        test1.re_run("123")
+        re_run("123")
+
+
+@pytest.mark.asyncio
+async def test_case_job_re_run():
+    """Test extra parameters not defined in workflow
+    - Input: List of dicts with city names
+    - Extra: random_param not defined in workflow
+    - Expected: TypeError due to unexpected parameter
+    """
+
+    @data_factory(max_concurrency=2, job_run_stop_threshold=2)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
+        global master_job_id
+        result = await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
+        master_job_id = test1.factory.config.master_job_id
+        return result
+
+    result = test1.run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+        ],
+        num_records_per_city=1,
+    )
+    assert len(result) == 2
+    master_job_id = test1.factory.config.master_job_id
+    result = data_factory.re_run(master_job_id)
+    assert len(result) == 2
+    result = test1.re_run()
+    assert len(result) == 2
+    # TypeError
+    with pytest.raises(TypeError):
+        re_run(master_job_id)
 
 
 @pytest.mark.asyncio
@@ -279,6 +309,8 @@ async def test_case_reuse_run_same_factory():
 
     result = input_format_mock_llm.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=2)
     assert len(result) == 120
+    # -- input_format_mock_llm.re_run()
+    data_factory.re_run(input_format_mock_llm.factory.config.master_job_id)
 
 
 @pytest.mark.asyncio
@@ -303,3 +335,26 @@ async def test_case_reuse_run_different_factory():
 
     result = input_format_mock_llm_2.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=2)
     assert len(result) == 120
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
+async def test_case_cloudpick():
+    ### Pydantic Issue?
+    from pydantic import BaseModel
+
+    class MockLLMInput(BaseModel):
+        city_name: str
+        num_records_per_city: int
+
+    @data_factory(max_concurrency=10)
+    async def test_pydantic_issue(city_name: str, num_records_per_city: int):
+        facts_generator = StructuredLLM(model_name="openai/gpt-4o-mini", output_schema=MockLLMInput, prompt="generate facts about {{city_name}}")
+
+        response = await facts_generator.run(city_name=city_name, num_records_per_city=num_records_per_city)
+
+        return response.data
+
+    result = test_pydantic_issue.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
+    # num of records not used right now
+    assert len(result) == 2
