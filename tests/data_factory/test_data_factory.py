@@ -9,7 +9,6 @@ from starfish.llm.structured_llm import StructuredLLM
 
 nest_asyncio.apply()
 load_env_file()
-### Mock LLM call
 
 
 @pytest.mark.asyncio
