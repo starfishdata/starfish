@@ -7,17 +7,27 @@ def get_platform_name() -> str:
         # Check for IPython kernel
         from IPython import get_ipython
 
-        shell = get_ipython().__class__.__name__
-        # Check for Google Colab using environment variable
-        if "COLAB_RELEASE_TAG" in os.environ:
+        ipython = get_ipython()
+
+        # If not in an interactive environment
+        if ipython is None:
+            return "PythonShell"
+
+        shell = ipython.__class__.__name__
+
+        # Direct check for Google Colab
+        try:
+            import google.colab
+
             shell = "GoogleColabShell"
-        # Check for VS Code specific environment variables
-        elif "VSCODE_PID" in os.environ or "VSCODE_CWD" in os.environ:
-            shell = "VSCodeShell"
+        except ImportError:
+            # Check for VS Code specific environment variables
+            if "VSCODE_PID" in os.environ or "VSCODE_CWD" in os.environ:
+                shell = "VSCodeShell"
         return shell
 
     except:
-        return ""  # Probably standard Python interpreter
+        return "PythonShell"  # Probably standard Python interpreter
 
 
 # def is_jupyter_notebook() -> bool:
