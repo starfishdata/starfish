@@ -51,7 +51,8 @@ jobs:
       #   run: |
       #     poetry run ruff check . --output-format=github
       #     poetry run ruff format . --check
-
+      
+      # --cov-report=html
       - name: Run tests with coverage
         run: |
-          poetry run pytest --cov='src' --cov-report=html --cov-fail-under=20  tests/
+          poetry run pytest --cov='src' --cov-fail-under=20  tests/
