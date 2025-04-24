@@ -8,8 +8,11 @@ def get_platform_name() -> str:
         from IPython import get_ipython
 
         shell = get_ipython().__class__.__name__
+        # Check for Google Colab
+        if "google.colab" in str(get_ipython()):
+            shell = "GoogleColabShell"
         # Check for VS Code specific environment variables
-        if "VSCODE_PID" in os.environ or "VSCODE_CWD" in os.environ:
+        elif "VSCODE_PID" in os.environ or "VSCODE_CWD" in os.environ:
             shell = "VSCodeShell"
         return shell
 
