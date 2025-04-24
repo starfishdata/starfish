@@ -7,7 +7,7 @@ from queue import Queue
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast, Protocol
 
 import cloudpickle
-from starfish.data_factory.utils.util import is_jupyter_notebook
+from starfish.data_factory.utils.util import get_platform_name
 from starfish.version import __version__
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import NOT_COMPLETED_THRESHOLD, PROGRESS_LOG_INTERVAL, TASK_RUNNER_TIMEOUT
@@ -267,7 +267,7 @@ class DataFactory:
                 job_id=self.config.master_job_id,
                 target_reached=False,
                 run_mode=self.config.run_mode,
-                is_using_jupyter=is_jupyter_notebook(),
+                run_time_platform=get_platform_name(),
                 num_inputs=self.input_data_queue.qsize(),
                 library_version=__version__,  # Using the version here
                 config={
