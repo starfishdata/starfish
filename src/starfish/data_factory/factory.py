@@ -679,7 +679,7 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
     if not factory.func or not factory.config:
         await factory._close_storage()
-        raise TypeError("do not support re_run")
+        raise TypeError("do not support re_run, please update the function to support cloudpickle serilization")
     factory.input_data = Queue()
     factory.err = None
     factory.config_ref = None
