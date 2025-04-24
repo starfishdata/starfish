@@ -66,8 +66,11 @@ class LocalStorage(Storage):
     # --- Delegate methods to internal handlers ---
 
     # Config Persistence
-    async def save_request_config(self, master_job_id: str, config_data: Dict[str, Any]) -> str:
-        return await self._data_handler.save_request_config_impl(master_job_id, config_data)
+    async def save_request_config(self, config_ref: str, config_data: Dict[str, Any]) -> str:
+        return await self._data_handler.save_request_config_impl(config_ref, config_data)
+
+    def generate_request_config_path(self, master_job_id: str) -> str:
+        return self._data_handler.generate_request_config_path_impl(master_job_id)
 
     async def get_request_config(self, config_ref: str) -> Dict[str, Any]:
         return await self._data_handler.get_request_config_impl(config_ref)

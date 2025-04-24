@@ -15,6 +15,7 @@ from starfish.data_factory.constants import (
     LOCAL_STORAGE_URI,
     RECORD_STATUS,
     RUN_MODE_DRY_RUN,
+    RUN_MODE_NORMAL,
     RUN_MODE_RE_RUN,
     STATUS_COMPLETED,
     STATUS_DUPLICATE,
@@ -74,6 +75,7 @@ class DataFactoryWrapper(Generic[T]):
         Returns:
             T: Processed output data
         """
+        self.factory.config.run_mode = RUN_MODE_NORMAL
         return event_loop_manager(self.factory, *args, **kwargs)
 
     def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T:
@@ -89,8 +91,8 @@ class DataFactoryWrapper(Generic[T]):
         self.factory.config.run_mode = RUN_MODE_DRY_RUN
         return event_loop_manager(self.factory, *args, **kwargs)
 
-    def re_run(self, **kwargs) -> T:
-        """Re-run a previously executed data generation job.
+    def resume(self, **kwargs) -> T:
+        """continue current data generation job.
 
         Args:
             master_job_id (str): ID of the master job to re-run
@@ -100,7 +102,7 @@ class DataFactoryWrapper(Generic[T]):
             T: Processed output data from the re-run
         """
         kwargs["factory"] = self.factory
-        return re_run(**kwargs)
+        return resume_from_checkpoint(**kwargs)
 
 
 class DataFactoryProtocol(Protocol[P, T]):
@@ -109,7 +111,7 @@ class DataFactoryProtocol(Protocol[P, T]):
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
     def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
     def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def re_run(self, master_job_id: str, **kwargs) -> T: ...
+    def resume(self, master_job_id: str, **kwargs) -> T: ...
 
 
 class DataFactory:
@@ -162,6 +164,7 @@ class DataFactory:
         self.telemetry_enabled = environ.get("TELEMETRY_ENABLED", "false").lower() == "true"
         self.job_manager = None
         self.same_session = False
+        self.original_input_data = []
 
     def _clean_up_in_same_session(self):
         # same session, reset err and factory_storage
@@ -222,7 +225,7 @@ class DataFactory:
                     master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data_queue, user_func=self.func
                 )
                 await self._save_project()
-                await self._save_request_config()
+
                 await self._log_master_job_start()
             await self.job_manager.setup_input_output_queue()
             self._process_batches()
@@ -235,7 +238,6 @@ class DataFactory:
                 result = self._process_output()
                 if len(result) == 0:
                     self.err = ValueError("No records generated")
-
                 await self._complete_master_job()
 
                 # Only execute finally block if not TypeError
@@ -246,10 +248,12 @@ class DataFactory:
 
                     logger.error(f"Error occurred: {err_msg}")
                     logger.info(
-                        f"[RE-RUN INFO] 🚨 Job stopped unexpectedly. You can resume the job using " f'master_job_id by re_run("{self.config.master_job_id}")'
+                        f"[RE-RUN INFO] 🚨 Job stopped unexpectedly. You can resume the job using "
+                        f'master_job_id by resume_from_checkpoint("{self.config.master_job_id}")'
                     )
 
                 self._show_job_progress_status()
+                await self._save_request_config()
                 await self._close_storage()
                 if isinstance(self.err, ValueError):
                     raise self.err
@@ -264,7 +268,7 @@ class DataFactory:
 
         Collects and sends job metrics and error information if telemetry is enabled.
         """
-        logger.info("Sending telemetry event")
+        logger.info("Sending telemetry event, TELEMETRY_ENABLED=true")
         if self.telemetry_enabled:
             telemetry_data = TelemetryData(
                 job_id=self.config.master_job_id,
@@ -350,6 +354,9 @@ class DataFactory:
                 f"\033[36mMaster Job ID: {self.config.master_job_id}\033[0m | "
                 f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
             )
+
+        if self.config.run_mode == RUN_MODE_NORMAL:
+            self.original_input_data = list(self.input_data_queue.queue)
         return self.job_manager.run_orchestration()
 
     async def _save_project(self):
@@ -366,40 +373,42 @@ class DataFactory:
         Serializes and stores the function, configuration, state, and input data
         for potential re-runs.
         """
-        logger.debug("\n2. Creating master job...")
-        # First save the request config
-        config_data = {
-            "generator": "test_generator",
-            "state": self.state.to_dict(),
-            "input_data": list(self.input_data_queue.queue),
-        }
-        func_hex = None
-        config_serialize = None
+        if self.config.run_mode != RUN_MODE_DRY_RUN:
+            logger.debug("\n2. Creating master job...")
+            # First save the request config
+            config_data = {
+                "generator": "test_generator",
+                "state": self.state.to_dict(),
+                "input_data": self.original_input_data,
+            }
+            func_hex = None
+            config_serialize = None
 
-        try:
-            func_hex = cloudpickle.dumps(self.func).hex()
-        except TypeError as e:
-            logger.warning(f"Cannot serialize function for re-run due to unsupported type: {str(e)}")
-        except Exception as e:
-            logger.warning(f"Unexpected error serializing function: {str(e)}")
+            try:
+                func_hex = cloudpickle.dumps(self.func).hex()
+            except TypeError as e:
+                logger.warning(f"Cannot serialize function for re-run due to unsupported type: {str(e)}")
+            except Exception as e:
+                logger.warning(f"Unexpected error serializing function: {str(e)}")
 
-        try:
-            config_serialize = self.config.to_dict()
-        except TypeError as e:
-            logger.warning(f"Cannot serialize config for re-run due to unsupported type: {str(e)}")
-        except Exception as e:
-            logger.warning(f"Unexpected error serializing config: {str(e)}")
+            try:
+                config_serialize = self.config.to_dict()
+            except TypeError as e:
+                logger.warning(f"Cannot serialize config for re-run due to unsupported type: {str(e)}")
+            except Exception as e:
+                logger.warning(f"Unexpected error serializing config: {str(e)}")
 
-        config_data["func"] = func_hex
-        config_data["config"] = config_serialize
-        self.config_ref = await self.factory_storage.save_request_config(self.config.master_job_id, config_data)
-        logger.debug(f"  - Saved request config to: {self.config_ref}")
+            config_data["func"] = func_hex
+            config_data["config"] = config_serialize
+            await self.factory_storage.save_request_config(self.config_ref, config_data)
+            logger.debug(f"  - Saved request config to: {self.config_ref}")
 
     async def _log_master_job_start(self):
         """Log the start of a master job to storage.
 
         Creates and stores a master job record with initial metadata.
         """
+        self.config_ref = self.factory_storage.generate_request_config_path(self.config.master_job_id)
         # Now create the master job
         master_job = GenerationMasterJob(
             master_job_id=self.config.master_job_id,
@@ -423,21 +432,22 @@ class DataFactory:
             Exception: If there's an error during job completion
         """
         #  Complete the master job
-        try:
-            logger.debug("\n7. Stopping master job...")
-            now = datetime.datetime.now(datetime.timezone.utc)
-            status = STATUS_FAILED if self.err else STATUS_COMPLETED
+        if self.config.run_mode != RUN_MODE_DRY_RUN:
+            try:
+                logger.debug("\n7. Stopping master job...")
+                now = datetime.datetime.now(datetime.timezone.utc)
+                status = STATUS_FAILED if self.err else STATUS_COMPLETED
 
-            summary = {
-                STATUS_COMPLETED: self.job_manager.completed_count,
-                STATUS_FILTERED: self.job_manager.filtered_count,
-                STATUS_DUPLICATE: self.job_manager.duplicate_count,
-                STATUS_FAILED: self.job_manager.failed_count,
-            }
-            if self.factory_storage:
-                await self.factory_storage.log_master_job_end(self.config.master_job_id, status, summary, now, now)
-        except Exception as e:
-            raise e
+                summary = {
+                    STATUS_COMPLETED: self.job_manager.completed_count,
+                    STATUS_FILTERED: self.job_manager.filtered_count,
+                    STATUS_DUPLICATE: self.job_manager.duplicate_count,
+                    STATUS_FAILED: self.job_manager.failed_count,
+                }
+                if self.factory_storage:
+                    await self.factory_storage.log_master_job_end(self.config.master_job_id, status, summary, now, now)
+            except Exception as e:
+                raise e
 
     async def _close_storage(self):
         """Clean up and close the storage connection.
@@ -607,7 +617,7 @@ def data_factory(
         wrapper = DataFactoryWrapper(_factory, func)
         return cast(DataFactoryProtocol[P, T], wrapper)
 
-    def _re_run(master_job_id: str, **kwargs) -> List[Dict]:
+    def _resume_from_checkpoint(master_job_id: str, **kwargs) -> List[Dict]:
         """Re-run a previously executed data generation job.
 
         Args:
@@ -620,10 +630,10 @@ def data_factory(
         nonlocal _factory
         if _factory is None:
             raise RuntimeError("Factory not initialized. Please decorate a function first.")
-        kwargs["factory"] = _factory
-        return re_run(master_job_id, **kwargs)
+        # kwargs["factory"] = _factory
+        return resume_from_checkpoint(master_job_id, **kwargs)
 
-    data_factory.re_run = _re_run
+    data_factory.resume_from_checkpoint = _resume_from_checkpoint
 
     return decorator
 
@@ -658,8 +668,10 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         factory._clean_up_in_same_session()
     else:
         factory = DataFactory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
-    if len(args) == 1:
-        factory.config.master_job_id = args[0]
+        if len(args) == 1:
+            factory.config.master_job_id = args[0]
+        else:
+            raise TypeError("Master job id is required, please pass it in the paramters")
     # Update config with any additional kwargs
     for key, value in kwargs.items():
         if hasattr(factory.config, key):
@@ -675,17 +687,19 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         func_serilized = master_job_config_data.get("func")
         if func_serilized:
             factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
-    factory.config.run_mode = RUN_MODE_RE_RUN
-    factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
     if not factory.func or not factory.config:
         await factory._close_storage()
-        raise TypeError("do not support re_run, please update the function to support cloudpickle serilization")
+        raise TypeError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
+    factory.config.run_mode = RUN_MODE_RE_RUN
+    factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
+    factory.original_input_data = factory.config.prev_job["input_data"]
+    factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
     # Call the __call__ method
     result = await factory()
     return result
 
 
-def re_run(*args, **kwargs) -> List[Dict]:
+def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
     """Re-run a previously executed data generation job.
 
     This is the synchronous interface for re-running jobs.
