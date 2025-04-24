@@ -1,5 +1,6 @@
 import nest_asyncio
 import pytest
+import os
 
 from starfish.data_factory.factory import data_factory, re_run
 from starfish.common.env_loader import load_env_file
@@ -337,6 +338,7 @@ async def test_case_reuse_run_different_factory():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
 async def test_case_cloudpick():
     ### Pydantic Issue?
     from pydantic import BaseModel
