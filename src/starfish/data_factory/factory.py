@@ -593,16 +593,20 @@ def data_factory(
     _factory = None
 
     def decorator(func: Callable[P, T]) -> DataFactoryProtocol[P, T]:
-        factory = DataFactory(master_job_config, func)
-        global _factory
-        _factory = factory
-        factory.state = MutableSharedState(initial_data=initial_state_values)
+        nonlocal _factory  # Use nonlocal instead of global for better scoping
+        if _factory is None:  # Only create new factory if one doesn't exist
+            factory = DataFactory(master_job_config, func)
+            factory.state = MutableSharedState(initial_data=initial_state_values)
+            _factory = factory
+        else:
+            # Update existing factory with new config
+            _factory.config = master_job_config
+            _factory.func = func
+            _factory.state = MutableSharedState(initial_data=initial_state_values)
 
-        wrapper = DataFactoryWrapper(factory, func)
+        wrapper = DataFactoryWrapper(_factory, func)
+        return cast(DataFactoryProtocol[P, T], wrapper)
 
-        return cast(DataFactoryProtocol[P, T], wrapper)  # Return the function with added methods
-
-    # Add re_run as a method to the data_factory decorator
     def _re_run(master_job_id: str, **kwargs) -> List[Dict]:
         """Re-run a previously executed data generation job.
 
@@ -613,7 +617,9 @@ def data_factory(
         Returns:
             List[Dict]: Processed output data from the re-run
         """
-        global _factory
+        nonlocal _factory
+        if _factory is None:
+            raise RuntimeError("Factory not initialized. Please decorate a function first.")
         kwargs["factory"] = _factory
         return re_run(master_job_id, **kwargs)
 
