@@ -112,8 +112,7 @@ results = parallel_qna_llm.run(city=cities)
 results = parallel_qna_llm.dry_run(city=cities)
     
 # re-run job which pick up from where it left off. 
-# In case job failed it will print out id for you to grab
-results = parallel_qna_llm.resume("8e07b4e8-4d4a-4355-82c3-04a5391ddbf5")
+results = parallel_qna_llm.resume()
 ```
 
 ### Examples
@@ -147,6 +146,10 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 If you have any questions or feedback, feel free to reach out to us at [founders@starfishdata.ai](mailto:founders@starfishdata.ai).
 
 Want to discuss your use case directly? [Schedule a meeting with our team](https://calendly.com/d/crsb-ckq-fv2/chat-with-starfishdata-team).
+
+## Telemetry
+
+Starfish collects minimal and anonymous telemetry data to help improve the library. Participation is optional and you can opt out by setting `TELEMETRY_ENABLED=false` in your environment variables.
 
 ## Citation
 
