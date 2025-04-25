@@ -48,7 +48,7 @@ class DataFactoryWrapper(Generic[T]):
     """Wrapper class that provides execution methods for data factory pipelines.
 
     This class acts as the interface returned by the @data_factory decorator,
-    providing methods to run, dry-run, and re-run data processing jobs.
+    providing methods to run, dry-run, and resume data processing jobs.
 
     Attributes:
         factory (DataFactory): The underlying DataFactory instance
@@ -96,11 +96,11 @@ class DataFactoryWrapper(Generic[T]):
         """continue current data generation job.
 
         Args:
-            master_job_id (str): ID of the master job to re-run
+            master_job_id (str): ID of the master job to resume
 
 
         Returns:
-            T: Processed output data from the re-run
+            T: Processed output data from the resume
         """
         kwargs["factory"] = self.factory
         return resume_from_checkpoint(**kwargs)
@@ -183,13 +183,13 @@ class DataFactory:
 
         This method handles the main execution flow for different run modes:
         - Normal mode: Processes all input data
-        - Re-run mode: Re-runs a previous job using stored configuration
+        - Resume mode: Resumes a previous job using stored configuration
         - Dry-run mode: Processes only the first input item for testing
 
         Args:
             *args: Positional arguments passed to the data processing function
             **kwargs: Keyword arguments passed to the data processing function
-                - master_job_id: Required for re-run mode to specify which job to re-run
+                - master_job_id: Required for resume mode to specify which job to resume
 
         Returns:
             List[Any]: Processed output data
@@ -248,10 +248,7 @@ class DataFactory:
                         err_msg = "KeyboardInterrupt"
 
                     logger.error(f"Error occurred: {err_msg}")
-                    logger.info(
-                        f"[RE-RUN INFO] 🚨 Job stopped unexpectedly. You can resume the job using "
-                        f'master_job_id by resume_from_checkpoint("{self.config.master_job_id}")'
-                    )
+                    logger.info(f"[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
 
                 self._show_job_progress_status()
                 await self._save_request_config()

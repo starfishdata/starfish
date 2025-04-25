@@ -78,9 +78,9 @@ class JobManagerRerun(JobManager):
         del self.prev_job["master_job"]
         del self.prev_job
 
-        logger.info("\033[1m[JOB RE-RUN START]\033[0m " "\033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n")
+        logger.info("\033[1m[JOB RESUME START]\033[0m " "\033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n")
         logger.info(
-            f"\033[1m[RE-RUN PROGRESS] STATUS AT THE TIME OF RE-RUN:\033[0m "
+            f"\033[1m[RESUME PROGRESS] STATUS AT THE TIME OF RESUME:\033[0m "
             f"\033[32mCompleted: {master_job.completed_record_count} / {len(input_data)}\033[0m | "
             f"\033[31mFailed: {master_job.failed_record_count}\033[0m | "
             f"\033[31mDuplicate: {master_job.duplicate_record_count}\033[0m | "
