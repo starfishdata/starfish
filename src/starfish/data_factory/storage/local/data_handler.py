@@ -78,9 +78,11 @@ class FileSystemDataHandler:
 
     # --- Public methods corresponding to Storage interface data ops ---
 
-    async def save_request_config_impl(self, master_job_id: str, config_data: Dict[str, Any]) -> str:
+    async def save_request_config_impl(self, config_ref: str, config_data: Dict[str, Any]):
+        await self._save_json_file(config_ref, config_data)
+
+    def generate_request_config_path_impl(self, master_job_id: str) -> str:
         path = os.path.join(self.config_path, f"{master_job_id}.request.json")
-        await self._save_json_file(path, config_data)
         return path  # Return absolute path as the reference
 
     async def get_request_config_impl(self, config_ref: str) -> Dict[str, Any]:

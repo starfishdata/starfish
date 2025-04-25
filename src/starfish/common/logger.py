@@ -50,9 +50,10 @@ class LogManager:
     def _get_format_string(self):
         """Return the appropriate format string based on LOG_FORMAT_MODE."""
         if simple_log_format_enabled:
+            if self.current_level == "DEBUG":
+                return COLORED_FORMAT
             return SIMPLE_COLORED_FORMAT
-        else:
-            return COLORED_FORMAT
+        return COLORED_FORMAT
 
     def _initialize(self):
         """Initialize logging with console handler."""

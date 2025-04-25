@@ -56,7 +56,8 @@ async def run_basic_test():
         print("Step 4: Creating master job")
         master_job_id = str(uuid.uuid4())
         config_data = {"test": True, "generator": "test_generator"}
-        config_ref = await storage.save_request_config(master_job_id, config_data)
+        config_ref = storage.generate_request_config_path(master_job_id)
+        await storage.save_request_config(config_ref, config_data)
 
         master_job = GenerationMasterJob(
             master_job_id=master_job_id,

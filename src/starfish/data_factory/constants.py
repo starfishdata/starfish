@@ -19,7 +19,7 @@ STATUS_MOJO_MAP = {
 }
 RUN_MODE = "run_mode"
 RUN_MODE_NORMAL = "normal"
-RUN_MODE_RE_RUN = "re_run"
+RUN_MODE_RE_RUN = "resume_from_checkpoint"
 RUN_MODE_DRY_RUN = "dry_run"
 
 STORAGE_TYPE_LOCAL = "local"

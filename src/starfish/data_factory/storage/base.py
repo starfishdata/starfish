@@ -37,8 +37,13 @@ class Storage(ABC):
 
     # --- Configuration Persistence ---
     @abstractmethod
-    async def save_request_config(self, master_job_id: str, config_data: Dict[str, Any]) -> str:
-        """Save request config, return reference."""
+    async def save_request_config(self, config_ref: str, config_data: Dict[str, Any]):
+        """Save request config"""
+        pass
+
+    @abstractmethod
+    def generate_request_config_path(self, master_job_id: str) -> str:
+        """geenrate request config path, return reference."""
         pass
 
     @abstractmethod

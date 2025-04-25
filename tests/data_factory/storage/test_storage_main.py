@@ -70,7 +70,8 @@ async def test_basic_workflow():
 
         # First save the request config
         config_data = {"generator": "test_generator", "parameters": {"num_records": 10, "complexity": "medium"}}
-        config_ref = await storage.save_request_config(master_job_id, config_data)
+        config_ref = storage.generate_request_config_path(master_job_id)
+        await storage.save_request_config(config_ref, config_data)
         print(f"  - Saved request config to: {config_ref}")
 
         # Now create the master job
@@ -234,7 +235,8 @@ async def small_performance_test():
         # Create master job
         master_job_id = str(uuid.uuid4())
         config_data = {"generator": "perf_test_generator", "parameters": {"num_records": TOTAL_RECORDS}}
-        config_ref = await storage.save_request_config(master_job_id, config_data)
+        config_ref = storage.generate_request_config_path(master_job_id)
+        await storage.save_request_config(config_ref, config_data)
 
         master_job = GenerationMasterJob(
             master_job_id=master_job_id,

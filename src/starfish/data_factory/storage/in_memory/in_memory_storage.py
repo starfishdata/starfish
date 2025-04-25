@@ -42,11 +42,13 @@ class InMemoryStorage(Storage):
     # --- Delegate methods to internal handlers ---
 
     # Config Persistence
-    async def save_request_config(self, master_job_id: str, config_data: Dict[str, Any]) -> str:
-        return ""
+    async def save_request_config(self, config_ref: str, config_data: Dict[str, Any]):
+        """Save request config"""
+        pass
 
-    async def get_request_config(self, config_ref: str) -> Dict[str, Any]:
-        return {}
+    def generate_request_config_path(self, master_job_id: str) -> str:
+        """geenrate request config path, return reference."""
+        pass
 
     # Data Artifact Persistence
     async def save_record_data(self, record_uid: str, master_job_id: str, job_id: str, data: Dict[str, Any]) -> str:
