@@ -87,7 +87,7 @@ class TopicGeneratorOutput(BaseModel):
 
 
 @data_template_generate.register(
-    name="community/topic_generator_1",
+    name="starfish/get_city_info_wf",
     input_schema=TopicGeneratorInput,
     output_schema=TopicGeneratorOutput,
     description="Generates relevant topics for community discussions using AI models",
@@ -114,28 +114,4 @@ async def get_city_info_wf(city_name: List[str], region_code: List[str]) -> List
     Returns:
         List[Dict[str, Any]]: Processed city information from the mock LLM call
     """
-    # structured_llm = StructuredLLM(
-    #     model_name="openai/gpt-4o-mini",
-    #     prompt="Facts about city {{city_name}} in region {{region_code}}.",
-    #     output_schema=[{"name": "question", "type": "str"}, {"name": "answer", "type": "str"}],
-    #     model_kwargs={"temperature": 0.7},
-    # )
-    # output = await structured_llm.run(city_name=city_name, region_code=region_code)
-    # validation_llm = StructuredLLM(
-    #     model_name='anthropic/claude-3',
-    #     prompt='''Analyze these city facts and provide:
-    #     1. Accuracy score (0-10)
-    #     2. Potential sources for verification
-    #     3. Confidence level (0-1)
-    #     Facts: {{data}}''',
-    #     output_schema=[
-    #         {'name': 'accuracy_score', 'type': 'float'},
-    #         #{'name': 'sources', 'type': 'List[str]'},
-    #         {'name': 'confidence', 'type': 'float'}
-    #     ],
-    #     #max_tokens=500
-    # )
-    # output = await validation_llm.run(data=output.data)
-
-    # return output.data
     return await mock_llm_call(city_name, num_records_per_city=3, fail_rate=0.1, sleep_time=2)

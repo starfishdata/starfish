@@ -1,4 +1,4 @@
-# Auto-generated module from template: community/topic_generator_1
+# Auto-generated module from template: starfish/get_city_info_wf
 from pydantic import BaseModel
 from starfish import data_factory
 from starfish.data_factory.utils.mock import mock_llm_call
