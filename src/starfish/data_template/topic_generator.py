@@ -35,10 +35,10 @@ def topic_generator(input_data: TopicGeneratorInput) -> TopicGeneratorOutput:
 
         # Step 2: Process topics in parallel
         @data_factory(max_concurrency=10)
-        def process_topics(topics: list[str]) -> list[str]:
+        async def process_topics(topics: list[str]) -> list[str]:
             return [refine_topic(topic) for topic in topics]
 
-        refined_topics = process_topics(generated_topics)
+        refined_topics = process_topics.run(generated_topics)
 
         return TopicGeneratorOutput(generated_topics=refined_topics, success=True, message="Topics generated successfully")
     except Exception as e:

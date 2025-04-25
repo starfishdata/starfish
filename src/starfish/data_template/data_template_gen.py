@@ -11,6 +11,8 @@ def data_template_generate(
     original_func = func
     if hasattr(original_func, "__func__"):
         original_func = original_func.__func__
+    else:
+        original_func.run = original_func
     # Get the file path of the original function
     current_file_path = Path(original_func.__code__.co_filename).resolve()
 
@@ -95,7 +97,10 @@ def get(template_path: str) -> callable:
 
     # Verify the function has a run method
     if not hasattr(func, "run"):
-        raise ValueError(f"Template {template_path} does not have a run method")
+        # Add run method at runtime
+        func.run = lambda *args, **kwargs: func(*args, **kwargs)
+
+        # raise ValueError(f"Template {template_path} does not have a run method")
 
     return func
 
