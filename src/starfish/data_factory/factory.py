@@ -64,6 +64,7 @@ class DataFactoryWrapper(Generic[T]):
         """
         self.factory = factory
         self.state = factory.state
+        self.__func__ = func
 
     def run(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """Execute the data processing pipeline with normal configuration.
