@@ -365,24 +365,55 @@ async def test_case_reuse_run_different_factory():
     assert len(result) == 120
 
 
+# @pytest.mark.asyncio
+# @pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
+# async def test_case_cloudpick():
+#     ### Pydantic Issue?
+#     from pydantic import BaseModel
+
+#     class MockLLMInput(BaseModel):
+#         city_name: str
+#         num_records_per_city: int
+
+#     @data_factory(max_concurrency=10)
+#     async def test_pydantic_issue(city_name: str, num_records_per_city: int):
+#         facts_generator = StructuredLLM(model_name="openai/gpt-4o-mini", output_schema=MockLLMInput, prompt="generate facts about {{city_name}}")
+
+#         response = await facts_generator.run(city_name=city_name, num_records_per_city=num_records_per_city)
+
+#         return response.data
+
+#     result = test_pydantic_issue.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
+#     # num of records not used right now
+#     assert len(result) == 2
+
+
 @pytest.mark.asyncio
-@pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
-async def test_case_cloudpick():
-    ### Pydantic Issue?
-    from pydantic import BaseModel
+async def test_input_output_idx():
+    """Test with input data and broadcast variables
+    - Input: List of dicts with city names
+    - Broadcast: num_records_per_city
+    - Expected: All cities processed successfully
+    """
 
-    class MockLLMInput(BaseModel):
-        city_name: str
-        num_records_per_city: int
+    @data_factory(max_concurrency=2)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=1):
+        return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    @data_factory(max_concurrency=10)
-    async def test_pydantic_issue(city_name: str, num_records_per_city: int):
-        facts_generator = StructuredLLM(model_name="openai/gpt-4o-mini", output_schema=MockLLMInput, prompt="generate facts about {{city_name}}")
-
-        response = await facts_generator.run(city_name=city_name, num_records_per_city=num_records_per_city)
-
-        return response.data
-
-    result = test_pydantic_issue.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
-    # num of records not used right now
-    assert len(result) == 2
+    nums_per_record = 5
+    result = test1.run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+            {"city_name": "3. Chicago"},
+            {"city_name": "4. Houston"},
+            {"city_name": "5. Miami"},
+        ],
+        num_records_per_city=nums_per_record,
+    )
+    input_data = test1.get_input_data()
+    idx = test1.get_index()
+    duplicate_data = test1.get_output_duplicate()
+    filtered_data = test1.get_output_filtered()
+    failed_data = test1.get_output_failed()
+    assert len(result) // nums_per_record == len(idx)

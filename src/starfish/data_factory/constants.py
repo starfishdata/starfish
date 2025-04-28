@@ -25,6 +25,8 @@ RUN_MODE_DRY_RUN = "dry_run"
 STORAGE_TYPE_LOCAL = "local"
 STORAGE_TYPE_IN_MEMORY = "in_memory"
 
+IDX = "idx_index"
+
 
 # Define the function directly in constants to avoid circular imports
 def get_app_data_dir():

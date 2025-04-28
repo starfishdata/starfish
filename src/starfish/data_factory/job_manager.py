@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import PROGRESS_LOG_INTERVAL
 from starfish.data_factory.constants import (
+    IDX,
     RECORD_STATUS,
     RUN_MODE_DRY_RUN,
     STATUS_COMPLETED,
@@ -304,6 +305,7 @@ class JobManager:
         logger.debug("Task created, waiting for task to complete")
         return task
 
+    # : Dict[str:Any]
     async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
         """Run a single task with error handling and storage.
 
@@ -320,6 +322,8 @@ class JobManager:
         output_ref = []
         task_status = STATUS_COMPLETED
         err_str = ""
+        input_data_idx = input_data.pop(IDX, None)
+
         try:
             # Execute the main task
             output = await self.task_runner.run_task(self.job_config.user_func, input_data)
@@ -351,7 +355,7 @@ class JobManager:
             # async with self.lock:  # Acquire lock for queue operation
             self.job_input_queue.put(input_data)
 
-        return {RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": err_str}
+        return {IDX: input_data_idx, RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": err_str}
 
     async def _handle_task_completion(self, task):
         """Handle task completion and update counters.

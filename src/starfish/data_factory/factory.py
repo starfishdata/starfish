@@ -12,6 +12,7 @@ from starfish.version import __version__
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import NOT_COMPLETED_THRESHOLD, PROGRESS_LOG_INTERVAL, TASK_RUNNER_TIMEOUT
 from starfish.data_factory.constants import (
+    IDX,
     LOCAL_STORAGE_URI,
     RECORD_STATUS,
     RUN_MODE_DRY_RUN,
@@ -105,6 +106,21 @@ class DataFactoryWrapper(Generic[T]):
         kwargs["factory"] = self.factory
         return resume_from_checkpoint(**kwargs)
 
+    def get_output_duplicate(self) -> T:
+        return self.factory._process_output(STATUS_DUPLICATE)
+
+    def get_output_filtered(self) -> T:
+        return self.factory._process_output(STATUS_FILTERED)
+
+    def get_output_failed(self) -> T:
+        return self.factory._process_output(STATUS_FAILED)
+
+    def get_input_data(self) -> T:
+        return self.factory.original_input_data
+
+    def get_index(self) -> T:
+        return self.factory.result_idx
+
 
 class DataFactoryProtocol(Protocol[P, T]):
     """Protocol for the decorated function with additional methods."""
@@ -113,6 +129,11 @@ class DataFactoryProtocol(Protocol[P, T]):
     def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
     def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
     def resume(self, master_job_id: str, **kwargs) -> T: ...
+    def get_output_duplicate(self) -> T: ...
+    def get_output_filtered(self) -> T: ...
+    def get_output_failed(self) -> T: ...
+    def get_input_data(self) -> T: ...
+    def get_index(self) -> T: ...
 
 
 class DataFactory:
@@ -166,6 +187,7 @@ class DataFactory:
         self.job_manager = None
         self.same_session = False
         self.original_input_data = []
+        self.result_idx = []
 
     def _clean_up_in_same_session(self):
         # same session, reset err and factory_storage
@@ -176,6 +198,7 @@ class DataFactory:
             self.factory_storage = None
             # self.config_ref = None
             self.job_manager = None
+            self.result_idx = []
         # todo reuse the state from last same-factory state or a new state
 
     async def __call__(self, *args, **kwargs) -> List[Dict]:
@@ -218,6 +241,7 @@ class DataFactory:
                 self._clean_up_in_same_session()
                 self.input_data_queue = _default_input_converter(*args, **kwargs)
                 self._check_parameter_match()
+                self.original_input_data = list(self.input_data_queue.queue)
                 await self._storage_setup()
                 self._update_job_config()
                 self.config.project_id = str(uuid.uuid4())
@@ -302,7 +326,7 @@ class DataFactory:
                 telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
             analytics.send_event(event=Event(data=telemetry_data.to_dict(), name="starfish_job"))
 
-    def _process_output(self) -> List[Any]:
+    def _process_output(self, status_filter: str = STATUS_COMPLETED) -> List[Any]:
         """Process and filter the job output queue to return only completed records.
 
         Returns:
@@ -310,8 +334,11 @@ class DataFactory:
         """
         result = []
         output = self.job_manager.job_output.queue
+        self.result_idx = []
         for v in output:
-            if v.get(RECORD_STATUS) == STATUS_COMPLETED:
+            if v.get(RECORD_STATUS) == status_filter:
+                record_idx = v.pop(IDX, None)
+                self.result_idx.append(record_idx)
                 result.extend(v.get("output"))
         return result
 
@@ -334,7 +361,7 @@ class DataFactory:
                 raise TypeError(f"Batch item is missing required parameter '{param_name}' " f"for function {self.func.__name__}")
         # Check 2: Ensure all batch parameters exist in function signature
         for batch_param in batch_item.keys():
-            if batch_param not in func_sig.parameters:
+            if batch_param not in func_sig.parameters and batch_param != IDX:
                 raise TypeError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
     def _process_batches(self) -> List[Any]:
@@ -353,8 +380,8 @@ class DataFactory:
                 f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
             )
 
-        if self.config.run_mode == RUN_MODE_NORMAL:
-            self.original_input_data = list(self.input_data_queue.queue)
+        # if self.config.run_mode == RUN_MODE_NORMAL:
+
         return self.job_manager.run_orchestration()
 
     async def _save_project(self):
@@ -531,7 +558,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
     # Prepare results
     results = Queue()
     for i in range(batch_size):
-        record = {}
+        record = {IDX: i}
 
         # Add data if exists
         if "data" in parallel_sources:
