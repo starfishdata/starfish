@@ -253,88 +253,95 @@ class DataFactory:
         # todo reuse the state from last same-factory state or a new state
 
     async def __call__(self, *args, **kwargs) -> List[Dict]:
-        """Execute the data processing pipeline based on the configured run mode.
-
-        This method handles the main execution flow for different run modes:
-        - Normal mode: Processes all input data
-        - Resume mode: Resumes a previous job using stored configuration
-        - Dry-run mode: Processes only the first input item for testing
-
-        Args:
-            *args: Positional arguments passed to the data processing function
-            **kwargs: Keyword arguments passed to the data processing function
-                - master_job_id: Required for resume mode to specify which job to resume
-
-        Returns:
-            List[Any]: Processed output data
-
-        Raises:
-            TypeError: If there's a parameter mismatch between input data and function signature
-            ValueError: If no records are generated or if input data validation fails
-            KeyboardInterrupt: If the job is interrupted by the user
-        """
-
-        run_mode = self.config.run_mode
+        """Execute the data processing pipeline based on the configured run mode."""
         try:
-            if run_mode == RUN_MODE_RE_RUN:
-                self.job_manager = JobManagerRerun(
-                    job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
-                )
-            elif run_mode == RUN_MODE_DRY_RUN:
-                self.input_data_queue = _default_input_converter(*args, **kwargs)
-                # Get only first item but maintain Queue structure
-                self._check_parameter_match()
-                await self._storage_setup()
-                self.job_manager = JobManagerDryRun(
-                    job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
-                )
-            else:
-                self._clean_up_in_same_session()
-                self.input_data_queue = _default_input_converter(*args, **kwargs)
-                self._check_parameter_match()
-                self.original_input_data = list(self.input_data_queue.queue)
-                await self._storage_setup()
-                self._update_job_config()
-                self.config.project_id = str(uuid.uuid4())
-                self.config.master_job_id = str(uuid.uuid4())
-                self.job_manager = JobManager(
-                    master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data_queue, user_func=self.func
-                )
-                await self._save_project()
+            # Initialize job based on run mode
+            self._initialize_job(*args, **kwargs)
 
-                await self._log_master_job_start()
-            await self.job_manager.setup_input_output_queue()
-            self._process_batches()
+            # Setup and execute job
+            await self._setup_job_execution()
+            self._execute_job()
+
+            # Process and return results
+            return await self._finalize_job()
 
         except (TypeError, ValueError, KeyboardInterrupt) as e:
             self.err = e
+            raise
         finally:
-            self._send_telemetry_event()
-            if not isinstance(self.err, TypeError):
-                result = self._process_output()
-                if len(result) == 0:
-                    self.err = ValueError("No records generated")
-                await self._complete_master_job()
+            await self._cleanup_job()
 
-                # Only execute finally block if not TypeError
-                if self.err and not isinstance(self.err, ValueError):
-                    err_msg = str(self.err)
-                    if isinstance(self.err, KeyboardInterrupt):
-                        err_msg = "KeyboardInterrupt"
+    def _initialize_job(self, *args, **kwargs) -> None:
+        """Initialize job configuration and manager based on run mode."""
+        if self.config.run_mode == RUN_MODE_RE_RUN:
+            self._setup_rerun_job()
+        elif self.config.run_mode == RUN_MODE_DRY_RUN:
+            self._setup_dry_run_job(*args, **kwargs)
+        else:
+            self._setup_normal_job(*args, **kwargs)
 
-                    logger.error(f"Error occurred: {err_msg}")
-                    logger.info(f"[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
+    def _setup_rerun_job(self) -> None:
+        """Configure job for re-run mode."""
+        self.job_manager = JobManagerRerun(
+            job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
+        )
 
-                self._show_job_progress_status()
-                await self._save_request_config()
-                await self._close_storage()
-                if isinstance(self.err, ValueError):
-                    raise self.err
-                else:
-                    return result
-            else:
-                await self._close_storage()
-                raise self.err
+    def _setup_dry_run_job(self, *args, **kwargs) -> None:
+        """Configure job for dry-run mode."""
+        self.input_data_queue = _default_input_converter(*args, **kwargs)
+        self._check_parameter_match()
+        self.job_manager = JobManagerDryRun(
+            job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
+        )
+
+    def _setup_normal_job(self, *args, **kwargs) -> None:
+        """Configure job for normal execution mode."""
+        self._clean_up_in_same_session()
+        self.input_data_queue = _default_input_converter(*args, **kwargs)
+        self._check_parameter_match()
+        self.original_input_data = list(self.input_data_queue.queue)
+        self._update_job_config()
+        self.config.project_id = str(uuid.uuid4())
+        self.config.master_job_id = str(uuid.uuid4())
+        self.job_manager = JobManager(
+            master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data_queue, user_func=self.func
+        )
+
+    async def _setup_job_execution(self) -> None:
+        """Prepare job for execution."""
+        await self._storage_setup()
+        if self.config.run_mode == RUN_MODE_NORMAL:
+            await self._save_project()
+            await self._log_master_job_start()
+        await self.job_manager.setup_input_output_queue()
+
+    def _execute_job(self) -> None:
+        """Execute the main job processing."""
+        self._process_batches()
+
+    async def _finalize_job(self) -> List[Dict]:
+        """Complete job execution and return results."""
+        result = self._process_output()
+        if len(result) == 0:
+            self.err = ValueError("No records generated")
+            raise self.err
+
+        await self._complete_master_job()
+        self._show_job_progress_status()
+        await self._save_request_config()
+
+        return result
+
+    async def _cleanup_job(self) -> None:
+        """Handle job cleanup and error reporting."""
+        self._send_telemetry_event()
+
+        if self.err and not isinstance(self.err, (TypeError, ValueError)):
+            err_msg = "KeyboardInterrupt" if isinstance(self.err, KeyboardInterrupt) else str(self.err)
+            logger.error(f"Error occurred: {err_msg}")
+            logger.info("[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
+
+        await self._close_storage()
 
     def _send_telemetry_event(self):
         """Send telemetry data for the completed job.
