@@ -56,6 +56,9 @@ class DataFactoryWrapper(Generic[T]):
         state: Shared state object for tracking job state
     """
 
+    filter_mapping = {("duplicated",): STATUS_DUPLICATE, ("completed",): STATUS_COMPLETED, ("failed",): STATUS_FAILED, ("filtered",): STATUS_FILTERED}
+    valid_status = (STATUS_DUPLICATE, STATUS_COMPLETED, STATUS_FILTERED, STATUS_FAILED)
+
     def __init__(self, factory: Any, func: Callable[..., T]):
         """Initialize the DataFactoryWrapper instance.
 
@@ -106,6 +109,18 @@ class DataFactoryWrapper(Generic[T]):
         kwargs["factory"] = self.factory
         return resume_from_checkpoint(**kwargs)
 
+    def get_output_data(self, filter: str) -> T:
+        result = None
+        _filter = self._convert_filter(filter=filter)
+        if self._valid_filter(_filter):
+            result = self.factory._process_output(_filter)
+        else:
+            raise ValueError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
+        return result
+
+    def get_output_completed(self) -> T:
+        return self.factory._process_output()
+
     def get_output_duplicate(self) -> T:
         return self.factory._process_output(STATUS_DUPLICATE)
 
@@ -118,8 +133,36 @@ class DataFactoryWrapper(Generic[T]):
     def get_input_data(self) -> T:
         return self.factory.original_input_data
 
-    def get_index(self) -> T:
-        return self.factory.result_idx
+    def get_index(self, filter: str) -> T:
+        result = None
+        _filter = self._convert_filter(filter)
+        if self._valid_filter(_filter):
+            result = self.factory._process_output(_filter, is_idx=True)
+        else:
+            raise ValueError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
+        return result
+
+    def get_index_completed(self) -> T:
+        return self.factory._process_output(is_idx=True)
+
+    def get_index_duplicate(self) -> T:
+        return self.factory._process_output(STATUS_DUPLICATE, is_idx=True)
+
+    def get_index_filtered(self) -> T:
+        return self.factory._process_output(STATUS_FILTERED, is_idx=True)
+
+    def get_index_failed(self) -> T:
+        return self.factory._process_output(STATUS_FAILED, is_idx=True)
+
+    def _valid_filter(self, filter: str) -> bool:
+        return filter in self.__class__.valid_status
+
+    def _convert_filter(self, filter: str) -> str:
+        for keys, status in self.__class__.filter_mapping.items():
+            if filter in keys:
+                filter = status
+                break
+        return filter
 
 
 class DataFactoryProtocol(Protocol[P, T]):
@@ -128,12 +171,18 @@ class DataFactoryProtocol(Protocol[P, T]):
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
     def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
     def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def resume(self, master_job_id: str, **kwargs) -> T: ...
+    def resume(self, **kwargs) -> T: ...
+    def get_output_data(self, filter: str) -> T: ...
+    def get_output_completed(self) -> T: ...
     def get_output_duplicate(self) -> T: ...
     def get_output_filtered(self) -> T: ...
     def get_output_failed(self) -> T: ...
     def get_input_data(self) -> T: ...
-    def get_index(self) -> T: ...
+    def get_index(self, filter: str) -> T: ...
+    def get_index_completed(self) -> T: ...
+    def get_index_duplicate(self) -> T: ...
+    def get_index_filtered(self) -> T: ...
+    def get_index_failed(self) -> T: ...
 
 
 class DataFactory:
@@ -188,6 +237,7 @@ class DataFactory:
         self.same_session = False
         self.original_input_data = []
         self.result_idx = []
+        self._output_cache = {}
 
     def _clean_up_in_same_session(self):
         # same session, reset err and factory_storage
@@ -199,6 +249,7 @@ class DataFactory:
             # self.config_ref = None
             self.job_manager = None
             self.result_idx = []
+            self._output_cache = {}
         # todo reuse the state from last same-factory state or a new state
 
     async def __call__(self, *args, **kwargs) -> List[Dict]:
@@ -326,21 +377,35 @@ class DataFactory:
                 telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
             analytics.send_event(event=Event(data=telemetry_data.to_dict(), name="starfish_job"))
 
-    def _process_output(self, status_filter: str = STATUS_COMPLETED) -> List[Any]:
-        """Process and filter the job output queue to return only completed records.
+    def _process_output(self, status_filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[Any]:
+        """Process and filter the job output queue to return only records matching the status filter.
+
+        Args:
+            status_filter: Status to filter records by (default: STATUS_COMPLETED)
+            is_idx: If True, return indices instead of output data
 
         Returns:
-            List[Any]: List of successfully processed outputs from completed records
+            List[Any]: List of processed outputs or indices from matching records
         """
-        result = []
-        output = self.job_manager.job_output.queue
-        self.result_idx = []
-        for v in output:
-            if v.get(RECORD_STATUS) == status_filter:
-                record_idx = v.pop(IDX, None)
-                self.result_idx.append(record_idx)
-                result.extend(v.get("output"))
-        return result
+
+        # Check if cache is already populated for this status
+        if status_filter in self._output_cache:
+            return self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
+        else:
+            self._output_cache[status_filter] = {"result": [], IDX: []}
+        # Process records and populate cache
+        for record in self.job_manager.job_output.queue:
+            # if record.get(RECORD_STATUS) != status_filter:
+            #     continue
+
+            record_idx = record.get(IDX, [])
+            record_output = record.get("output", []) if status_filter != STATUS_FAILED else record.get("err", [])
+
+            # Update cache
+            self._output_cache[status_filter][IDX].extend([record_idx] * len(record_output))
+            self._output_cache[status_filter]["result"].extend(record_output)
+
+        return self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
 
     def _check_parameter_match(self):
         """Validate that input data parameters match the wrapped function's signature.

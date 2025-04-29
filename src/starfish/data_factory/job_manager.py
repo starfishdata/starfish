@@ -6,6 +6,7 @@ import json
 import uuid
 from queue import Queue
 from typing import Any, Callable, Dict, List
+import traceback
 
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import PROGRESS_LOG_INTERVAL
@@ -321,7 +322,7 @@ class JobManager:
         output = []
         output_ref = []
         task_status = STATUS_COMPLETED
-        err_str = ""
+        err_arr = []
         input_data_idx = input_data.pop(IDX, None)
 
         try:
@@ -342,6 +343,10 @@ class JobManager:
 
         except (Exception, TimeoutErrorAsyncio) as e:
             err_str = str(e)
+            err_trace = traceback.format_exc()  # Get full traceback as string
+            err_arr.append(err_str)
+            err_trace = err_trace.splitlines()[-1]  # Get the last line of the traceback
+            err_arr.append(err_trace)  # Add traceback to error array
             logger.error(f"Error running task: {err_str}")
             # Run error hooks
             for hook in self.job_config.on_record_error:
@@ -352,10 +357,12 @@ class JobManager:
         # Handle incomplete tasks
         if task_status != STATUS_COMPLETED:
             logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
-            # async with self.lock:  # Acquire lock for queue operation
+
+            input_data.__setitem__(IDX, input_data_idx)
             self.job_input_queue.put(input_data)
 
-        return {IDX: input_data_idx, RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": err_str}
+        err_str = err_arr[0] if len(err_arr) > 0 else "Unknown error"
+        return {IDX: input_data_idx, RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": err_arr}
 
     async def _handle_task_completion(self, task):
         """Handle task completion and update counters.
@@ -382,7 +389,8 @@ class JobManager:
                 self.filtered_count += 1
             elif task_status == STATUS_FAILED:
                 self.failed_count += 1
-                err_str = result.get("err")
+                err_arr = result.get("err", [])
+                err_str = err_arr[0] if len(err_arr) > 0 else "Unknown error"
                 self.err_type_counter[err_str] = self.err_type_counter.get(err_str, 0) + 1
             # await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
             self.semaphore.release()

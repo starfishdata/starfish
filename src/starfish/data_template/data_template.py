@@ -1,5 +1,5 @@
 from starfish.data_template.data_template_gen import data_template_generate
-from starfish.data_template.topic_generator import TopicGeneratorInput
+# from starfish.data_template.topic_generator import TopicGeneratorInput
 # results = get_city_info_wf.run(
 #         # data=[{"city_name": "Berlin"}, {"city_name": "Rome"}],
 #         # [{"city_name": "Berlin"}, {"city_name": "Rome"}],
@@ -30,6 +30,7 @@ print(result)
 # result = topic_generator.run(input_data)
 # print(result)
 
+# get a template cls and call the func.run using pre/post hook
 topic_generator = data_template_generate.get("starfish/math_problem_gen_wf")
 result = topic_generator.run()
 print(result)

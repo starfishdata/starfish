@@ -412,8 +412,8 @@ async def test_input_output_idx():
         num_records_per_city=nums_per_record,
     )
     input_data = test1.get_input_data()
-    idx = test1.get_index()
+    idx = test1.get_index(filter="completed")
     duplicate_data = test1.get_output_duplicate()
     filtered_data = test1.get_output_filtered()
     failed_data = test1.get_output_failed()
-    assert len(result) // nums_per_record == len(idx)
+    assert len(result) == len(idx)

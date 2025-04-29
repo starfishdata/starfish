@@ -1,122 +1,123 @@
 import json
 import inspect
 from pathlib import Path
+import importlib
+
+# Class func_wrapper :
+#     input_scheme
+#     output_scheme
+#     func
+
+#     def __init__(self, func:callable):
+#         self.func = func
+
+#     def run:
+#         pre-hook
+#         func.run
+#         post-hook
 
 
-def data_template_generate(
-    template_name: str, func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list
-):
-    """Generate and store a data template for a given function."""
-    # Handle decorated functions by checking for closure
-    original_func = func
-    if hasattr(original_func, "__func__"):
-        original_func = original_func.__func__
-    else:
-        original_func.run = original_func
-    # Get the file path of the original function
-    current_file_path = Path(original_func.__code__.co_filename).resolve()
-
-    # Split template_name and create subfolder structure
-    template_parts = template_name.split("/")
-    if len(template_parts) != 2:
-        raise ValueError("template_name must be in format 'folder_name/template_name'")
-
-    # Create templates directory and subdirectory
-    templates_dir = Path("templates") / template_parts[0]
-    templates_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save the filtered module to a separate Python file
-    function_file = templates_dir / f"{template_parts[1]}.py"
-    with open(current_file_path, "r") as src_file, open(function_file, "w") as dest_file:
-        dest_file.write(f"# Auto-generated module from template: {template_name}\n")
-        skip = False
-        for line in src_file:
-            # Skip the import line for data_template_generate
-            if "import data_template_generate" in line:
-                continue
-            # Skip the decorator line
-            elif line.strip().startswith("@data_template_generate.register"):
-                skip = True
-            # Stop skipping when we hit the next function definition
-            elif (
-                skip and line.startswith(("def ", "@data_factory")) and not (line.startswith("def data_template_generate(") or line.startswith("def register("))
-            ):
-                skip = False
-            # Write all other lines
-            if not skip:
-                dest_file.write(line)
-
-    return func
+# ====================
+# Registry Management
+# ====================
+_template_registry = {}
+_template_instance_registry = {}
+is_get_template = False
 
 
-def register(name: str, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list):
+def _list() -> list[str]:
+    """List all available templates in the format 'subfolder_name/template_name'."""
+    # templates_dir = Path("starfish/templates")
+    templates_dir = Path(__file__).resolve().parent.parent / "templates"
+    result = list(_template_registry.keys())
+    if len(result) == 0:
+        global is_get_template
+        is_get_template = False
+        # Walk through all subdirectories in templates folder
+        for subdir in templates_dir.iterdir():
+            if subdir.is_dir():
+                # Find all .py files in the subdirectory
+                for template_file in subdir.glob("*.py"):
+                    try:
+                        # Import the module
+                        module_name = f"starfish.templates.{subdir.name}.{template_file.stem}"
+                        importlib.import_module(module_name)
+                    except ImportError as e:
+                        print(f"Warning: Could not import {template_file}: {e}")
+                        continue
+
+    # Return the registered templates from the registry
+    return list(_template_registry.keys())
+
+
+def _get(template_name: str) -> callable:
+    """Get a template function by its name."""
+    if template_name not in _template_registry:
+        raise ValueError(f"Template {template_name} not found")
+    # Get the file path and metadata
+    module_name = _template_registry[template_name]
+    module = importlib.import_module(module_name)
+    global is_get_template
+    is_get_template = True
+    module = importlib.reload(module)  # Force reload the module
+    return _template_instance_registry[template_name]
+
+
+def _register(name: str, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list):
     """Decorator factory for registering data templates."""
 
     def decorator(func: callable):
-        return data_template_generate(name, func, input_schema, output_schema, description, author, starfish_version, dependencies)
+        # Check if this is an import call (function already has _is_template flag)
+        global is_get_template
+        if is_get_template:
+            if name not in _template_instance_registry:
+                _template_instance_registry[name] = data_template_generate(
+                    func, input_schema, output_schema, description, author, starfish_version, dependencies
+                )
+        else:
+            original_func = func
+            if hasattr(original_func, "__func__"):
+                original_func = original_func.__func__
+            module_name = original_func.__module__
+            # Store metadata and file path
+            _template_registry[name] = str(module_name)
 
     return decorator
 
 
-def list() -> list[str]:
-    """List all available templates in the format 'subfolder_name/template_name'."""
-    templates_dir = Path("templates")
-    if not templates_dir.exists():
-        return []
-
-    templates = []
-    for subfolder in templates_dir.iterdir():
-        if subfolder.is_dir():
-            for template_file in subfolder.glob("*.py"):
-                if template_file.is_file():
-                    templates.append(f"{subfolder.name}/{template_file.stem}")
-    return templates
+# ====================
+# Template Generation
+# ====================
+def data_template_generate(func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list):
+    """Generate a template instance with the provided metadata and function."""
+    return Template(func, input_schema, output_schema, description, author, starfish_version, dependencies)
 
 
-def get(template_path: str) -> callable:
-    """Get a template function by its path.
-
-    Args:
-        template_path: Path to template in format 'folder_name/template_name'
-
-    Returns:
-        The template function
-    """
-    # Split the template path
-    template_parts = template_path.split("/")
-    if len(template_parts) != 2:
-        raise ValueError("template_path must be in format 'folder_name/template_name'")
-
-    # Import the module
-    module_name = f"templates.{template_parts[0]}.{template_parts[1]}"
-    try:
-        module = __import__(module_name, fromlist=[template_parts[1]])
-        func = getattr(module, template_parts[1])
-    except (ImportError, AttributeError) as e:
-        raise ValueError(f"Failed to import template {template_path}: {str(e)}")
-
-    # Verify the function has a run method
-    if not hasattr(func, "run"):
-        # Add run method at runtime
-        func.run = lambda *args, **kwargs: func(*args, **kwargs)
-
-        # raise ValueError(f"Template {template_path} does not have a run method")
-
-    return func
+# Attach registry methods to data_template_generate
+data_template_generate.register = _register
+data_template_generate.list = _list
+data_template_generate.get = _get
 
 
-# def run(template_path: str, input_data: dict):
-#     """Run a template with the given input data.
+# ====================
+# Template Class
+# ====================
+class Template:
+    """Wrapper class for template functions with metadata and execution capabilities."""
 
-#     Args:
-#         template_path: Path to template in format 'folder_name/template_name'
-#         input_data: Input data dictionary to pass to the template
-#     """
-#     func = get(template_path)
-#     return func.run(input_data)
+    def __init__(self, func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list):
+        self.func = func
+        self.input_schema = input_schema
+        self.output_schema = output_schema
+        self.description = description
+        self.author = author
+        self.starfish_version = starfish_version
+        self.dependencies = dependencies
 
+        # Add run method if not present
+        if not hasattr(self.func, "run"):
+            self.func.run = lambda *args, **kwargs: self.func(*args, **kwargs)
 
-# Update the existing decorator to use the new register function
-data_template_generate.register = register
-data_template_generate.list = list
-data_template_generate.get = get
+    def run(self, *args, **kwargs):
+        """Execute the wrapped function."""
+        return self.func.run(*args, **kwargs)
