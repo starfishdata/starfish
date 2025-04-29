@@ -10,6 +10,8 @@
 [![Github](https://img.shields.io/badge/starfish-black?style=for-the-badge&logo=github&color=black)](https://github.com/starfishdata/starfish) [![X](https://img.shields.io/badge/starfishdata-black?style=for-the-badge&logo=x&color=black&link=https%3A%2F%2Fx.com%2Fstarfishdata)](https://x.com/starfishdata) [![Hugging Face](https://img.shields.io/badge/starfishdata-yellow?style=for-the-badge&logo=huggingface&labelColor=black&color=black)](https://huggingface.co/starfishdata) [![Discord](https://img.shields.io/badge/starfishdata-yellow?style=for-the-badge&logo=discord&logoColor=white&labelColor=%235865F2&color=%235865F2)](https://discord.gg/qWKmeUtb)
 <br>
 [![Website](https://img.shields.io/badge/starfishdata-yellow?style=for-the-badge&label=SITE&labelColor=%23DB2777&color=%23FDF2F8)](https://starfishdata.ai/) 
+[![Docs](https://img.shields.io/badge/docs-pink?style=for-the-badge&label=Deepwiki&labelColor=%23da2876&color=%23fdf2f8&link=https%3A%2F%2Fdeepwiki.com%2Fstarfishdata%2Fstarfish%2F1-overview
+)](https://deepwiki.com/starfishdata/starfish/1-overview) 
 </div>
 
 ## Overview
