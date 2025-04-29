@@ -380,7 +380,7 @@ class DataFactory:
                     "total_errors": self.job_manager.failed_count,
                     "error_types": self.job_manager.err_type_counter,
                 }
-                telemetry_data.num_inputs = (self.job_manager.nums_input,)
+                telemetry_data.num_inputs = (len(self.original_input_data),)
                 telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
             analytics.send_event(event=Event(data=telemetry_data.to_dict(), name="starfish_job"))
 
@@ -402,10 +402,7 @@ class DataFactory:
             self._output_cache[status_filter] = {"result": [], IDX: []}
         # Process records and populate cache
         for record in self.job_manager.job_output.queue:
-            # if record.get(RECORD_STATUS) != status_filter:
-            #     continue
-
-            record_idx = record.get(IDX, [])
+            record_idx = record.get(IDX)
             record_output = record.get("output", []) if status_filter != STATUS_FAILED else record.get("err", [])
 
             # Update cache
