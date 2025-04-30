@@ -256,8 +256,7 @@ class DataFactory:
         """Execute the data processing pipeline based on the configured run mode."""
         try:
             # Initialize job based on run mode
-            self._initialize_job(*args, **kwargs)
-
+            await self._initialize_job(*args, **kwargs)
             # Setup and execute job
             await self._setup_job_execution()
             self._execute_job()
@@ -271,14 +270,15 @@ class DataFactory:
         finally:
             await self._cleanup_job()
 
-    def _initialize_job(self, *args, **kwargs) -> None:
+    async def _initialize_job(self, *args, **kwargs) -> None:
         """Initialize job configuration and manager based on run mode."""
+
         if self.config.run_mode == RUN_MODE_RE_RUN:
             self._setup_rerun_job()
         elif self.config.run_mode == RUN_MODE_DRY_RUN:
-            self._setup_dry_run_job(*args, **kwargs)
+            await self._setup_dry_run_job(*args, **kwargs)
         else:
-            self._setup_normal_job(*args, **kwargs)
+            await self._setup_normal_job(*args, **kwargs)
 
     def _setup_rerun_job(self) -> None:
         """Configure job for re-run mode."""
@@ -286,20 +286,22 @@ class DataFactory:
             job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
         )
 
-    def _setup_dry_run_job(self, *args, **kwargs) -> None:
+    async def _setup_dry_run_job(self, *args, **kwargs) -> None:
         """Configure job for dry-run mode."""
         self.input_data_queue = _default_input_converter(*args, **kwargs)
         self._check_parameter_match()
+        await self._storage_setup()
         self.job_manager = JobManagerDryRun(
             job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
         )
 
-    def _setup_normal_job(self, *args, **kwargs) -> None:
+    async def _setup_normal_job(self, *args, **kwargs) -> None:
         """Configure job for normal execution mode."""
         self._clean_up_in_same_session()
         self.input_data_queue = _default_input_converter(*args, **kwargs)
         self._check_parameter_match()
         self.original_input_data = list(self.input_data_queue.queue)
+        await self._storage_setup()
         self._update_job_config()
         self.config.project_id = str(uuid.uuid4())
         self.config.master_job_id = str(uuid.uuid4())
@@ -309,7 +311,7 @@ class DataFactory:
 
     async def _setup_job_execution(self) -> None:
         """Prepare job for execution."""
-        await self._storage_setup()
+
         if self.config.run_mode == RUN_MODE_NORMAL:
             await self._save_project()
             await self._log_master_job_start()
@@ -470,6 +472,7 @@ class DataFactory:
         if self.config.run_mode != RUN_MODE_DRY_RUN:
             logger.debug("\n2. Creating master job...")
             # First save the request config
+            # investigate why original_input_data lost the idx
             config_data = {
                 "generator": "test_generator",
                 "state": self.state.to_dict(),
@@ -786,6 +789,7 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         raise TypeError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
     factory.config.run_mode = RUN_MODE_RE_RUN
     factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
+    # missing the idx but the input_data order keep the same; so add idx back in the job_maanger
     factory.original_input_data = factory.config.prev_job["input_data"]
     factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
     # Call the __call__ method

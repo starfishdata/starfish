@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict
 
 from starfish.common.logger import get_logger
 from starfish.data_factory.constants import (
+    IDX,
     RECORD_STATUS,
     STATUS_COMPLETED,
 )
@@ -60,25 +61,40 @@ class JobManagerRerun(JobManager):
         super().__init__(job_config, state, storage, user_func, input_data_queue)
 
     async def setup_input_output_queue(self):
-        """Initialize input/output queues for job rerun.
+        """Initialize input/output queues for job rerun."""
+        # Extract and clean up previous job data
+        input_data = self._extract_previous_job_data()
+        master_job = self._extract_master_job()
 
-        This method:
-        1. Retrieves the master job and its configuration from storage
-        2. Updates job counters with previous run's statistics
-        3. Processes input data to identify already completed tasks
-        4. Puts completed task outputs into job output queue
-        5. Queues remaining tasks for execution
+        # Log resume status
+        self._log_resume_status(master_job, input_data)
 
-        Raises:
-            RuntimeError: If master job cannot be retrieved from storage
-        """
+        # Initialize counters from previous run
+        self._initialize_counters_rerun(master_job, len(input_data))
+
+        # Process input data and handle completed tasks
+        input_dict = self._process_input_data(input_data)
+        await self._handle_completed_tasks(input_dict)
+
+        # Queue remaining tasks for execution
+        self._queue_remaining_tasks(input_dict)
+
+    def _extract_previous_job_data(self) -> list:
+        """Extract and clean up previous job data."""
         input_data = self.prev_job["input_data"]
         del self.prev_job["input_data"]
+        return input_data
+
+    def _extract_master_job(self):
+        """Extract and clean up master job reference."""
         master_job = self.prev_job["master_job"]
         del self.prev_job["master_job"]
         del self.prev_job
+        return master_job
 
-        logger.info("\033[1m[JOB RESUME START]\033[0m " "\033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n")
+    def _log_resume_status(self, master_job, input_data: list) -> None:
+        """Log the status of the job at resume time."""
+        logger.info("\033[1m[JOB RESUME START]\033[0m \033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n")
         logger.info(
             f"\033[1m[RESUME PROGRESS] STATUS AT THE TIME OF RESUME:\033[0m "
             f"\033[32mCompleted: {master_job.completed_record_count} / {len(input_data)}\033[0m | "
@@ -86,7 +102,9 @@ class JobManagerRerun(JobManager):
             f"\033[31mDuplicate: {master_job.duplicate_record_count}\033[0m | "
             f"\033[33mFiltered: {master_job.filtered_record_count}\033[0m"
         )
-        # update job manager counters; completed is not included; will be updated in the job manager
+
+    def _initialize_counters_rerun(self, master_job, input_data_length: int) -> None:
+        """Initialize counters from previous run."""
         self.total_count = (
             master_job.completed_record_count + master_job.failed_record_count + master_job.duplicate_record_count + master_job.filtered_record_count
         )
@@ -94,34 +112,58 @@ class JobManagerRerun(JobManager):
         self.duplicate_count = master_job.duplicate_record_count
         self.filtered_count = master_job.filtered_record_count
         self.completed_count = master_job.completed_record_count
-        self.job_config.target_count = len(input_data)
+        self.job_config.target_count = input_data_length
+
+    def _process_input_data(self, input_data: list) -> dict:
+        """Process input data and create a hash map for tracking."""
         input_dict = {}
-        for item in input_data:
-            if isinstance(item, dict):
-                input_data_str = json.dumps(item, sort_keys=True)
-            else:
-                input_data_str = str(item)
+        # add the idx back
+        for idx, item in enumerate(input_data):
+            input_data_str = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
             input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
+
             if input_data_hash in input_dict:
-                input_dict[input_data_hash]["count"] += 1
+                input_dict[input_data_hash]["count"].append(idx)
             else:
-                input_dict[input_data_hash] = {"data": item, "data_str": input_data_str, "count": 1}
-        for input_data_hash, input_data in input_dict.items():
-            runned_tasks = await self.storage.list_execution_jobs_by_master_id_and_config_hash(self.master_job_id, input_data_hash, STATUS_COMPLETED)
-            logger.debug("Task already runned, returning output from storage")
-            # put the runned tasks output to the job output
-            for task in runned_tasks:
-                records_metadata = await self.storage.list_record_metadata(self.master_job_id, task.job_id)
-                record_data_list = []
-                for record in records_metadata:
-                    record_data = await self.storage.get_record_data(record.output_ref)
-                    record_data_list.append(record_data)
+                input_dict[input_data_hash] = {"data": item, "data_str": input_data_str, "count": [idx]}
+        return input_dict
 
-                output_tmp = {RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
-                self.job_output.put(output_tmp)
-                # to prevent db write actions still going on wehn job finished
+    async def _handle_completed_tasks(self, input_dict: dict) -> None:
+        """Handle already completed tasks by retrieving their outputs from storage."""
+        for input_data_hash, item in input_dict.items():
+            completed_tasks = await self.storage.list_execution_jobs_by_master_id_and_config_hash(self.master_job_id, input_data_hash, STATUS_COMPLETED)
 
-            # run the rest of the tasks
-            logger.debug("Task not runned, running task")
-            for _ in range(input_data["count"] - len(runned_tasks)):
-                self.job_input_queue.put(input_data["data"])
+            if not completed_tasks:
+                continue
+
+            logger.debug("Task already run, returning output from storage")
+            await self._process_completed_tasks(completed_tasks, item)
+
+    async def _process_completed_tasks(self, completed_tasks: list, item: dict) -> None:
+        """Process completed tasks and add their outputs to the job queue."""
+        for task in completed_tasks:
+            records_metadata = await self.storage.list_record_metadata(self.master_job_id, task.job_id)
+            record_data_list = await self._get_record_data(records_metadata)
+
+            output_tmp = {IDX: item["count"].pop(), RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
+            self.job_output.put(output_tmp)
+
+    async def _get_record_data(self, records_metadata: list) -> list:
+        """Retrieve record data from storage."""
+        record_data_list = []
+        for record in records_metadata:
+            record_data = await self.storage.get_record_data(record.output_ref)
+            record_data_list.append(record_data)
+        return record_data_list
+
+    def _queue_remaining_tasks(self, input_dict: dict) -> None:
+        """Queue remaining tasks for execution."""
+        for item in input_dict.values():
+            # item["count"] is mutable, already updated in process_complete by deducting
+            # the completed tasks
+            remaining_count = len(item["count"])
+            if remaining_count > 0:
+                logger.debug("Task not run, queuing for execution")
+                for _ in range(remaining_count):
+                    item[IDX] = item["count"].pop()
+                    self.job_input_queue.put(item["data"])
