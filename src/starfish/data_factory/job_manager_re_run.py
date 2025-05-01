@@ -61,7 +61,7 @@ class JobManagerRerun(JobManager):
         super().__init__(job_config, state, storage, user_func, input_data_queue)
 
     async def setup_input_output_queue(self):
-        """Initialize input/output queues for job rerun."""
+        """Initialize input/output queues for job resume."""
         # Extract and clean up previous job data
         input_data = self._extract_previous_job_data()
         master_job = self._extract_master_job()

@@ -111,7 +111,7 @@ results = parallel_qna_llm.run(city=cities)
 # dry run to test the workflow and data
 results = parallel_qna_llm.dry_run(city=cities)
     
-# re-run job which pick up from where it left off. 
+# resume job which pick up from where it left off. 
 results = parallel_qna_llm.resume()
 ```
 

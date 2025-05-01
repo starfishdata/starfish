@@ -281,7 +281,7 @@ class DataFactory:
             await self._setup_normal_job(*args, **kwargs)
 
     def _setup_rerun_job(self) -> None:
-        """Configure job for re-run mode."""
+        """Configure job for resume mode."""
         self.job_manager = JobManagerRerun(
             job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
         )
@@ -497,14 +497,14 @@ class DataFactory:
             try:
                 func_hex = cloudpickle.dumps(self.func).hex()
             except TypeError as e:
-                logger.warning(f"Cannot serialize function for re-run due to unsupported type: {str(e)}")
+                logger.warning(f"Cannot serialize function for resume due to unsupported type: {str(e)}")
             except Exception as e:
                 logger.warning(f"Unexpected error serializing function: {str(e)}")
 
             try:
                 config_serialize = self.config.to_dict()
             except TypeError as e:
-                logger.warning(f"Cannot serialize config for re-run due to unsupported type: {str(e)}")
+                logger.warning(f"Cannot serialize config for resume due to unsupported type: {str(e)}")
             except Exception as e:
                 logger.warning(f"Unexpected error serializing config: {str(e)}")
 
@@ -731,11 +731,11 @@ def data_factory(
         """Re-run a previously executed data generation job.
 
         Args:
-            master_job_id (str): ID of the master job to re-run
-            **kwargs: Additional configuration overrides for the re-run
+            master_job_id (str): ID of the master job to resume
+            **kwargs: Additional configuration overrides for the resume
 
         Returns:
-            List[Dict]: Processed output data from the re-run
+            List[Dict]: Processed output data from the resume
         """
         nonlocal _factory
         if _factory is None:
@@ -760,14 +760,14 @@ async def _re_run_get_master_job_request_config(factory: DataFactory):
 
 
 async def async_re_run(*args, **kwargs) -> List[Any]:
-    """Asynchronously re-run a previously executed data generation job.
+    """Asynchronously resume a previously executed data generation job.
 
     Args:
-        master_job_id (str): ID of the master job to re-run
-        **kwargs: Additional configuration overrides for the re-run
+        master_job_id (str): ID of the master job to resume
+        **kwargs: Additional configuration overrides for the resume
 
     Returns:
-        List[Any]: Processed output data from the re-run
+        List[Any]: Processed output data from the resume
 
     Raises:
         TypeError: If master job ID is not provided or job not found
@@ -816,7 +816,7 @@ def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
     This is the synchronous interface for re-running jobs.
 
     Args:
-        master_job_id (str): ID of the master job to re-run
+        master_job_id (str): ID of the master job to resume
         storage (str): Storage backend to use ('local' or 'in_memory')
         batch_size (int): Number of records to process in each batch
         target_count (int): Target number of records to generate (0 means process all input)
@@ -829,7 +829,7 @@ def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
         job_run_stop_threshold (int): Threshold for stopping job if too many records fail
 
     Returns:
-        List[Any]: Processed output data from the re-run
+        List[Any]: Processed output data from the resume
 
     Raises:
         TypeError: If master job ID is not provided or job not found
