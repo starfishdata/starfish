@@ -1,7 +1,6 @@
-import json
-import inspect
 from pathlib import Path
-import importlib
+import importlib.metadata
+from packaging import requirements
 
 # Class func_wrapper :
 #     input_scheme
@@ -72,7 +71,7 @@ def _register(name: str, input_schema: type, output_schema: type, description: s
         if is_get_template:
             if name not in _template_instance_registry:
                 _template_instance_registry[name] = data_template_generate(
-                    func, input_schema, output_schema, description, author, starfish_version, dependencies
+                    name, func, input_schema, output_schema, description, author, starfish_version, dependencies
                 )
         else:
             original_func = func
@@ -88,9 +87,11 @@ def _register(name: str, input_schema: type, output_schema: type, description: s
 # ====================
 # Template Generation
 # ====================
-def data_template_generate(func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list):
+def data_template_generate(
+    name: str, func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list
+):
     """Generate a template instance with the provided metadata and function."""
-    return Template(func, input_schema, output_schema, description, author, starfish_version, dependencies)
+    return Template(name, func, input_schema, output_schema, description, author, starfish_version, dependencies)
 
 
 # Attach registry methods to data_template_generate
@@ -105,7 +106,10 @@ data_template_generate.get = _get
 class Template:
     """Wrapper class for template functions with metadata and execution capabilities."""
 
-    def __init__(self, func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list):
+    def __init__(
+        self, name: str, func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list
+    ):
+        self.name = name
         self.func = func
         self.input_schema = input_schema
         self.output_schema = output_schema
@@ -118,6 +122,53 @@ class Template:
         if not hasattr(self.func, "run"):
             self.func.run = lambda *args, **kwargs: self.func(*args, **kwargs)
 
+        # Check dependencies on initialization
+        self._check_dependencies()
+
+    def _check_dependencies(self):
+        """Check if all required dependencies are installed and meet version requirements."""
+
+        missing_deps = []
+        version_mismatches = []
+
+        for dep in self.dependencies:
+            try:
+                req = requirements.Requirement(dep)
+                installed_version = importlib.metadata.version(req.name)
+                if not req.specifier.contains(installed_version):
+                    version_mismatches.append(f"{req.name} (installed: {installed_version}, required: {req.specifier})")
+            except importlib.metadata.PackageNotFoundError:
+                missing_deps.append(req.name)
+
+        if missing_deps or version_mismatches:
+            error_msg = "Dependency check failed:\n"
+            if missing_deps:
+                error_msg += f"Missing packages: {', '.join(missing_deps)}\n"
+            if version_mismatches:
+                error_msg += f"Version mismatches: {', '.join(version_mismatches)}"
+            raise ImportError(error_msg)
+
     def run(self, *args, **kwargs):
-        """Execute the wrapped function."""
-        return self.func.run(*args, **kwargs)
+        """Execute the wrapped function with schema validation."""
+        # Pre-run hook: Validate input schema
+        if self.input_schema is not None:
+            try:
+                # Validate input against schema
+                if args:
+                    self.input_schema.validate(args[0])
+                elif kwargs:
+                    self.input_schema.validate(kwargs)
+            except Exception as e:
+                raise ValueError(f"Input validation failed: {str(e)}")
+
+        # Execute the function
+        result = self.func.run(*args, **kwargs)
+
+        # Post-run hook: Validate output schema
+        if self.output_schema is not None:
+            try:
+                self.output_schema.validate(result)
+            except Exception as e:
+                raise ValueError(f"Output validation failed: {str(e)}")
+
+        return result

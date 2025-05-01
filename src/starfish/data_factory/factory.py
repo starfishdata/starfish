@@ -330,7 +330,6 @@ class DataFactory:
 
         await self._complete_master_job()
         self._show_job_progress_status()
-        await self._save_request_config()
 
         return result
 
@@ -338,11 +337,18 @@ class DataFactory:
         """Handle job cleanup and error reporting."""
         self._send_telemetry_event()
 
-        if self.err and not isinstance(self.err, (TypeError, ValueError)):
-            err_msg = "KeyboardInterrupt" if isinstance(self.err, KeyboardInterrupt) else str(self.err)
-            logger.error(f"Error occurred: {err_msg}")
-            logger.info("[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
-
+        if self.err:
+            # if Typeor Value error, close the storage and return
+            if isinstance(self.err, (TypeError, ValueError)):
+                await self._close_storage()
+                return
+            else:
+                # log the error
+                err_msg = "KeyboardInterrupt" if isinstance(self.err, KeyboardInterrupt) else str(self.err)
+                logger.error(f"Error occurred: {err_msg}")
+                logger.info("[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
+        # save request config and close storage
+        await self._save_request_config()
         await self._close_storage()
 
     def _send_telemetry_event(self):
@@ -401,15 +407,22 @@ class DataFactory:
         if status_filter in self._output_cache:
             return self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
         else:
-            self._output_cache[status_filter] = {"result": [], IDX: []}
+            # init the output_cache
+            self._output_cache = {
+                STATUS_COMPLETED: {"result": [], IDX: []},
+                STATUS_DUPLICATE: {"result": [], IDX: []},
+                STATUS_FAILED: {"result": [], IDX: []},
+                STATUS_FILTERED: {"result": [], IDX: []},
+            }
         # Process records and populate cache
         for record in self.job_manager.job_output.queue:
             record_idx = record.get(IDX)
-            record_output = record.get("output", []) if status_filter != STATUS_FAILED else record.get("err", [])
+            status = record.get(RECORD_STATUS)
+            record_output = record.get("output", []) if status != STATUS_FAILED else record.get("err", [])
 
             # Update cache
-            self._output_cache[status_filter][IDX].extend([record_idx] * len(record_output))
-            self._output_cache[status_filter]["result"].extend(record_output)
+            self._output_cache[status][IDX].extend([record_idx] * len(record_output))
+            self._output_cache[status]["result"].extend(record_output)
 
         return self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
 

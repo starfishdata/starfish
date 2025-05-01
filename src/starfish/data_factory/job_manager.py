@@ -178,7 +178,7 @@ class JobManager:
         output = []
         output_ref = []
         task_status = STATUS_COMPLETED
-        err_arr = []
+        err_output = {}
         input_data_idx = input_data.pop(IDX, None)
 
         try:
@@ -186,12 +186,12 @@ class JobManager:
             task_status = self._evaluate_task_output(output)
             output_ref = await self._save_record_data(copy.deepcopy(output), task_status, input_data)
         except (Exception, TimeoutErrorAsyncio) as e:
-            task_status, err_arr = self._handle_task_error(e)
+            task_status, err_output = self._handle_task_error(e)
 
         if task_status != STATUS_COMPLETED:
             self._requeue_task(input_data, input_data_idx)
 
-        return self._create_task_result(input_data_idx, task_status, output_ref, output, err_arr)
+        return self._create_task_result(input_data_idx, task_status, output_ref, output, err_output)
 
     def _evaluate_task_output(self, output):
         """Evaluate task output and determine status."""
@@ -205,22 +205,23 @@ class JobManager:
     def _handle_task_error(self, error):
         """Handle task errors and update state."""
         err_str = str(error)
-        err_trace = traceback.format_exc().splitlines()[-1]
+        # [-1]
+        err_trace = traceback.format_exc().splitlines()
         logger.error(f"Error running task: {err_str}")
 
         for hook in self.job_config.on_record_error:
             hook(err_str, self.state)
 
-        return STATUS_FAILED, [err_str, err_trace]
+        return STATUS_FAILED, {"err_str": err_str, "err_trace": err_trace}
 
     def _requeue_task(self, input_data, input_data_idx):
         """Requeue a task that needs to be retried."""
         input_data[IDX] = input_data_idx
         self.job_input_queue.put(input_data)
 
-    def _create_task_result(self, input_data_idx, task_status, output_ref, output, err_arr):
+    def _create_task_result(self, input_data_idx, task_status, output_ref, output, err_output):
         """Create a standardized task result dictionary."""
-        return {IDX: input_data_idx, RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": err_arr}
+        return {IDX: input_data_idx, RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": [err_output]}
 
     # ====================
     # Cleanup & Utilities
@@ -389,9 +390,15 @@ class JobManager:
                 self.filtered_count += 1
             elif task_status == STATUS_FAILED:
                 self.failed_count += 1
-                err_arr = result.get("err", [])
-                err_str = err_arr[0] if len(err_arr) > 0 else "Unknown error"
-                self.err_type_counter[err_str] = self.err_type_counter.get(err_str, 0) + 1
+                # Safely extract error information with better type checking
+                err_output = result.get("err", [{}])[0]  # Default to empty dict if no error
+                err_str = err_output.get("err_str", "Unknown error").strip()  # Clean up whitespace
+
+                # Normalize error string for consistent counting
+                normalized_err = err_str.lower().strip()
+                self.err_type_counter[normalized_err] = self.err_type_counter.get(normalized_err, 0) + 1
+                # Optionally log the error count for this type
+                logger.debug(f"Error type '{normalized_err}' count: {self.err_type_counter[normalized_err]}")
             # await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
             self.semaphore.release()
 

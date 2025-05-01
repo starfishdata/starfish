@@ -86,6 +86,7 @@ class TopicGeneratorOutput(BaseModel):
     message: str
 
 
+# "transformers>=4.0.0",
 @data_template_generate.register(
     name="starfish/get_city_info_wf",
     input_schema=TopicGeneratorInput,
@@ -93,7 +94,7 @@ class TopicGeneratorOutput(BaseModel):
     description="Generates relevant topics for community discussions using AI models",
     author="Your Name",
     starfish_version="0.1.0",
-    dependencies=["transformers>=4.0.0"],
+    dependencies=["posthog=^3.11.0"],
 )
 @data_factory(
     storage=STORAGE_TYPE_LOCAL,

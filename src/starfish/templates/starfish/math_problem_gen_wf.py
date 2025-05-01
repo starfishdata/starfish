@@ -39,7 +39,7 @@ class TopicGeneratorOutput(BaseModel):
     description="Generates relevant math problem-solutions using AI models",
     author="Your Name",
     starfish_version="0.1.0",
-    dependencies=["transformers>=4.0.0"],
+    dependencies=["posthog>=3.11.0"],
 )
 def math_problem_gen_wf():
     @data_factory(max_concurrency=CONCURRENCY)
