@@ -6,7 +6,7 @@ todo
 db/
 .ruff_cache/
 data_factory_output/
-# examples/datafactory_test.ipynb
+examples/test_jupyter.ipynb
 # *.ipynb
 # .ipynb_checkpoints
 .cursor
