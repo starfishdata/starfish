@@ -165,5 +165,5 @@ class JobManagerRerun(JobManager):
             if remaining_count > 0:
                 logger.debug("Task not run, queuing for execution")
                 for _ in range(remaining_count):
-                    item[IDX] = item["count"].pop()
+                    item["data"][IDX] = item["count"].pop()
                     self.job_input_queue.put(item["data"])
