@@ -5,6 +5,7 @@ import os
 from starfish.data_factory.factory import data_factory, resume_from_checkpoint
 from starfish.common.env_loader import load_env_file
 from starfish.data_factory.constants import STATUS_COMPLETED
+from starfish.data_factory.utils.errors import InputError, NoResumeSupportError, OutputError
 from starfish.data_factory.utils.mock import mock_llm_call
 from starfish.llm.structured_llm import StructuredLLM
 
@@ -52,7 +53,7 @@ async def test_case_2():
     async def test1(city_name, num_records_per_city, fail_rate=0.5, sleep_time=1):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(InputError):
         test1.run(city=["1. New York", "2. Los Angeles", "3. Chicago", "4. Houston", "5. Miami"], num_records_per_city=5)
 
 
@@ -68,7 +69,7 @@ async def test_case_3():
     async def test1(city_name, num_records_per_city, fail_rate=1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(OutputError):
         test1.run(
             data=[
                 {"city_name": "1. New York"},
@@ -126,7 +127,7 @@ async def test_case_6():
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(InputError):
         test1.run(
             data=[
                 {"city_name": "1. New York"},
@@ -148,7 +149,7 @@ async def test_case_7():
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(InputError):
         test1.run(
             data=[
                 {"city_name": "1. New York"},
@@ -215,7 +216,7 @@ async def test_case_timeout():
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(OutputError):
         test1.run(
             data=[
                 {"city_name": "1. New York"},
@@ -233,7 +234,7 @@ async def test_case_re_run_master_id_not_found():
     - Expected: TypeError due to unexpected parameter
     """
 
-    with pytest.raises(TypeError):
+    with pytest.raises(InputError):
         resume_from_checkpoint("123")
 
 
@@ -295,10 +296,10 @@ async def test_case_job_re_run_catch_typeErr():
     result = test1.resume()
     assert len(result) == 2
     # TypeError
-    with pytest.raises(TypeError):
+    with pytest.raises(NoResumeSupportError):
         data_factory.resume_from_checkpoint(master_job_id)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(NoResumeSupportError):
         resume_from_checkpoint(master_job_id)
 
 

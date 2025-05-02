@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from starfish import data_factory
-from starfish.data_template.data_template_gen import data_template_generate
+from starfish.data_template.template_gen import data_gen_template
 from starfish.data_factory.utils.mock import mock_llm_call
 import random
 from typing import Any, List, Dict, Callable
@@ -87,7 +87,7 @@ class TopicGeneratorOutput(BaseModel):
 
 
 # "transformers>=4.0.0",
-@data_template_generate.register(
+@data_gen_template.register(
     name="starfish/get_city_info_wf",
     input_schema=TopicGeneratorInput,
     output_schema=TopicGeneratorOutput,

@@ -1,20 +1,9 @@
 from pathlib import Path
 import importlib.metadata
 from packaging import requirements
+import pydantic
 
-# Class func_wrapper :
-#     input_scheme
-#     output_scheme
-#     func
-
-#     def __init__(self, func:callable):
-#         self.func = func
-
-#     def run:
-#         pre-hook
-#         func.run
-#         post-hook
-
+from starfish.data_template.utils.error import DataTemplateValueError, ImportModuleError, ImportPackageError
 
 # ====================
 # Registry Management
@@ -27,7 +16,7 @@ is_get_template = False
 def _list() -> list[str]:
     """List all available templates in the format 'subfolder_name/template_name'."""
     # templates_dir = Path("starfish/templates")
-    templates_dir = Path(__file__).resolve().parent.parent / "templates"
+    templates_dir = Path(__file__).resolve().parent / "templates"
     result = list(_template_registry.keys())
     if len(result) == 0:
         global is_get_template
@@ -39,9 +28,9 @@ def _list() -> list[str]:
                 for template_file in subdir.glob("*.py"):
                     try:
                         # Import the module
-                        module_name = f"starfish.templates.{subdir.name}.{template_file.stem}"
+                        module_name = f"starfish.data_template.templates.{subdir.name}.{template_file.stem}"
                         importlib.import_module(module_name)
-                    except ImportError as e:
+                    except ImportModuleError as e:
                         print(f"Warning: Could not import {template_file}: {e}")
                         continue
 
@@ -52,7 +41,7 @@ def _list() -> list[str]:
 def _get(template_name: str) -> callable:
     """Get a template function by its name."""
     if template_name not in _template_registry:
-        raise ValueError(f"Template {template_name} not found")
+        raise DataTemplateValueError(f"Template {template_name} not found")
     # Get the file path and metadata
     module_name = _template_registry[template_name]
     module = importlib.import_module(module_name)
@@ -70,7 +59,7 @@ def _register(name: str, input_schema: type, output_schema: type, description: s
         global is_get_template
         if is_get_template:
             if name not in _template_instance_registry:
-                _template_instance_registry[name] = data_template_generate(
+                _template_instance_registry[name] = data_gen_template(
                     name, func, input_schema, output_schema, description, author, starfish_version, dependencies
                 )
         else:
@@ -87,17 +76,17 @@ def _register(name: str, input_schema: type, output_schema: type, description: s
 # ====================
 # Template Generation
 # ====================
-def data_template_generate(
+def data_gen_template(
     name: str, func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list
 ):
     """Generate a template instance with the provided metadata and function."""
     return Template(name, func, input_schema, output_schema, description, author, starfish_version, dependencies)
 
 
-# Attach registry methods to data_template_generate
-data_template_generate.register = _register
-data_template_generate.list = _list
-data_template_generate.get = _get
+# Attach registry methods to data_gen_template
+data_gen_template.register = _register
+data_gen_template.list = _list
+data_gen_template.get = _get
 
 
 # ====================
@@ -146,20 +135,20 @@ class Template:
                 error_msg += f"Missing packages: {', '.join(missing_deps)}\n"
             if version_mismatches:
                 error_msg += f"Version mismatches: {', '.join(version_mismatches)}"
-            raise ImportError(error_msg)
+            raise ImportPackageError(error_msg)
 
     def run(self, *args, **kwargs):
         """Execute the wrapped function with schema validation."""
         # Pre-run hook: Validate input schema
-        if self.input_schema is not None:
-            try:
-                # Validate input against schema
-                if args:
-                    self.input_schema.validate(args[0])
-                elif kwargs:
-                    self.input_schema.validate(kwargs)
-            except Exception as e:
-                raise ValueError(f"Input validation failed: {str(e)}")
+
+        try:
+            # Validate input against schema
+            if args:
+                self.input_schema.validate(args[0])
+            elif kwargs:
+                self.input_schema.validate(kwargs)
+        except Exception as e:
+            raise DataTemplateValueError(f"Input validation failed: {str(e)}")
 
         # Execute the function
         result = self.func.run(*args, **kwargs)
@@ -168,7 +157,7 @@ class Template:
         if self.output_schema is not None:
             try:
                 self.output_schema.validate(result)
-            except Exception as e:
-                raise ValueError(f"Output validation failed: {str(e)}")
+            except pydantic.ValidationError as e:
+                raise DataTemplateValueError(f"Output validation failed: {str(e)}")
 
         return result

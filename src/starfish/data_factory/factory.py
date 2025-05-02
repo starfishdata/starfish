@@ -7,6 +7,7 @@ from queue import Queue
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast, Protocol
 
 import cloudpickle
+from starfish.data_factory.utils.errors import InputError, OutputError, NoResumeSupportError
 from starfish.data_factory.utils.util import get_platform_name
 from starfish.version import __version__
 from starfish.common.logger import get_logger
@@ -115,7 +116,7 @@ class DataFactoryWrapper(Generic[T]):
         if self._valid_filter(_filter):
             result = self.factory._process_output(_filter)
         else:
-            raise ValueError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
+            raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
         return result
 
     def get_output_completed(self) -> T:
@@ -139,7 +140,7 @@ class DataFactoryWrapper(Generic[T]):
         if self._valid_filter(_filter):
             result = self.factory._process_output(_filter, is_idx=True)
         else:
-            raise ValueError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
+            raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
         return result
 
     def get_index_completed(self) -> T:
@@ -264,7 +265,7 @@ class DataFactory:
             # Process and return results
             return await self._finalize_job()
 
-        except (TypeError, ValueError, KeyboardInterrupt) as e:
+        except Exception as e:
             self.err = e
             raise
         finally:
@@ -325,7 +326,7 @@ class DataFactory:
         """Complete job execution and return results."""
         result = self._process_output()
         if len(result) == 0:
-            self.err = ValueError("No records generated")
+            self.err = OutputError("No records generated")
             raise self.err
 
         await self._complete_master_job()
@@ -338,8 +339,9 @@ class DataFactory:
         self._send_telemetry_event()
 
         if self.err:
-            # if Typeor Value error, close the storage and return
-            if isinstance(self.err, (TypeError, ValueError)):
+            # if Type or Value error, close the storage and return
+            # be more specific
+            if isinstance(self.err, (InputError, OutputError)):
                 await self._close_storage()
                 return
             else:
@@ -442,11 +444,11 @@ class DataFactory:
                 continue
             # Check if required parameter is missing in batch
             if param_name not in batch_item:
-                raise TypeError(f"Batch item is missing required parameter '{param_name}' " f"for function {self.func.__name__}")
+                raise InputError(f"Batch item is missing required parameter '{param_name}' " f"for function {self.func.__name__}")
         # Check 2: Ensure all batch parameters exist in function signature
         for batch_param in batch_item.keys():
             if batch_param not in func_sig.parameters and batch_param != IDX:
-                raise TypeError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
+                raise InputError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
     def _process_batches(self) -> List[Any]:
         """Initiate batch processing through the job manager.
@@ -635,7 +637,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
     # Validate parallel sources have same length
     lengths = [len(v) for v in parallel_sources.values()]
     if len(set(lengths)) > 1:
-        raise ValueError("All parallel sources must have the same length")
+        raise InputError("All parallel sources must have the same length")
 
     # Determine batch size (L)
     batch_size = lengths[0] if lengths else 1
@@ -756,7 +758,7 @@ async def _re_run_get_master_job_request_config(factory: DataFactory):
         return master_job_config_data, master_job
     else:
         await factory._close_storage()
-        raise TypeError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
+        raise InputError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
 
 
 async def async_re_run(*args, **kwargs) -> List[Any]:
@@ -781,13 +783,13 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         if len(args) == 1:
             factory.config.master_job_id = args[0]
         else:
-            raise TypeError("Master job id is required, please pass it in the paramters")
+            raise InputError("Master job id is required, please pass it in the paramters")
     # Update config with any additional kwargs
     for key, value in kwargs.items():
         if hasattr(factory.config, key):
             setattr(factory.config, key, value)
     if not factory.config.master_job_id:
-        raise TypeError("Master job id is required")
+        raise InputError("Master job id is required")
 
     await factory._storage_setup()
     master_job_config_data, master_job = await _re_run_get_master_job_request_config(factory=factory)
@@ -799,7 +801,7 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
             factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
     if not factory.func or not factory.config:
         await factory._close_storage()
-        raise TypeError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
+        raise NoResumeSupportError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
     factory.config.run_mode = RUN_MODE_RE_RUN
     factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
     # missing the idx but the input_data order keep the same; so add idx back in the job_maanger

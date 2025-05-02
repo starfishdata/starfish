@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from starfish import data_factory
-from starfish.data_template.data_template_gen import data_template_generate
+from starfish.data_template.template_gen import data_gen_template
 
 
 # Define input schema
@@ -18,7 +18,7 @@ class TopicGeneratorOutput(BaseModel):
     message: str
 
 
-@data_template_generate.register(
+@data_gen_template.register(
     name="community/topic_generator",
     input_schema=TopicGeneratorInput,
     output_schema=TopicGeneratorOutput,
@@ -27,7 +27,7 @@ class TopicGeneratorOutput(BaseModel):
     starfish_version="0.1.0",
     dependencies=["transformers>=4.0.0"],
 )
-@data_factory(max_concurrency=10)
+# @data_factory(max_concurrency=10)
 def topic_generator(input_data: TopicGeneratorInput) -> TopicGeneratorOutput:
     try:
         # Step 1: Generate initial topics
@@ -59,11 +59,4 @@ def refine_topic(topic: str) -> str:
     return topic.upper()  # Placeholder
 
 
-# input_data = TopicGeneratorInput(
-#     community_name="AI Enthusiasts",
-#     seed_topics=["Machine Learning", "Deep Learning"],
-#     num_topics=5
-# )
-
-# result = topic_generator(input_data)
 # print(result)

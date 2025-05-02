@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from starfish import data_factory
-from starfish.data_template.data_template_gen import data_template_generate
+from starfish.data_template.template_gen import data_gen_template
 
 # import nest_asyncio
 from starfish import data_factory, StructuredLLM
@@ -31,7 +31,7 @@ class TopicGeneratorOutput(BaseModel):
     message: str
 
 
-@data_template_generate.register(
+@data_gen_template.register(
     name="starfish/math_problem_gen_wf",
     input_schema=TopicGeneratorInput,
     # optional
