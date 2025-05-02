@@ -5,6 +5,7 @@ import os
 from starfish.data_factory.factory import data_factory, resume_from_checkpoint
 from starfish.common.env_loader import load_env_file
 from starfish.data_factory.constants import STATUS_COMPLETED
+from starfish.data_factory.utils.errors import InputError, NoResumeSupportError, OutputError
 from starfish.data_factory.utils.mock import mock_llm_call
 from starfish.llm.structured_llm import StructuredLLM
 
@@ -52,7 +53,7 @@ async def test_case_2():
     async def test1(city_name, num_records_per_city, fail_rate=0.5, sleep_time=1):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(InputError):
         test1.run(city=["1. New York", "2. Los Angeles", "3. Chicago", "4. Houston", "5. Miami"], num_records_per_city=5)
 
 
@@ -68,7 +69,7 @@ async def test_case_3():
     async def test1(city_name, num_records_per_city, fail_rate=1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(OutputError):
         test1.run(
             data=[
                 {"city_name": "1. New York"},
@@ -126,7 +127,7 @@ async def test_case_6():
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(InputError):
         test1.run(
             data=[
                 {"city_name": "1. New York"},
@@ -148,7 +149,7 @@ async def test_case_7():
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(InputError):
         test1.run(
             data=[
                 {"city_name": "1. New York"},
@@ -215,7 +216,7 @@ async def test_case_timeout():
     async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
         return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(OutputError):
         test1.run(
             data=[
                 {"city_name": "1. New York"},
@@ -233,7 +234,7 @@ async def test_case_re_run_master_id_not_found():
     - Expected: TypeError due to unexpected parameter
     """
 
-    with pytest.raises(TypeError):
+    with pytest.raises(InputError):
         resume_from_checkpoint("123")
 
 
@@ -295,10 +296,10 @@ async def test_case_job_re_run_catch_typeErr():
     result = test1.resume()
     assert len(result) == 2
     # TypeError
-    with pytest.raises(TypeError):
+    with pytest.raises(NoResumeSupportError):
         data_factory.resume_from_checkpoint(master_job_id)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(NoResumeSupportError):
         resume_from_checkpoint(master_job_id)
 
 
@@ -365,24 +366,71 @@ async def test_case_reuse_run_different_factory():
     assert len(result) == 120
 
 
+# @pytest.mark.asyncio
+# @pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
+# async def test_case_cloudpick():
+#     ### Pydantic Issue?
+#     from pydantic import BaseModel
+
+#     class MockLLMInput(BaseModel):
+#         city_name: str
+#         num_records_per_city: int
+
+#     @data_factory(max_concurrency=10)
+#     async def test_pydantic_issue(city_name: str, num_records_per_city: int):
+#         facts_generator = StructuredLLM(model_name="openai/gpt-4o-mini", output_schema=MockLLMInput, prompt="generate facts about {{city_name}}")
+
+#         response = await facts_generator.run(city_name=city_name, num_records_per_city=num_records_per_city)
+
+#         return response.data
+
+#     result = test_pydantic_issue.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
+#     # num of records not used right now
+#     assert len(result) == 2
+
+
 @pytest.mark.asyncio
-@pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
-async def test_case_cloudpick():
-    ### Pydantic Issue?
-    from pydantic import BaseModel
+async def test_input_output_idx():
+    """Test with input data and broadcast variables
+    - Input: List of dicts with city names
+    - Broadcast: num_records_per_city
+    - Expected: All cities processed successfully
+    """
 
-    class MockLLMInput(BaseModel):
-        city_name: str
-        num_records_per_city: int
+    @data_factory(max_concurrency=2)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=1):
+        return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
 
-    @data_factory(max_concurrency=10)
-    async def test_pydantic_issue(city_name: str, num_records_per_city: int):
-        facts_generator = StructuredLLM(model_name="openai/gpt-4o-mini", output_schema=MockLLMInput, prompt="generate facts about {{city_name}}")
-
-        response = await facts_generator.run(city_name=city_name, num_records_per_city=num_records_per_city)
-
-        return response.data
-
-    result = test_pydantic_issue.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
-    # num of records not used right now
-    assert len(result) == 2
+    nums_per_record = 5
+    result = test1.run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+            {"city_name": "3. Chicago"},
+            {"city_name": "4. Houston"},
+            {"city_name": "5. Miami"},
+        ],
+        num_records_per_city=nums_per_record,
+    )
+    input_data = test1.get_input_data()
+    assert len(input_data) == 5
+    idx = test1.get_index(filter="completed")
+    assert len(result) == len(idx)
+    idx_com = test1.get_index_completed()
+    assert len(result) == len(idx_com)
+    idx_dup = test1.get_index_duplicate()
+    assert len(idx_dup) == 0
+    idx_fail = test1.get_index_failed()
+    assert len(idx_fail) + len(idx_com) == 25
+    idx_fil = test1.get_index_filtered()
+    assert len(idx_fil) == 0
+    completed_data = test1.get_output_data(filter="completed")
+    assert len(completed_data) == len(result)
+    duplicate_data = test1.get_output_duplicate()
+    assert len(duplicate_data) == 0
+    completed_data = test1.get_output_completed()
+    assert len(completed_data) == 25
+    filtered_data = test1.get_output_filtered()
+    assert len(filtered_data) == 0
+    failed_data = test1.get_output_failed()
+    assert len(failed_data) + len(completed_data) == 25

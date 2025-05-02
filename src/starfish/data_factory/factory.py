@@ -7,11 +7,13 @@ from queue import Queue
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast, Protocol
 
 import cloudpickle
+from starfish.data_factory.utils.errors import InputError, OutputError, NoResumeSupportError
 from starfish.data_factory.utils.util import get_platform_name
 from starfish.version import __version__
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import NOT_COMPLETED_THRESHOLD, PROGRESS_LOG_INTERVAL, TASK_RUNNER_TIMEOUT
 from starfish.data_factory.constants import (
+    IDX,
     LOCAL_STORAGE_URI,
     RECORD_STATUS,
     RUN_MODE_DRY_RUN,
@@ -55,6 +57,9 @@ class DataFactoryWrapper(Generic[T]):
         state: Shared state object for tracking job state
     """
 
+    filter_mapping = {("duplicated",): STATUS_DUPLICATE, ("completed",): STATUS_COMPLETED, ("failed",): STATUS_FAILED, ("filtered",): STATUS_FILTERED}
+    valid_status = (STATUS_DUPLICATE, STATUS_COMPLETED, STATUS_FILTERED, STATUS_FAILED)
+
     def __init__(self, factory: Any, func: Callable[..., T]):
         """Initialize the DataFactoryWrapper instance.
 
@@ -64,6 +69,7 @@ class DataFactoryWrapper(Generic[T]):
         """
         self.factory = factory
         self.state = factory.state
+        self.__func__ = func
 
     def run(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """Execute the data processing pipeline with normal configuration.
@@ -104,6 +110,61 @@ class DataFactoryWrapper(Generic[T]):
         kwargs["factory"] = self.factory
         return resume_from_checkpoint(**kwargs)
 
+    def get_output_data(self, filter: str) -> T:
+        result = None
+        _filter = self._convert_filter(filter=filter)
+        if self._valid_filter(_filter):
+            result = self.factory._process_output(_filter)
+        else:
+            raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
+        return result
+
+    def get_output_completed(self) -> T:
+        return self.factory._process_output()
+
+    def get_output_duplicate(self) -> T:
+        return self.factory._process_output(STATUS_DUPLICATE)
+
+    def get_output_filtered(self) -> T:
+        return self.factory._process_output(STATUS_FILTERED)
+
+    def get_output_failed(self) -> T:
+        return self.factory._process_output(STATUS_FAILED)
+
+    def get_input_data(self) -> T:
+        return self.factory.original_input_data
+
+    def get_index(self, filter: str) -> T:
+        result = None
+        _filter = self._convert_filter(filter)
+        if self._valid_filter(_filter):
+            result = self.factory._process_output(_filter, is_idx=True)
+        else:
+            raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
+        return result
+
+    def get_index_completed(self) -> T:
+        return self.factory._process_output(is_idx=True)
+
+    def get_index_duplicate(self) -> T:
+        return self.factory._process_output(STATUS_DUPLICATE, is_idx=True)
+
+    def get_index_filtered(self) -> T:
+        return self.factory._process_output(STATUS_FILTERED, is_idx=True)
+
+    def get_index_failed(self) -> T:
+        return self.factory._process_output(STATUS_FAILED, is_idx=True)
+
+    def _valid_filter(self, filter: str) -> bool:
+        return filter in self.__class__.valid_status
+
+    def _convert_filter(self, filter: str) -> str:
+        for keys, status in self.__class__.filter_mapping.items():
+            if filter in keys:
+                filter = status
+                break
+        return filter
+
 
 class DataFactoryProtocol(Protocol[P, T]):
     """Protocol for the decorated function with additional methods."""
@@ -111,7 +172,18 @@ class DataFactoryProtocol(Protocol[P, T]):
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
     def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
     def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def resume(self, master_job_id: str, **kwargs) -> T: ...
+    def resume(self, **kwargs) -> T: ...
+    def get_output_data(self, filter: str) -> T: ...
+    def get_output_completed(self) -> T: ...
+    def get_output_duplicate(self) -> T: ...
+    def get_output_filtered(self) -> T: ...
+    def get_output_failed(self) -> T: ...
+    def get_input_data(self) -> T: ...
+    def get_index(self, filter: str) -> T: ...
+    def get_index_completed(self) -> T: ...
+    def get_index_duplicate(self) -> T: ...
+    def get_index_filtered(self) -> T: ...
+    def get_index_failed(self) -> T: ...
 
 
 class DataFactory:
@@ -165,6 +237,8 @@ class DataFactory:
         self.job_manager = None
         self.same_session = False
         self.original_input_data = []
+        self.result_idx = []
+        self._output_cache = {}
 
     def _clean_up_in_same_session(self):
         # same session, reset err and factory_storage
@@ -175,90 +249,109 @@ class DataFactory:
             self.factory_storage = None
             # self.config_ref = None
             self.job_manager = None
+            self.result_idx = []
+            self._output_cache = {}
         # todo reuse the state from last same-factory state or a new state
 
     async def __call__(self, *args, **kwargs) -> List[Dict]:
-        """Execute the data processing pipeline based on the configured run mode.
-
-        This method handles the main execution flow for different run modes:
-        - Normal mode: Processes all input data
-        - Resume mode: Resumes a previous job using stored configuration
-        - Dry-run mode: Processes only the first input item for testing
-
-        Args:
-            *args: Positional arguments passed to the data processing function
-            **kwargs: Keyword arguments passed to the data processing function
-                - master_job_id: Required for resume mode to specify which job to resume
-
-        Returns:
-            List[Any]: Processed output data
-
-        Raises:
-            TypeError: If there's a parameter mismatch between input data and function signature
-            ValueError: If no records are generated or if input data validation fails
-            KeyboardInterrupt: If the job is interrupted by the user
-        """
-
-        run_mode = self.config.run_mode
+        """Execute the data processing pipeline based on the configured run mode."""
         try:
-            if run_mode == RUN_MODE_RE_RUN:
-                self.job_manager = JobManagerRerun(
-                    job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
-                )
-            elif run_mode == RUN_MODE_DRY_RUN:
-                self.input_data_queue = _default_input_converter(*args, **kwargs)
-                # Get only first item but maintain Queue structure
-                self._check_parameter_match()
-                await self._storage_setup()
-                self.job_manager = JobManagerDryRun(
-                    job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
-                )
-            else:
-                self._clean_up_in_same_session()
-                self.input_data_queue = _default_input_converter(*args, **kwargs)
-                self._check_parameter_match()
-                await self._storage_setup()
-                self._update_job_config()
-                self.config.project_id = str(uuid.uuid4())
-                self.config.master_job_id = str(uuid.uuid4())
-                self.job_manager = JobManager(
-                    master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data_queue, user_func=self.func
-                )
-                await self._save_project()
+            # Initialize job based on run mode
+            await self._initialize_job(*args, **kwargs)
+            # Setup and execute job
+            await self._setup_job_execution()
+            self._execute_job()
 
-                await self._log_master_job_start()
-            await self.job_manager.setup_input_output_queue()
-            self._process_batches()
+            # Process and return results
+            return await self._finalize_job()
 
-        except (TypeError, ValueError, KeyboardInterrupt) as e:
+        except Exception as e:
             self.err = e
+            raise
         finally:
-            self._send_telemetry_event()
-            if not isinstance(self.err, TypeError):
-                result = self._process_output()
-                if len(result) == 0:
-                    self.err = ValueError("No records generated")
-                await self._complete_master_job()
+            await self._cleanup_job()
 
-                # Only execute finally block if not TypeError
-                if self.err and not isinstance(self.err, ValueError):
-                    err_msg = str(self.err)
-                    if isinstance(self.err, KeyboardInterrupt):
-                        err_msg = "KeyboardInterrupt"
+    async def _initialize_job(self, *args, **kwargs) -> None:
+        """Initialize job configuration and manager based on run mode."""
 
-                    logger.error(f"Error occurred: {err_msg}")
-                    logger.info(f"[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
+        if self.config.run_mode == RUN_MODE_RE_RUN:
+            self._setup_rerun_job()
+        elif self.config.run_mode == RUN_MODE_DRY_RUN:
+            await self._setup_dry_run_job(*args, **kwargs)
+        else:
+            await self._setup_normal_job(*args, **kwargs)
 
-                self._show_job_progress_status()
-                await self._save_request_config()
+    def _setup_rerun_job(self) -> None:
+        """Configure job for resume mode."""
+        self.job_manager = JobManagerRerun(
+            job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
+        )
+
+    async def _setup_dry_run_job(self, *args, **kwargs) -> None:
+        """Configure job for dry-run mode."""
+        self.input_data_queue = _default_input_converter(*args, **kwargs)
+        self._check_parameter_match()
+        await self._storage_setup()
+        self.job_manager = JobManagerDryRun(
+            job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
+        )
+
+    async def _setup_normal_job(self, *args, **kwargs) -> None:
+        """Configure job for normal execution mode."""
+        self._clean_up_in_same_session()
+        self.input_data_queue = _default_input_converter(*args, **kwargs)
+        self._check_parameter_match()
+        self.original_input_data = list(self.input_data_queue.queue)
+        await self._storage_setup()
+        self._update_job_config()
+        self.config.project_id = str(uuid.uuid4())
+        self.config.master_job_id = str(uuid.uuid4())
+        self.job_manager = JobManager(
+            master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data_queue, user_func=self.func
+        )
+
+    async def _setup_job_execution(self) -> None:
+        """Prepare job for execution."""
+
+        if self.config.run_mode == RUN_MODE_NORMAL:
+            await self._save_project()
+            await self._log_master_job_start()
+        await self.job_manager.setup_input_output_queue()
+
+    def _execute_job(self) -> None:
+        """Execute the main job processing."""
+        self._process_batches()
+
+    async def _finalize_job(self) -> List[Dict]:
+        """Complete job execution and return results."""
+        result = self._process_output()
+        if len(result) == 0:
+            self.err = OutputError("No records generated")
+            raise self.err
+
+        await self._complete_master_job()
+        self._show_job_progress_status()
+
+        return result
+
+    async def _cleanup_job(self) -> None:
+        """Handle job cleanup and error reporting."""
+        self._send_telemetry_event()
+
+        if self.err:
+            # if Type or Value error, close the storage and return
+            # be more specific
+            if isinstance(self.err, (InputError, OutputError)):
                 await self._close_storage()
-                if isinstance(self.err, ValueError):
-                    raise self.err
-                else:
-                    return result
+                return
             else:
-                await self._close_storage()
-                raise self.err
+                # log the error
+                err_msg = "KeyboardInterrupt" if isinstance(self.err, KeyboardInterrupt) else str(self.err)
+                logger.error(f"Error occurred: {err_msg}")
+                logger.info("[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
+        # save request config and close storage
+        await self._save_request_config()
+        await self._close_storage()
 
     def _send_telemetry_event(self):
         """Send telemetry data for the completed job.
@@ -297,22 +390,43 @@ class DataFactory:
                     "total_errors": self.job_manager.failed_count,
                     "error_types": self.job_manager.err_type_counter,
                 }
-                telemetry_data.num_inputs = (self.job_manager.nums_input,)
+                telemetry_data.num_inputs = (len(self.original_input_data),)
                 telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
             analytics.send_event(event=Event(data=telemetry_data.to_dict(), name="starfish_job"))
 
-    def _process_output(self) -> List[Any]:
-        """Process and filter the job output queue to return only completed records.
+    def _process_output(self, status_filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[Any]:
+        """Process and filter the job output queue to return only records matching the status filter.
+
+        Args:
+            status_filter: Status to filter records by (default: STATUS_COMPLETED)
+            is_idx: If True, return indices instead of output data
 
         Returns:
-            List[Any]: List of successfully processed outputs from completed records
+            List[Any]: List of processed outputs or indices from matching records
         """
-        result = []
-        output = self.job_manager.job_output.queue
-        for v in output:
-            if v.get(RECORD_STATUS) == STATUS_COMPLETED:
-                result.extend(v.get("output"))
-        return result
+
+        # Check if cache is already populated for this status
+        if status_filter in self._output_cache:
+            return self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
+        else:
+            # init the output_cache
+            self._output_cache = {
+                STATUS_COMPLETED: {"result": [], IDX: []},
+                STATUS_DUPLICATE: {"result": [], IDX: []},
+                STATUS_FAILED: {"result": [], IDX: []},
+                STATUS_FILTERED: {"result": [], IDX: []},
+            }
+        # Process records and populate cache
+        for record in self.job_manager.job_output.queue:
+            record_idx = record.get(IDX)
+            status = record.get(RECORD_STATUS)
+            record_output = record.get("output", []) if status != STATUS_FAILED else record.get("err", [])
+
+            # Update cache
+            self._output_cache[status][IDX].extend([record_idx] * len(record_output))
+            self._output_cache[status]["result"].extend(record_output)
+
+        return self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
 
     def _check_parameter_match(self):
         """Validate that input data parameters match the wrapped function's signature.
@@ -330,11 +444,11 @@ class DataFactory:
                 continue
             # Check if required parameter is missing in batch
             if param_name not in batch_item:
-                raise TypeError(f"Batch item is missing required parameter '{param_name}' " f"for function {self.func.__name__}")
+                raise InputError(f"Batch item is missing required parameter '{param_name}' " f"for function {self.func.__name__}")
         # Check 2: Ensure all batch parameters exist in function signature
         for batch_param in batch_item.keys():
-            if batch_param not in func_sig.parameters:
-                raise TypeError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
+            if batch_param not in func_sig.parameters and batch_param != IDX:
+                raise InputError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
     def _process_batches(self) -> List[Any]:
         """Initiate batch processing through the job manager.
@@ -352,8 +466,8 @@ class DataFactory:
                 f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
             )
 
-        if self.config.run_mode == RUN_MODE_NORMAL:
-            self.original_input_data = list(self.input_data_queue.queue)
+        # if self.config.run_mode == RUN_MODE_NORMAL:
+
         return self.job_manager.run_orchestration()
 
     async def _save_project(self):
@@ -373,6 +487,7 @@ class DataFactory:
         if self.config.run_mode != RUN_MODE_DRY_RUN:
             logger.debug("\n2. Creating master job...")
             # First save the request config
+            # investigate why original_input_data lost the idx
             config_data = {
                 "generator": "test_generator",
                 "state": self.state.to_dict(),
@@ -384,14 +499,14 @@ class DataFactory:
             try:
                 func_hex = cloudpickle.dumps(self.func).hex()
             except TypeError as e:
-                logger.warning(f"Cannot serialize function for re-run due to unsupported type: {str(e)}")
+                logger.warning(f"Cannot serialize function for resume due to unsupported type: {str(e)}")
             except Exception as e:
                 logger.warning(f"Unexpected error serializing function: {str(e)}")
 
             try:
                 config_serialize = self.config.to_dict()
             except TypeError as e:
-                logger.warning(f"Cannot serialize config for re-run due to unsupported type: {str(e)}")
+                logger.warning(f"Cannot serialize config for resume due to unsupported type: {str(e)}")
             except Exception as e:
                 logger.warning(f"Unexpected error serializing config: {str(e)}")
 
@@ -522,7 +637,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
     # Validate parallel sources have same length
     lengths = [len(v) for v in parallel_sources.values()]
     if len(set(lengths)) > 1:
-        raise ValueError("All parallel sources must have the same length")
+        raise InputError("All parallel sources must have the same length")
 
     # Determine batch size (L)
     batch_size = lengths[0] if lengths else 1
@@ -530,7 +645,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
     # Prepare results
     results = Queue()
     for i in range(batch_size):
-        record = {}
+        record = {IDX: i}
 
         # Add data if exists
         if "data" in parallel_sources:
@@ -618,11 +733,11 @@ def data_factory(
         """Re-run a previously executed data generation job.
 
         Args:
-            master_job_id (str): ID of the master job to re-run
-            **kwargs: Additional configuration overrides for the re-run
+            master_job_id (str): ID of the master job to resume
+            **kwargs: Additional configuration overrides for the resume
 
         Returns:
-            List[Dict]: Processed output data from the re-run
+            List[Dict]: Processed output data from the resume
         """
         nonlocal _factory
         if _factory is None:
@@ -643,18 +758,18 @@ async def _re_run_get_master_job_request_config(factory: DataFactory):
         return master_job_config_data, master_job
     else:
         await factory._close_storage()
-        raise TypeError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
+        raise InputError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
 
 
 async def async_re_run(*args, **kwargs) -> List[Any]:
-    """Asynchronously re-run a previously executed data generation job.
+    """Asynchronously resume a previously executed data generation job.
 
     Args:
-        master_job_id (str): ID of the master job to re-run
-        **kwargs: Additional configuration overrides for the re-run
+        master_job_id (str): ID of the master job to resume
+        **kwargs: Additional configuration overrides for the resume
 
     Returns:
-        List[Any]: Processed output data from the re-run
+        List[Any]: Processed output data from the resume
 
     Raises:
         TypeError: If master job ID is not provided or job not found
@@ -668,13 +783,13 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         if len(args) == 1:
             factory.config.master_job_id = args[0]
         else:
-            raise TypeError("Master job id is required, please pass it in the paramters")
+            raise InputError("Master job id is required, please pass it in the paramters")
     # Update config with any additional kwargs
     for key, value in kwargs.items():
         if hasattr(factory.config, key):
             setattr(factory.config, key, value)
     if not factory.config.master_job_id:
-        raise TypeError("Master job id is required")
+        raise InputError("Master job id is required")
 
     await factory._storage_setup()
     master_job_config_data, master_job = await _re_run_get_master_job_request_config(factory=factory)
@@ -686,9 +801,10 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
             factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
     if not factory.func or not factory.config:
         await factory._close_storage()
-        raise TypeError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
+        raise NoResumeSupportError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
     factory.config.run_mode = RUN_MODE_RE_RUN
     factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
+    # missing the idx but the input_data order keep the same; so add idx back in the job_maanger
     factory.original_input_data = factory.config.prev_job["input_data"]
     factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
     # Call the __call__ method
@@ -702,7 +818,7 @@ def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
     This is the synchronous interface for re-running jobs.
 
     Args:
-        master_job_id (str): ID of the master job to re-run
+        master_job_id (str): ID of the master job to resume
         storage (str): Storage backend to use ('local' or 'in_memory')
         batch_size (int): Number of records to process in each batch
         target_count (int): Target number of records to generate (0 means process all input)
@@ -715,7 +831,7 @@ def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
         job_run_stop_threshold (int): Threshold for stopping job if too many records fail
 
     Returns:
-        List[Any]: Processed output data from the re-run
+        List[Any]: Processed output data from the resume
 
     Raises:
         TypeError: If master job ID is not provided or job not found

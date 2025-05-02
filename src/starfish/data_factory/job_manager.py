@@ -6,10 +6,12 @@ import json
 import uuid
 from queue import Queue
 from typing import Any, Callable, Dict, List
+import traceback
 
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import PROGRESS_LOG_INTERVAL
 from starfish.data_factory.constants import (
+    IDX,
     RECORD_STATUS,
     RUN_MODE_DRY_RUN,
     STATUS_COMPLETED,
@@ -55,6 +57,9 @@ class JobManager:
         _progress_ticker_task (asyncio.Task): Task for progress logging
     """
 
+    # ====================
+    # Initialization
+    # ====================
     def __init__(
         self, master_job_config: FactoryMasterConfig, state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None
     ):
@@ -81,32 +86,163 @@ class JobManager:
         )
         self.storage = storage
         self.state = state
-        # self.semaphore = None
-        # self.lock = None
         self.task_runner = TaskRunner(timeout=master_job_config.task_runner_timeout)
         self.job_input_queue = input_data_queue if input_data_queue else Queue()
-        # it shall be a thread safe queue
         self.job_output = Queue()
-        # Job counters
         self.prev_job = master_job_config.prev_job
+        # Initialize counters
+        self._initialize_counters()
+        self.active_operations = set()
+        self._progress_ticker_task = None
+        self.execution_time = 0
+        self.err_type_counter = {}
+
+    def _initialize_counters(self):
+        """Initialize all job counters."""
         self.completed_count = 0
         self.duplicate_count = 0
         self.filtered_count = 0
         self.failed_count = 0
         self.total_count = 0
-        self.active_operations = set()
-        self._progress_ticker_task = None
-        self.execution_time = 0
-        self.err_type_counter = {}
-        self.nums_input = 0
 
     async def setup_input_output_queue(self):
-        """Initialize and configure the input and output queues for the job.
-
-        This method is responsible for setting up the necessary queues for job processing.
-        It prepares the input queue for task data and the output queue for results.
-        """
         pass
+
+    # ====================
+    # Job Execution
+    # ====================
+    def run_orchestration(self):
+        """Start the job orchestration process.
+
+        This method initiates the main event loop for processing tasks, managing concurrency,
+        and handling task completion. It runs until either the target count is reached or
+        the stop threshold is triggered.
+        """
+        start_time = datetime.datetime.now(datetime.timezone.utc)
+        run_in_event_loop(self._async_run_orchestration())
+        self.execution_time = int((datetime.datetime.now(datetime.timezone.utc) - start_time).total_seconds())
+
+    async def _async_run_orchestration(self):
+        """Main asynchronous orchestration loop for the job.
+
+        This method manages the core job execution loop, including:
+        - Starting the progress ticker
+        - Processing tasks from the input queue
+        - Managing concurrency with semaphores
+        - Handling task completion and cleanup
+        """
+        self._initialize_concurrency_controls()
+
+        if self.job_config.show_progress:
+            self._progress_ticker_task = asyncio.create_task(self._progress_ticker())
+
+        self.running_tasks = set()
+
+        try:
+            await self._process_tasks()
+        finally:
+            await self._cleanup()
+
+    def _initialize_concurrency_controls(self):
+        """Initialize semaphore and lock for concurrency control."""
+        if hasattr(self, "semaphore"):
+            del self.semaphore
+        if hasattr(self, "lock"):
+            del self.lock
+        self.semaphore = asyncio.Semaphore(self.job_config.max_concurrency)
+        self.lock = asyncio.Lock()
+
+    async def _process_tasks(self):
+        """Process tasks from the input queue until stop condition is met."""
+        while not self._is_job_to_stop():
+            if not self.job_input_queue.empty():
+                await self.semaphore.acquire()
+                input_data = self.job_input_queue.get()
+                task = self._create_single_task(input_data)
+                self.running_tasks.add(task)
+                task.add_done_callback(self.running_tasks.discard)
+            else:
+                await asyncio.sleep(1)
+
+    # ====================
+    # Task Management
+    # ====================
+    def _create_single_task(self, input_data) -> asyncio.Task:
+        """Create and manage a single task."""
+        task = asyncio.create_task(self._run_single_task(input_data))
+        asyncio.create_task(self._handle_task_completion(task))
+        return task
+
+    async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
+        """Execute a single task with error handling."""
+        output = []
+        output_ref = []
+        task_status = STATUS_COMPLETED
+        err_output = {}
+        input_data_idx = input_data.pop(IDX, None)
+
+        try:
+            output = await self.task_runner.run_task(self.job_config.user_func, input_data)
+            task_status = self._evaluate_task_output(output)
+            output_ref = await self._save_record_data(copy.deepcopy(output), task_status, input_data)
+        except (Exception, TimeoutErrorAsyncio) as e:
+            task_status, err_output = self._handle_task_error(e)
+
+        if task_status != STATUS_COMPLETED:
+            self._requeue_task(input_data, input_data_idx)
+
+        return self._create_task_result(input_data_idx, task_status, output_ref, output, err_output)
+
+    def _evaluate_task_output(self, output):
+        """Evaluate task output and determine status."""
+        hooks_output = [hook(output, self.state) for hook in self.job_config.on_record_complete]
+        if STATUS_DUPLICATE in hooks_output:
+            return STATUS_DUPLICATE
+        if STATUS_FILTERED in hooks_output:
+            return STATUS_FILTERED
+        return STATUS_COMPLETED
+
+    def _handle_task_error(self, error):
+        """Handle task errors and update state."""
+        err_str = str(error)
+        # [-1]
+        err_trace = traceback.format_exc().splitlines()
+        logger.error(f"Error running task: {err_str}")
+
+        for hook in self.job_config.on_record_error:
+            hook(err_str, self.state)
+
+        return STATUS_FAILED, {"err_str": err_str, "err_trace": err_trace}
+
+    def _requeue_task(self, input_data, input_data_idx):
+        """Requeue a task that needs to be retried."""
+        input_data[IDX] = input_data_idx
+        self.job_input_queue.put(input_data)
+
+    def _create_task_result(self, input_data_idx, task_status, output_ref, output, err_output):
+        """Create a standardized task result dictionary."""
+        return {IDX: input_data_idx, RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": [err_output]}
+
+    # ====================
+    # Cleanup & Utilities
+    # ====================
+    async def _cleanup(self):
+        """Clean up resources after job completion."""
+        await self._del_progress_ticker()
+        await self._del_running_tasks()
+        await self._cancel_operations()
+
+    async def _del_running_tasks(self):
+        """Cancel all running tasks."""
+        for task in self.running_tasks:
+            task.cancel()
+        await asyncio.gather(*self.running_tasks, return_exceptions=True)
+
+    async def _cancel_operations(self):
+        """Cancel all active operations."""
+        for task in self.active_operations:
+            task.cancel()
+        await asyncio.gather(*self.active_operations, return_exceptions=True)
 
     async def _create_execution_job(self, job_uuid: str, input_data: Dict[str, Any]):
         """Create and log a new execution job in storage.
@@ -135,11 +271,6 @@ class JobManager:
             return await task
         finally:
             self.active_operations.discard(task)
-
-    async def _cancel_operations(self):
-        for task in self.active_operations:
-            task.cancel()
-        await asyncio.gather(*self.active_operations, return_exceptions=True)
 
     async def _job_save_record_data(self, records, task_status: str, input_data: Dict[str, Any]) -> List[str]:
         output_ref_list = []
@@ -205,24 +336,14 @@ class JobManager:
             )
 
         return consecutive_not_completed or completed_tasks_reach_target
-        # return completed_tasks_reach_target or (total_tasks_reach_target and consecutive_not_completed)
 
-    def run_orchestration(self):
-        """Start the job orchestration process.
-
-        This method initiates the main event loop for processing tasks, managing concurrency,
-        and handling task completion. It runs until either the target count is reached or
-        the stop threshold is triggered.
-        """
-        self.nums_input = self.job_input_queue.qsize()
-        start_time = datetime.datetime.now(datetime.timezone.utc)
-        run_in_event_loop(self._async_run_orchestration())
-        # await self._async_run_orchestration()
-        self.execution_time = int((datetime.datetime.now(datetime.timezone.utc) - start_time).total_seconds())  # Convert to seconds and cast to int
-
+    # ====================
+    # Progress Tracking
+    # ====================
     async def _progress_ticker(self):
-        """Log a message every 5 seconds."""
+        """Log job progress at regular intervals."""
         while not self._is_job_to_stop():
+            """Format and log the current job progress."""
             logger.info(
                 f"[JOB PROGRESS] "
                 f"\033[32mCompleted: {self.completed_count}/{self.job_config.target_count}\033[0m | "
@@ -236,122 +357,13 @@ class JobManager:
             await asyncio.sleep(PROGRESS_LOG_INTERVAL)
 
     async def _del_progress_ticker(self):
-        """Delete the progress ticker."""
-        # Ensure the ticker task is cancelled when the orchestration ends
+        """Safely stop the progress ticker."""
         if self._progress_ticker_task:
             self._progress_ticker_task.cancel()
             try:
                 await self._progress_ticker_task
             except asyncio.CancelledError:
                 pass
-
-    async def _del_running_tasks(self):
-        # Cancel all running tasks
-        # todo whether openai call will close
-        for task in self.running_tasks:
-            task.cancel()
-        # Wait for all tasks to be cancelled
-        await asyncio.gather(*self.running_tasks, return_exceptions=True)
-
-    async def _async_run_orchestration(self):
-        """Main asynchronous orchestration loop for the job.
-
-        This method manages the core job execution loop, including:
-        - Starting the progress ticker
-        - Processing tasks from the input queue
-        - Managing concurrency with semaphores
-        - Handling task completion and cleanup
-        """
-        # # Clean up existing semaphore and lock if they exist
-        if hasattr(self, "semaphore"):
-            del self.semaphore
-        if hasattr(self, "lock"):
-            del self.lock
-
-        # Create new instances
-        self.semaphore = asyncio.Semaphore(self.job_config.max_concurrency)
-        self.lock = asyncio.Lock()
-
-        # Start the ticker task
-        if self.job_config.show_progress:
-            self._progress_ticker_task = asyncio.create_task(self._progress_ticker())
-        # Store all running tasks
-        self.running_tasks = set()
-
-        try:
-            while not self._is_job_to_stop():
-                logger.debug("Job is not to stop, checking job input queue")
-                if not self.job_input_queue.empty():
-                    logger.debug("Job input queue is not empty, acquiring semaphore")
-                    await self.semaphore.acquire()
-                    logger.debug("Semaphore acquired, waiting for task to complete")
-                    input_data = self.job_input_queue.get()
-                    task = self._create_single_task(input_data)
-                    self.running_tasks.add(task)
-                    task.add_done_callback(self.running_tasks.discard)
-                else:
-                    await asyncio.sleep(1)
-        finally:
-            await self._del_progress_ticker()
-
-            await self._del_running_tasks()
-
-            await self._cancel_operations()
-
-    def _create_single_task(self, input_data) -> asyncio.Task:
-        task = asyncio.create_task(self._run_single_task(input_data))
-        asyncio.create_task(self._handle_task_completion(task))
-        logger.debug("Task created, waiting for task to complete")
-        return task
-
-    async def _run_single_task(self, input_data) -> List[Dict[str, Any]]:
-        """Run a single task with error handling and storage.
-
-        Args:
-            input_data: Input data for the task
-
-        Returns:
-            Dict[str, Any]: Dictionary containing:
-                - RECORD_STATUS: Status of the task (completed, failed, etc.)
-                - output_ref: List of storage references for the output
-                - output: The actual output data from the task
-        """
-        output = []
-        output_ref = []
-        task_status = STATUS_COMPLETED
-        err_str = ""
-        try:
-            # Execute the main task
-            output = await self.task_runner.run_task(self.job_config.user_func, input_data)
-
-            hooks_output = []
-            for hook in self.job_config.on_record_complete:
-                hooks_output.append(hook(output, self.state))
-            if hooks_output.count(STATUS_DUPLICATE) > 0:
-                # duplicate filtered need retry
-                task_status = STATUS_DUPLICATE
-            elif hooks_output.count(STATUS_FILTERED) > 0:
-                task_status = STATUS_FILTERED
-
-            output_ref = await self._save_record_data(copy.deepcopy(output), task_status, input_data)
-            # output_ref = await self._job_save_record_data(copy.deepcopy(output), task_status, input_data)
-
-        except (Exception, TimeoutErrorAsyncio) as e:
-            err_str = str(e)
-            logger.error(f"Error running task: {err_str}")
-            # Run error hooks
-            for hook in self.job_config.on_record_error:
-                hook(err_str, self.state)
-            # async with self.lock:  # Acquire lock for status update
-            task_status = STATUS_FAILED
-
-        # Handle incomplete tasks
-        if task_status != STATUS_COMPLETED:
-            logger.debug(f"Task is not completed as {task_status}, putting input data back to the job input queue")
-            # async with self.lock:  # Acquire lock for queue operation
-            self.job_input_queue.put(input_data)
-
-        return {RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": err_str}
 
     async def _handle_task_completion(self, task):
         """Handle task completion and update counters.
@@ -378,35 +390,43 @@ class JobManager:
                 self.filtered_count += 1
             elif task_status == STATUS_FAILED:
                 self.failed_count += 1
-                err_str = result.get("err")
-                self.err_type_counter[err_str] = self.err_type_counter.get(err_str, 0) + 1
+                # Safely extract error information with better type checking
+                err_output = result.get("err", [{}])[0]  # Default to empty dict if no error
+                err_str = err_output.get("err_str", "Unknown error").strip()  # Clean up whitespace
+
+                # Normalize error string for consistent counting
+                normalized_err = err_str.lower().strip()
+                self.err_type_counter[normalized_err] = self.err_type_counter.get(normalized_err, 0) + 1
+                # Optionally log the error count for this type
+                logger.debug(f"Error type '{normalized_err}' count: {self.err_type_counter[normalized_err]}")
             # await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
             self.semaphore.release()
 
-    async def _async_run_orchestration_3_11(self):
-        """Main asynchronous orchestration loop for the job.
+    # reserve this function for reference
+    # async def _async_run_orchestration_3_11(self):
+    #     """Main asynchronous orchestration loop for the job.
 
-        This method manages the core job execution loop, including:
-        - Starting the progress ticker
-        - Processing tasks from the input queue
-        - Managing concurrency with semaphores
-        - Handling task completion and cleanup
-        """
-        # Start the ticker task
-        if self.job_config.show_progress:
-            self._progress_ticker_task = asyncio.create_task(self._progress_ticker())
+    #     This method manages the core job execution loop, including:
+    #     - Starting the progress ticker
+    #     - Processing tasks from the input queue
+    #     - Managing concurrency with semaphores
+    #     - Handling task completion and cleanup
+    #     """
+    #     # Start the ticker task
+    #     if self.job_config.show_progress:
+    #         self._progress_ticker_task = asyncio.create_task(self._progress_ticker())
 
-        try:
-            async with asyncio.TaskGroup() as tg:
-                while not self._is_job_to_stop():
-                    logger.debug("Job is not to stop, checking job input queue")
-                    if not self.job_input_queue.empty():
-                        logger.debug("Job input queue is not empty, acquiring semaphore")
-                        await self.semaphore.acquire()
-                        logger.debug("Semaphore acquired, waiting for task to complete")
-                        input_data = self.job_input_queue.get()
-                        task = tg.create_task(self._run_single_task(input_data))
-                        asyncio.create_task(self._handle_task_completion(task))
-        finally:
-            await self._del_progress_ticker()
-            await self._cancel_operations()
+    #     try:
+    #         async with asyncio.TaskGroup() as tg:
+    #             while not self._is_job_to_stop():
+    #                 logger.debug("Job is not to stop, checking job input queue")
+    #                 if not self.job_input_queue.empty():
+    #                     logger.debug("Job input queue is not empty, acquiring semaphore")
+    #                     await self.semaphore.acquire()
+    #                     logger.debug("Semaphore acquired, waiting for task to complete")
+    #                     input_data = self.job_input_queue.get()
+    #                     task = tg.create_task(self._run_single_task(input_data))
+    #                     asyncio.create_task(self._handle_task_completion(task))
+    #     finally:
+    #         await self._del_progress_ticker()
+    #         await self._cancel_operations()
