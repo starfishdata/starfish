@@ -1,3 +1,4 @@
+import asyncio
 import nest_asyncio
 import pytest
 
@@ -107,69 +108,34 @@ async def test_case_reuse_run_same_factory():
     data_factory.resume_from_checkpoint(input_format_mock_llm.factory.config.master_job_id)
 
 
-# @pytest.mark.asyncio
-# async def test_case_keyboard_interrupt():
-#     """Test handling of keyboard interrupt (Ctrl+C)"""
-#     @data_factory(max_concurrency=2)
-#     async def test_interrupt(city_name, num_records_per_city):
-#         try:
-#             #await asyncio.sleep(1)  # Simulate long-running task
-#             return await mock_llm_call(city_name, num_records_per_city)
-#         except asyncio.CancelledError:
-#             raise KeyboardInterrupt()
+@pytest.mark.asyncio
+async def test_case_keyboard_interrupt(monkeypatch):
+    """Test handling of keyboard interrupt (Ctrl+C)"""
+    processed_tasks = 0
 
-#     async def interrupt_after_delay():
-#         await asyncio.sleep(1)
-#         # Get the current task and cancel it
-#         for task in asyncio.all_tasks():
-#             if task.get_name() == 'test_interrupt_task':
-#                 task.cancel()
-#                 break
+    @data_factory(max_concurrency=2)
+    async def test_interrupt(city_name, num_records_per_city):
+        nonlocal processed_tasks
+        await asyncio.sleep(0.1)  # Simulate processing time
+        processed_tasks += 1
+        return await mock_llm_call(city_name, num_records_per_city)
 
-#     # Create and name the main task
-#     main_task = asyncio.create_task(
-#         test_interrupt.run(
-#             city_name=["SF", "Shanghai", "yoyo"] * 20,
-#             num_records_per_city=1
-#         ),
-#         name='test_interrupt_task'
-#     )
+    async def mock_sleep(duration):
+        # Allow some tasks to complete before interrupting
+        if processed_tasks < 10:  # Let at least 2 tasks complete
+            return await original_sleep(duration)
+        raise KeyboardInterrupt()
 
-#     # Start the interrupt task
-#     asyncio.create_task(interrupt_after_delay())
+    # Store the original sleep function
+    original_sleep = asyncio.sleep
+    # Replace asyncio.sleep with our mock
+    monkeypatch.setattr(asyncio, "sleep", mock_sleep)
 
-#     # Verify the task was interrupted
-#     with pytest.raises(KeyboardInterrupt):
-#         await main_task
+    try:
+        test_interrupt.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=1)
 
-
-# @pytest.mark.asyncio
-# async def test_case_keyboard_interrupt(monkeypatch):
-#     """Test handling of keyboard interrupt (Ctrl+C)"""
-#     @data_factory(max_concurrency=2)
-#     async def test_interrupt(city_name, num_records_per_city):
-#         await asyncio.sleep(1)  # Simulate long-running task
-#         return await mock_llm_call(city_name, num_records_per_city)
-
-#     # Create a flag to track if we've interrupted
-#     interrupted = False
-
-#     async def mock_sleep(duration):
-#         nonlocal interrupted
-#         if not interrupted:
-#             await original_sleep(1)  # Allow some initial processing
-#             interrupted = True
-#             raise KeyboardInterrupt()
-#         # After interrupt, use the real sleep
-#         return await original_sleep(duration)
-
-#     # Store the original sleep function
-#     original_sleep = asyncio.sleep
-#     # Replace asyncio.sleep with our mock
-#     monkeypatch.setattr(asyncio, 'sleep', mock_sleep)
-
-#     with pytest.raises(KeyboardInterrupt):
-#         await test_interrupt.run(
-#             city_name=["SF", "Shanghai", "yoyo"] * 20,
-#             num_records_per_city=1
-#         )
+        # Verify some tasks were processed before interrupt
+        assert processed_tasks > 0
+    finally:
+        # Cleanup: restore original sleep function
+        monkeypatch.undo()

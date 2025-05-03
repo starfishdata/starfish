@@ -47,18 +47,18 @@ async def test_list_detail():
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Skipping this test case as not implementing data_factory decorator outside the function")
+# @pytest.mark.skip(reason="Skipping this test case as not implementing data_factory decorator outside the function")
 async def test_get_datafactory_run():
     """Test with input data and broadcast variables
     - Input: List of dicts with city names
     - Broadcast: num_records_per_city
     - Expected: All cities processed successfully
     """
+    data_gen_template.list()
     get_city_info_wf = data_gen_template.get("starfish/get_city_info_wf")
     results = get_city_info_wf.run(
-        city_name=["San Francisco", "New York", "Los Angeles"] * 0,
+        city_name=["San Francisco", "New York", "Los Angeles"] * 5,
         region_code=["DE", "IT", "US"] * 5,
-        # num_records_per_city = 3
     )
     assert len(results) == 15
 
