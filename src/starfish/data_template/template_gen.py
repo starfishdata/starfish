@@ -137,6 +137,8 @@ class data_gen_template:
                                                     args[keyword.arg] = keyword.value.id
                                             template_args = args
                                             break
+                                    if template_args:  # Add this check to break outer loop
+                                        break
 
                                     # Register the template if we found the registration decorator
                                     if template_args:
