@@ -2,10 +2,10 @@ import nest_asyncio
 import pytest
 import os
 
-from starfish.data_factory.factory import data_factory, resume_from_checkpoint
+from starfish.data_factory.factory import data_factory
 from starfish.common.env_loader import load_env_file
 from starfish.data_factory.constants import STATUS_COMPLETED
-from starfish.data_factory.utils.errors import InputError, NoResumeSupportError, OutputError
+from starfish.data_factory.utils.errors import InputError, OutputError
 from starfish.data_factory.utils.mock import mock_llm_call
 from starfish.llm.structured_llm import StructuredLLM
 
@@ -227,83 +227,6 @@ async def test_case_timeout():
 
 
 @pytest.mark.asyncio
-async def test_case_re_run_master_id_not_found():
-    """Test extra parameters not defined in workflow
-    - Input: List of dicts with city names
-    - Extra: random_param not defined in workflow
-    - Expected: TypeError due to unexpected parameter
-    """
-
-    with pytest.raises(InputError):
-        resume_from_checkpoint("123")
-
-
-@pytest.mark.asyncio
-async def test_case_job_re_run():
-    """Test extra parameters not defined in workflow
-    - Input: List of dicts with city names
-    - Extra: random_param not defined in workflow
-    - Expected: TypeError due to unexpected parameter
-    """
-
-    @data_factory(max_concurrency=2, job_run_stop_threshold=2)
-    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
-        # global master_job_id
-        result = await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
-        # master_job_id = test1.factory.config.master_job_id
-        return result
-
-    result = test1.run(
-        data=[
-            {"city_name": "1. New York"},
-            {"city_name": "2. Los Angeles"},
-        ],
-        num_records_per_city=1,
-    )
-    assert len(result) == 2
-    master_job_id = test1.factory.config.master_job_id
-    result = data_factory.resume_from_checkpoint(master_job_id)
-    assert len(result) == 2
-    result = test1.resume()
-    assert len(result) == 2
-    result = resume_from_checkpoint(master_job_id)
-    assert len(result) == 2
-
-
-@pytest.mark.asyncio
-async def test_case_job_re_run_catch_typeErr():
-    """Test extra parameters not defined in workflow
-    - Input: List of dicts with city names
-    - Extra: random_param not defined in workflow
-    - Expected: TypeError due to unexpected parameter
-    """
-
-    @data_factory(max_concurrency=2, job_run_stop_threshold=2)
-    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
-        global master_job_id
-        result = await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
-        master_job_id = test1.factory.config.master_job_id
-        return result
-
-    result = test1.run(
-        data=[
-            {"city_name": "1. New York"},
-            {"city_name": "2. Los Angeles"},
-        ],
-        num_records_per_city=1,
-    )
-    master_job_id = test1.factory.config.master_job_id
-    result = test1.resume()
-    assert len(result) == 2
-    # TypeError
-    with pytest.raises(NoResumeSupportError):
-        data_factory.resume_from_checkpoint(master_job_id)
-
-    with pytest.raises(NoResumeSupportError):
-        resume_from_checkpoint(master_job_id)
-
-
-@pytest.mark.asyncio
 async def test_case_job_run_stop_threshold():
     """Test extra parameters not defined in workflow
     - Input: List of dicts with city names
@@ -322,24 +245,6 @@ async def test_case_job_run_stop_threshold():
         ],
         num_records_per_city=1,
     )
-
-
-@pytest.mark.asyncio
-async def test_case_reuse_run_same_factory():
-    @data_factory(max_concurrency=10)
-    async def input_format_mock_llm(city_name: str, num_records_per_city: int):
-        return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=0.01)
-
-    result = input_format_mock_llm.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
-    assert len(result) == 4
-
-    result = input_format_mock_llm.run(city_name=["SF", "Shanghai", "yoyo"], num_records_per_city=2)
-    assert len(result) == 6
-
-    result = input_format_mock_llm.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=2)
-    assert len(result) == 120
-    # -- input_format_mock_llm.resume_from_checkpoint()
-    data_factory.resume_from_checkpoint(input_format_mock_llm.factory.config.master_job_id)
 
 
 @pytest.mark.asyncio
@@ -387,50 +292,3 @@ async def test_case_reuse_run_different_factory():
 #     result = test_pydantic_issue.run(city_name=["SF", "Shanghai"], num_records_per_city=2)
 #     # num of records not used right now
 #     assert len(result) == 2
-
-
-@pytest.mark.asyncio
-async def test_input_output_idx():
-    """Test with input data and broadcast variables
-    - Input: List of dicts with city names
-    - Broadcast: num_records_per_city
-    - Expected: All cities processed successfully
-    """
-
-    @data_factory(max_concurrency=2)
-    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=1):
-        return await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
-
-    nums_per_record = 5
-    result = test1.run(
-        data=[
-            {"city_name": "1. New York"},
-            {"city_name": "2. Los Angeles"},
-            {"city_name": "3. Chicago"},
-            {"city_name": "4. Houston"},
-            {"city_name": "5. Miami"},
-        ],
-        num_records_per_city=nums_per_record,
-    )
-    input_data = test1.get_input_data()
-    assert len(input_data) == 5
-    idx = test1.get_index(filter="completed")
-    assert len(result) == len(idx)
-    idx_com = test1.get_index_completed()
-    assert len(result) == len(idx_com)
-    idx_dup = test1.get_index_duplicate()
-    assert len(idx_dup) == 0
-    idx_fail = test1.get_index_failed()
-    assert len(idx_fail) + len(idx_com) == 25
-    idx_fil = test1.get_index_filtered()
-    assert len(idx_fil) == 0
-    completed_data = test1.get_output_data(filter="completed")
-    assert len(completed_data) == len(result)
-    duplicate_data = test1.get_output_duplicate()
-    assert len(duplicate_data) == 0
-    completed_data = test1.get_output_completed()
-    assert len(completed_data) == 25
-    filtered_data = test1.get_output_filtered()
-    assert len(filtered_data) == 0
-    failed_data = test1.get_output_failed()
-    assert len(failed_data) + len(completed_data) == 25

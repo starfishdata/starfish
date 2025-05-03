@@ -262,14 +262,10 @@ class DataFactory:
             await self._setup_job_execution()
             self._execute_job()
 
-            # Process and return results
-            return await self._finalize_job()
-
-        except Exception as e:
+        except (InputError, OutputError, KeyboardInterrupt, Exception) as e:
             self.err = e
-            raise
         finally:
-            await self._cleanup_job()
+            return await self._finalize_and_cleanup_job()
 
     async def _initialize_job(self, *args, **kwargs) -> None:
         """Initialize job configuration and manager based on run mode."""
@@ -324,34 +320,38 @@ class DataFactory:
 
     async def _finalize_job(self) -> List[Dict]:
         """Complete job execution and return results."""
-        result = self._process_output()
-        if len(result) == 0:
-            self.err = OutputError("No records generated")
-            raise self.err
+        result = None
+        if self.job_manager:
+            result = self._process_output()
+            if len(result) == 0:
+                self.err = OutputError("No records generated")
+                # raise self.err
 
-        await self._complete_master_job()
-        self._show_job_progress_status()
+            await self._complete_master_job()
+            self._show_job_progress_status()
 
         return result
 
-    async def _cleanup_job(self) -> None:
+    async def _finalize_and_cleanup_job(self) -> None:
+        result = await self._finalize_job()
         """Handle job cleanup and error reporting."""
         self._send_telemetry_event()
 
         if self.err:
-            # if Type or Value error, close the storage and return
-            # be more specific
             if isinstance(self.err, (InputError, OutputError)):
                 await self._close_storage()
-                return
+                raise self.err
             else:
                 # log the error
                 err_msg = "KeyboardInterrupt" if isinstance(self.err, KeyboardInterrupt) else str(self.err)
                 logger.error(f"Error occurred: {err_msg}")
-                logger.info("[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
+                logger.info(
+                    f"[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling resume_from_checkpoint(master_job_id='{self.config.master_job_id}')"
+                )
         # save request config and close storage
         await self._save_request_config()
         await self._close_storage()
+        return result
 
     def _send_telemetry_event(self):
         """Send telemetry data for the completed job.

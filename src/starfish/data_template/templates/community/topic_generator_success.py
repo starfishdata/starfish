@@ -36,11 +36,11 @@ def topic_generator(input_data: TopicGeneratorInput) -> TopicGeneratorOutput:
         # Step 2: Process topics in parallel
         @data_factory(max_concurrency=10)
         async def process_topics(topics: list[str]) -> list[str]:
-            return [refine_topic(topic) for topic in topics]
+            return [{"ans": refine_topic(topic) for topic in topics}]
 
-        refined_topics = process_topics.run(generated_topics)
+        refined_topics = process_topics.run(topics=generated_topics)
 
-        return TopicGeneratorOutput(generated_topics=refined_topics, success=True, message="Topics generated successfully")
+        return TopicGeneratorOutput(generated_topics=[topic["ans"] for topic in refined_topics], success=True, message="Topics generated successfully")
     except Exception as e:
         return TopicGeneratorOutput(generated_topics=[], success=False, message=str(e))
 
@@ -50,7 +50,7 @@ def generate_initial_topics(input_data: TopicGeneratorInput) -> list[str]:
     # Implement your topic generation logic here
     # This could use AI models or other algorithms
     # ... existing code ...
-    return ["Topic 1", "Topic 2", "Topic 3"]  # Placeholder
+    return [{"topic": "Topic 1"}, {"topic": "Topic 2"}, {"topic": "Topic 3"}]  # Placeholder
 
 
 def refine_topic(topic: str) -> str:
