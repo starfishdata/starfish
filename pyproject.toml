@@ -21,6 +21,7 @@ typing-extensions = ">=4.0.0,<5.0.0"
 posthog = "^3.11.0"
 cloudpickle = "^2.2.0"
 psutil = ">=7.0.0,<8.0.0"
+nest_asyncio = "^1.6.0"
 # Force cryptography >=44.0.1 due to transitive security vulnerability
 # See: https://openssl-library.org/news/secadv/20250211.txt
 cryptography = ">=44.0.1"

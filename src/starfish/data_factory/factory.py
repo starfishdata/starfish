@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 from os import environ
+import sys
 import uuid
 from inspect import Parameter, signature
 from queue import Queue
@@ -45,6 +46,47 @@ F = TypeVar("F", bound=Callable[..., Any])
 P = ParamSpec("P")
 
 T = TypeVar("T")
+
+# Flag to track if nest_asyncio has been applied
+_NEST_ASYNCIO_APPLIED = False
+
+
+def _ensure_nest_asyncio():
+    """Ensure nest_asyncio is applied if needed.
+
+    Returns:
+        bool: True if nest_asyncio is applied or not needed
+    """
+    global _NEST_ASYNCIO_APPLIED
+
+    if _NEST_ASYNCIO_APPLIED:
+        return True
+
+    # Check if we're in an environment that typically needs nest_asyncio
+    running_in_notebook = "ipykernel" in sys.modules
+    running_in_colab = "google.colab" in sys.modules
+
+    if running_in_notebook or running_in_colab or _is_event_loop_running():
+        import nest_asyncio
+
+        nest_asyncio.apply()
+        _NEST_ASYNCIO_APPLIED = True
+        logger.debug("nest_asyncio has been applied to support nested event loops")
+
+    return True
+
+
+def _is_event_loop_running():
+    """Check if an event loop is currently running.
+
+    Returns:
+        bool: True if an event loop is running, False otherwise
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        return loop.is_running()
+    except RuntimeError:
+        return False
 
 
 class DataFactoryWrapper(Generic[T]):
@@ -842,6 +884,12 @@ def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
 def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[Dict]:
     """Manage the event loop for executing an async callable in synchronous contexts.
 
+    This function intelligently manages asyncio event loops:
+    - Uses existing loops when available
+    - Creates new loops only when needed
+    - Automatically detects notebook environments
+    - Applies nest_asyncio when necessary
+
     Args:
         callable_func (Callable): The async function to execute
         *args: Positional arguments to pass to the callable
@@ -849,36 +897,29 @@ def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[Dict]:
 
     Returns:
         Any: The result of the callable function
-
-    Note:
-        Handles event loop creation and cleanup, ensuring proper resource management
-        when calling async functions from synchronous code.
     """
-    # Clean up existing event loop
+    # Try to ensure nest_asyncio is applied if needed
+    _ensure_nest_asyncio()
+
     try:
+        # Try to get the current event loop
         loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.close()  # Close if running
-        elif not loop.is_closed():
-            loop.close()  # Close if not running and not closed
-    except RuntimeError:  # Handle case where loop is closed or doesn't exist
-        pass  # No loop to close, proceed to create a new one
 
-    # Create new event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    # Execute the callable
-    try:
+        # Execute in current loop
+        logger.debug("Using existing event loop for execution")
         result = loop.run_until_complete(callable_func(*args, **kwargs))
         return result
-    finally:
-        # Clean up after execution
+
+    except RuntimeError as e:
+        # No event loop in current context or other RuntimeError
+        logger.debug(f"Creating new event loop: {str(e)}")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.close()  # Close if running
-            elif not loop.is_closed():
-                loop.close()  # Close if not running and not closed
-        except RuntimeError:
-            pass
+            result = loop.run_until_complete(callable_func(*args, **kwargs))
+            return result
+        finally:
+            # Only close the loop if we created it
+            loop.close()
+            logger.debug("Closed newly created event loop")
