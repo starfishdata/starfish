@@ -82,7 +82,7 @@ class JobManagerRerun(JobManager):
 
     def _extract_previous_job_data(self) -> list:
         """Extract and clean up previous job data."""
-        input_data = self.prev_job["input_data"]
+        input_data = copy.deepcopy(self.prev_job["input_data"])
         del self.prev_job["input_data"]
         return input_data
 
@@ -121,15 +121,15 @@ class JobManagerRerun(JobManager):
         idx = 0  # Initialize external counter to avoid use enumerate
         for item in input_data:
             # Create a deep copy of the item to avoid modifying the original
-            item_copy = {k: v for k, v in item.items() if k != IDX}
+            # item_copy = {k: v for k, v in item.items() if k != IDX}
 
-            input_data_str = json.dumps(item_copy, sort_keys=True) if isinstance(item_copy, dict) else str(item_copy)
+            input_data_str = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
             input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
 
             if input_data_hash in input_dict:
                 input_dict[input_data_hash]["count"].append(idx)
             else:
-                input_dict[input_data_hash] = {"data": item_copy, "data_str": input_data_str, "count": [idx]}
+                input_dict[input_data_hash] = {"data": item, "data_str": input_data_str, "count": [idx]}
             idx += 1  # Increment counter after processing each item
         return input_dict
 

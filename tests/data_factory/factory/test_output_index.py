@@ -50,7 +50,7 @@ async def test_input_output_idx():
     duplicate_data = test1.get_output_duplicate()
     assert len(duplicate_data) == 0
     completed_data = test1.get_output_completed()
-    assert len(completed_data) == 25
+    assert len(completed_data) == len(result)
     filtered_data = test1.get_output_filtered()
     assert len(filtered_data) == 0
     failed_data = test1.get_output_failed()
