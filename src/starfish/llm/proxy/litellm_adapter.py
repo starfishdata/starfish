@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 
 import litellm
+from litellm.utils import supports_response_schema
 
 from starfish.common.logger import get_logger
 from starfish.llm.proxy.litellm_adapter_ext import (
@@ -202,3 +203,20 @@ async def build_and_call_chat_model(
 
     # Execute the chat completion
     return await call_chat_model(model_name, messages, model_kwargs)
+
+
+def is_response_schema_supported(model_name: str) -> bool:
+    """Check if a model supports the response_schema parameter.
+
+    Args:
+        model_name: Name of the model to check
+
+    Returns:
+        bool: True if the model supports response_schema, False otherwise
+    """
+    try:
+        # Use litellm's native function to check if model supports json_schema
+        return supports_response_schema(model=model_name)
+    except Exception as e:
+        logger.warning(f"Error checking response schema support: {e}")
+        return False
