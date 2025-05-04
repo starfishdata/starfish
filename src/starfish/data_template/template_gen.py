@@ -137,12 +137,10 @@ class data_gen_template:
                                                     args[keyword.arg] = keyword.value.id
                                             template_args = args
                                             break
-                                    if template_args:  # Add this check to break outer loop
-                                        break
-
                                     # Register the template if we found the registration decorator
                                     if template_args:
                                         data_gen_template._template_registry[f"{template_args['name']}"] = template_args
+                                        break
 
                         except Exception as e:
                             print(f"Warning: Could not parse {template_file}: {e}")

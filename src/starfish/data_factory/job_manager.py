@@ -223,6 +223,43 @@ class JobManager:
         """Create a standardized task result dictionary."""
         return {IDX: input_data_idx, RECORD_STATUS: task_status, "output_ref": output_ref, "output": output, "err": [err_output]}
 
+    async def _handle_task_completion(self, task):
+        """Handle task completion and update counters.
+
+        Args:
+            task (asyncio.Task): The completed task
+
+        Updates:
+            - Job counters (completed, failed, etc.)
+            - Output queue
+            - Semaphore
+        """
+        result = await task
+        async with self.lock:
+            self.job_output.put(result)
+            self.total_count += 1
+            task_status = result.get(RECORD_STATUS)
+            # Update counters based on task status
+            if task_status == STATUS_COMPLETED:
+                self.completed_count += 1
+            elif task_status == STATUS_DUPLICATE:
+                self.duplicate_count += 1
+            elif task_status == STATUS_FILTERED:
+                self.filtered_count += 1
+            elif task_status == STATUS_FAILED:
+                self.failed_count += 1
+                # Safely extract error information with better type checking
+                err_output = result.get("err", [{}])[0]  # Default to empty dict if no error
+                err_str = err_output.get("err_str", "Unknown error").strip()  # Clean up whitespace
+
+                # Normalize error string for consistent counting
+                normalized_err = err_str.lower().strip()
+                self.err_type_counter[normalized_err] = self.err_type_counter.get(normalized_err, 0) + 1
+                # Optionally log the error count for this type
+                logger.debug(f"Error type '{normalized_err}' count: {self.err_type_counter[normalized_err]}")
+            # await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
+            self.semaphore.release()
+
     # ====================
     # Cleanup & Utilities
     # ====================
@@ -364,43 +401,6 @@ class JobManager:
                 await self._progress_ticker_task
             except asyncio.CancelledError:
                 pass
-
-    async def _handle_task_completion(self, task):
-        """Handle task completion and update counters.
-
-        Args:
-            task (asyncio.Task): The completed task
-
-        Updates:
-            - Job counters (completed, failed, etc.)
-            - Output queue
-            - Semaphore
-        """
-        result = await task
-        async with self.lock:
-            self.job_output.put(result)
-            self.total_count += 1
-            task_status = result.get(RECORD_STATUS)
-            # Update counters based on task status
-            if task_status == STATUS_COMPLETED:
-                self.completed_count += 1
-            elif task_status == STATUS_DUPLICATE:
-                self.duplicate_count += 1
-            elif task_status == STATUS_FILTERED:
-                self.filtered_count += 1
-            elif task_status == STATUS_FAILED:
-                self.failed_count += 1
-                # Safely extract error information with better type checking
-                err_output = result.get("err", [{}])[0]  # Default to empty dict if no error
-                err_str = err_output.get("err_str", "Unknown error").strip()  # Clean up whitespace
-
-                # Normalize error string for consistent counting
-                normalized_err = err_str.lower().strip()
-                self.err_type_counter[normalized_err] = self.err_type_counter.get(normalized_err, 0) + 1
-                # Optionally log the error count for this type
-                logger.debug(f"Error type '{normalized_err}' count: {self.err_type_counter[normalized_err]}")
-            # await self._update_progress(task_status, STATUS_MOJO_MAP[task_status])
-            self.semaphore.release()
 
     # reserve this function for reference
     # async def _async_run_orchestration_3_11(self):
