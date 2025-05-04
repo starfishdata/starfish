@@ -5,6 +5,7 @@ import uuid
 from inspect import Parameter, signature
 from queue import Queue
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast, Protocol
+# from types import MappingProxyType
 
 import cloudpickle
 from starfish.data_factory.utils.errors import InputError, OutputError, NoResumeSupportError
@@ -234,7 +235,7 @@ class DataFactory:
         self.config_ref = None
         self.job_manager = None
         self.same_session = False
-        self.original_input_data = []
+        self.original_input_data = ()
         self.result_idx = []
         self._output_cache = {}
 
@@ -283,7 +284,7 @@ class DataFactory:
 
     async def _setup_dry_run_job(self, *args, **kwargs) -> None:
         """Configure job for dry-run mode."""
-        self.input_data_queue = _default_input_converter(*args, **kwargs)
+        self.input_data_queue, _ = _default_input_converter(*args, **kwargs)
         self._check_parameter_match()
         await self._storage_setup()
         self.job_manager = JobManagerDryRun(
@@ -293,9 +294,8 @@ class DataFactory:
     async def _setup_normal_job(self, *args, **kwargs) -> None:
         """Configure job for normal execution mode."""
         self._clean_up_in_same_session()
-        self.input_data_queue = _default_input_converter(*args, **kwargs)
+        self.input_data_queue, self.original_input_data = _default_input_converter(*args, **kwargs)
         self._check_parameter_match()
-        self.original_input_data = list(self.input_data_queue.queue)
         await self._storage_setup()
         self._update_job_config()
         self.config.project_id = str(uuid.uuid4())
@@ -433,7 +433,7 @@ class DataFactory:
         func_sig = signature(self.func)
 
         # Validate batch items against function parameters
-        batch_item = self.input_data_queue.queue[0]
+        batch_item = self.original_input_data[0]
         for param_name, param in func_sig.parameters.items():
             # Skip if parameter has a default value
             if param.default is not Parameter.empty:
@@ -443,7 +443,7 @@ class DataFactory:
                 raise InputError(f"Batch item is missing required parameter '{param_name}' " f"for function {self.func.__name__}")
         # Check 2: Ensure all batch parameters exist in function signature
         for batch_param in batch_item.keys():
-            if batch_param not in func_sig.parameters and batch_param != IDX:
+            if batch_param not in func_sig.parameters:
                 raise InputError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
     def _process_batches(self) -> List[Any]:
@@ -487,7 +487,7 @@ class DataFactory:
             config_data = {
                 "generator": "test_generator",
                 "state": self.state.to_dict(),
-                "input_data": self.original_input_data,
+                "input_data": list(self.original_input_data),
             }
             func_hex = None
             config_serialize = None
@@ -603,7 +603,7 @@ class DataFactory:
         )
 
 
-def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Queue[Dict[str, Any]]:
+def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tuple[Queue[Dict[str, Any]], tuple[Dict[str, Any]]]:
     """Convert input data into a queue of records for processing.
 
     Args:
@@ -640,6 +640,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
 
     # Prepare results
     results = Queue()
+    original_input_data = []
     for i in range(batch_size):
         record = {IDX: i}
 
@@ -659,7 +660,10 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> Que
 
         results.put(record)
 
-    return results
+        original_input_data.append({k: v for k, v in record.items() if k != IDX})
+
+    # Convert the list to an immutable tuple
+    return results, tuple(original_input_data)
 
 
 def data_factory(
@@ -801,7 +805,7 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
     factory.config.run_mode = RUN_MODE_RE_RUN
     factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
     # missing the idx but the input_data order keep the same; so add idx back in the job_maanger
-    factory.original_input_data = factory.config.prev_job["input_data"]
+    factory.original_input_data = tuple([dict(item) for item in factory.config.prev_job["input_data"]])
     factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
     # Call the __call__ method
     result = await factory()
