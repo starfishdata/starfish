@@ -203,7 +203,6 @@ class DataFactory:
         factory_storage: Storage backend instance
         config_ref: Reference to the stored configuration
         err: Error object if any occurred during processing
-        telemetry_enabled (bool): Flag to control telemetry event sending
         state: Shared state object for tracking job state
         job_manager: Job manager instance handling the execution
     """
@@ -233,7 +232,6 @@ class DataFactory:
         self.factory_storage = None
         self.err = None
         self.config_ref = None
-        self.telemetry_enabled = environ.get("TELEMETRY_ENABLED", "false").lower() == "true"
         self.job_manager = None
         self.same_session = False
         self.original_input_data = []
@@ -356,43 +354,41 @@ class DataFactory:
     def _send_telemetry_event(self):
         """Send telemetry data for the completed job.
 
-        Collects and sends job metrics and error information if telemetry is enabled.
+        Collects and sends job metrics and error information to the analytics service.
         """
-        logger.info("Sending telemetry event, TELEMETRY_ENABLED=true")
-        if self.telemetry_enabled:
-            telemetry_data = TelemetryData(
-                job_id=self.config.master_job_id,
-                target_reached=False,
-                run_mode=self.config.run_mode,
-                run_time_platform=get_platform_name(),
-                num_inputs=self.input_data_queue.qsize(),
-                library_version=__version__,  # Using the version here
-                config={
-                    "batch_size": self.config.batch_size,
-                    "target_count": self.config.target_count,
-                    "max_concurrency": self.config.max_concurrency,
-                    "task_runner_timeout": self.config.task_runner_timeout,
-                    "job_run_stop_threshold": self.config.job_run_stop_threshold,
-                },
-                error_summary={
-                    "err": str(self.err),
-                },
-            )
-            if self.job_manager:
-                telemetry_data.count_summary = {
-                    "completed": self.job_manager.completed_count,
-                    "failed": self.job_manager.failed_count,
-                    "filtered": self.job_manager.filtered_count,
-                    "duplicate": self.job_manager.duplicate_count,
-                }
-                telemetry_data.execution_time = self.job_manager.execution_time
-                telemetry_data.error_summary = {
-                    "total_errors": self.job_manager.failed_count,
-                    "error_types": self.job_manager.err_type_counter,
-                }
-                telemetry_data.num_inputs = (len(self.original_input_data),)
-                telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
-            analytics.send_event(event=Event(data=telemetry_data.to_dict(), name="starfish_job"))
+        telemetry_data = TelemetryData(
+            job_id=self.config.master_job_id,
+            target_reached=False,
+            run_mode=self.config.run_mode,
+            run_time_platform=get_platform_name(),
+            num_inputs=self.input_data_queue.qsize(),
+            library_version=__version__,  # Using the version here
+            config={
+                "batch_size": self.config.batch_size,
+                "target_count": self.config.target_count,
+                "max_concurrency": self.config.max_concurrency,
+                "task_runner_timeout": self.config.task_runner_timeout,
+                "job_run_stop_threshold": self.config.job_run_stop_threshold,
+            },
+            error_summary={
+                "err": str(self.err),
+            },
+        )
+        if self.job_manager:
+            telemetry_data.count_summary = {
+                "completed": self.job_manager.completed_count,
+                "failed": self.job_manager.failed_count,
+                "filtered": self.job_manager.filtered_count,
+                "duplicate": self.job_manager.duplicate_count,
+            }
+            telemetry_data.execution_time = self.job_manager.execution_time
+            telemetry_data.error_summary = {
+                "total_errors": self.job_manager.failed_count,
+                "error_types": self.job_manager.err_type_counter,
+            }
+            telemetry_data.num_inputs = (len(self.original_input_data),)
+            telemetry_data.target_reached = ((self.job_manager.completed_count >= self.job_manager.job_config.target_count),)
+        analytics.send_event(event=Event(data=telemetry_data.to_dict(), name="starfish_job"))
 
     def _process_output(self, status_filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[Any]:
         """Process and filter the job output queue to return only records matching the status filter.

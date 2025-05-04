@@ -1,5 +1,6 @@
 import functools
 import json
+import re
 from typing import Any, Dict, List, Set, Tuple
 
 from jinja2 import Environment, StrictUndefined, meta, nodes
@@ -31,6 +32,9 @@ You are asked to generate exactly {{ num_records }} records and please return th
 
     def __init__(self, template_str: str, header: str = "", footer: str = ""):
         """Initialize with template string and analyze variables immediately."""
+        # Convert f-string format to Jinja2 if needed
+        template_str = self._convert_to_jinja_format(template_str)
+
         self.template_full = f"{header}\n{template_str}\n{footer}".strip() + f"\n{self.MANDATE_INSTRUCTION}"
         self._env = Environment(undefined=StrictUndefined)
         self._template = self._env.from_string(self.template_full)
@@ -38,6 +42,109 @@ You are asked to generate exactly {{ num_records }} records and please return th
 
         # Analyze variables immediately to avoid repeated processing
         self.all_vars, self.required_vars, self.optional_vars = self._analyze_variables()
+
+    @staticmethod
+    def _convert_to_jinja_format(template_str: str) -> str:
+        """
+        Convert Python f-string or string with single braces to Jinja2 template syntax.
+
+        This method safely detects and converts Python-style interpolation with single braces
+        to Jinja2 double-brace format, while preserving:
+
+        1. Existing Jinja2 syntax (double braces, control structures, comments)
+        2. JSON/dict literals with braces and quotes
+        3. Other valid uses of single braces that aren't meant for interpolation
+
+        Known limitations:
+        - Complex expressions with string literals inside braces may not be converted properly
+        - Triple braces ({{{var}}}) will cause Jinja syntax errors
+        - Whitespace inside braces is normalized in the conversion process
+
+        Returns:
+            str: A string properly formatted for Jinja2
+        """
+        if not template_str.strip():
+            return template_str
+
+        # If template already contains Jinja2 control structures or comments, preserve it
+        if re.search(r"{%.*?%}|{#.*?#}", template_str):
+            return template_str
+
+        # If the template already contains Jinja2 variable syntax ({{ }}), preserve it
+        if "{{" in template_str and "}}" in template_str:
+            return template_str
+
+        # Process the string character by character to handle complex cases
+        result = []
+        i = 0
+        while i < len(template_str):
+            # Look for potential variable interpolation pattern {var}
+            if template_str[i] == "{" and i + 1 < len(template_str):
+                # Skip if it looks like it might be a JSON/dict literal with quotes following
+                if i + 1 < len(template_str) and template_str[i + 1] in "\"'":
+                    result.append(template_str[i])
+                    i += 1
+                    continue
+
+                # Skip if it's the start of an escaped brace like {{
+                if i + 1 < len(template_str) and template_str[i + 1] == "{":
+                    result.append(template_str[i])
+                    i += 1
+                    continue
+
+                # Try to find the matching closing brace
+                j = i + 1
+                brace_depth = 1
+                has_quotes = False
+
+                while j < len(template_str) and brace_depth > 0:
+                    # Track quotes inside the braces
+                    if template_str[j] in "\"'" and (j == 0 or template_str[j - 1] != "\\"):
+                        has_quotes = True
+
+                    if template_str[j] == "{":
+                        brace_depth += 1
+                    elif template_str[j] == "}":
+                        brace_depth -= 1
+                    j += 1
+
+                # Found a matching closing brace
+                if brace_depth == 0 and j - i > 2:  # Must have at least one char between braces
+                    # Extract the variable expression inside the braces
+                    var_content = template_str[i + 1 : j - 1].strip()
+
+                    # Skip conversion for empty braces or very short content
+                    if not var_content:
+                        result.append(template_str[i:j])
+                        i = j
+                        continue
+
+                    # Skip complex expressions with quotes for safety
+                    if has_quotes and ('"' in var_content or "'" in var_content):
+                        result.append(template_str[i:j])
+                        i = j
+                        continue
+
+                    # Only convert if it looks like a valid variable name or expression
+                    # This pattern matches most variable names, attributes, indexing, and operators
+                    # but avoids converting things that look like JSON objects
+                    if re.match(r"^[a-zA-Z0-9_\.\[\]\(\)\+\-\*\/\|\s\%\<\>\=\!\&]+$", var_content):
+                        result.append("{{ ")
+                        result.append(var_content)
+                        result.append(" }}")
+                        i = j
+                        continue
+
+                    # If we get here, it's an expression we're unsure about - preserve it
+                    result.append(template_str[i:j])
+                    i = j
+                    continue
+
+            # No special case, add the current character
+            result.append(template_str[i])
+            i += 1
+
+        return "".join(result)
 
     @classmethod
     def from_string(cls, template_str: str, header: str = "", footer: str = "") -> "PromptManager":

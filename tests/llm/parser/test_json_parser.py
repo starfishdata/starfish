@@ -1,7 +1,12 @@
 import pytest
+import json
+import logging
 
 from starfish.common.exceptions import JsonParserError, SchemaValidationError
 from starfish.llm.parser.json_parser import JSONParser
+from tests.llm.parser.fixtures.json_problem_cases import problem_data_list
+
+logger = logging.getLogger(__name__)
 
 
 class TestJSONParser:
@@ -382,3 +387,26 @@ class TestJSONParser:
         # Check that a LaTeX expression is present in the content
         assert "Find the number of positive integer solutions" in result[0]["problem"]
         assert "7x + 11y = 2024" in result[0]["cot"]
+
+    def test_parse_problem_cases_with_latex(self):
+        """Test parsing real problematic cases containing LaTeX and other issues."""
+        # Import the problem data
+        # Define a simple schema that matches the general structure
+        problem_schema_fields = [
+            {"name": "problem", "type": "str", "description": "Problem description"},
+            {"name": "topic", "type": "str", "description": "Problem topic", "required": False},
+            {"name": "answer", "type": "str", "description": "Problem answer"},
+            {"name": "reasoning", "type": "str", "description": "Problem reasoning"},
+        ]
+        problem_schema = JSONParser.convert_to_schema(problem_schema_fields)
+
+        for i, text in enumerate(problem_data_list):
+            try:
+                # Use non-strict mode which better matches real-world usage
+                result = JSONParser.parse_llm_output(text, schema=problem_schema, strict=False, type_check=False)
+                assert result is not None, f"Case {i+1}: Parsing returned None"
+                assert isinstance(result, list), f"Case {i+1}: Result is not a list"
+                assert len(result) > 0, f"Case {i+1}: Result list is empty"
+                assert isinstance(result[0], dict), f"Case {i+1}: First item in result is not a dict"
+            except (JsonParserError, SchemaValidationError, json.JSONDecodeError) as e:
+                pytest.fail(f"Case {i+1}: Failed to parse problematic JSON. Error: {e}\\nInput text:\\n{text[:500]}...")  # Show first 500 chars

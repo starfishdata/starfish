@@ -31,6 +31,11 @@ class StructuredLLM:
 
     Provides async (`run`, `__call__`) and sync (`run_sync`) execution methods.
     Use `process_list_input=True` in run methods to process a list argument.
+
+    Note: The prompt parameter accepts both Jinja2 templates and Python f-string-like
+    syntax with single braces {variable}. Single braces are automatically converted
+    to proper Jinja2 syntax with double braces {{ variable }}. This feature simplifies
+    template writing for users familiar with Python's f-string syntax.
     """
 
     def __init__(
@@ -47,7 +52,9 @@ class StructuredLLM:
 
         Args:
             model_name: Name of the LLM model to use (e.g., 'openai/gpt-4o-mini')
-            prompt: Jinja template string or custom content for partial template
+            prompt: Template string in either Jinja2 format or Python-style single-brace format.
+                   Single-brace format like "Hello {name}" will be automatically converted to
+                   Jinja2 format "Hello {{ name }}". Existing Jinja2 templates are preserved.
             model_kwargs: Additional arguments to pass to the LLM
             output_schema: Schema for response parsing (JSON list/dict or Pydantic model)
             prompt_template: Optional name of partial prompt template to wrap around the prompt
