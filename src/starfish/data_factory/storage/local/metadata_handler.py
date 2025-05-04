@@ -104,9 +104,10 @@ class SQLiteMetadataHandler:
         async with self._write_lock:
             conn = await self.connect()
             try:
-                # watch for transaction in transaction error
-                async with conn.execute("BEGIN IMMEDIATE"), conn.execute(sql, params):
-                    await conn.commit()
+                # Check if a transaction is already active
+                async with conn.execute("BEGIN IMMEDIATE") if not conn.in_transaction else nullcontext():
+                    async with conn.execute(sql, params):
+                        await conn.commit()
                 logger.debug(f"Executed write SQL: {sql[:50]}... Params: {params}")
             except Exception as e:
                 try:
