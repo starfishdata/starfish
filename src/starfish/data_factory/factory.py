@@ -277,7 +277,7 @@ class DataFactory:
         self.config_ref = None
         self.job_manager = None
         self.same_session = False
-        self.original_input_data = ()
+        self.original_input_data = []
         self.result_idx = []
         self._output_cache = {}
 
@@ -525,11 +525,10 @@ class DataFactory:
         if self.config.run_mode != RUN_MODE_DRY_RUN:
             logger.debug("\n2. Creating master job...")
             # First save the request config
-            # investigate why original_input_data lost the idx
             config_data = {
                 "generator": "test_generator",
                 "state": self.state.to_dict(),
-                "input_data": list(self.original_input_data),
+                "input_data": self.original_input_data,
             }
             func_hex = None
             config_serialize = None
@@ -645,7 +644,7 @@ class DataFactory:
         )
 
 
-def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tuple[Queue[Dict[str, Any]], tuple[Dict[str, Any]]]:
+def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tuple[Queue[Dict[str, Any]], list[Dict[str, Any]]]:
     """Convert input data into a queue of records for processing.
 
     Args:
@@ -705,7 +704,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
         original_input_data.append({k: v for k, v in record.items() if k != IDX})
 
     # Convert the list to an immutable tuple
-    return results, tuple(original_input_data)
+    return results, original_input_data
 
 
 def data_factory(
@@ -847,7 +846,7 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
     factory.config.run_mode = RUN_MODE_RE_RUN
     factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
     # missing the idx but the input_data order keep the same; so add idx back in the job_maanger
-    factory.original_input_data = tuple([dict(item) for item in factory.config.prev_job["input_data"]])
+    factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
     factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
     # Call the __call__ method
     result = await factory()
