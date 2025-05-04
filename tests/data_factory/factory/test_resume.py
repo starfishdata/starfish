@@ -139,3 +139,19 @@ async def test_case_keyboard_interrupt(monkeypatch):
     finally:
         # Cleanup: restore original sleep function
         monkeypatch.undo()
+
+
+@pytest.mark.asyncio
+async def test_case_reuse_run_same_factory():
+    @data_factory(max_concurrency=10)
+    async def re_run_mock_llm(city_name: str, num_records_per_city: int):
+        return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=0.1)
+
+    cities = ["New York", "London", "Tokyo", "Paris", "Sydney"]
+    numbered_cities = [f"{cities[i % len(cities)]} {i}" for i in range(100)]
+    case = "run"
+    master_job_id = ""
+    if case == "run":
+        re_run_mock_llm_data_1 = re_run_mock_llm.run(city_name=numbered_cities, num_records_per_city=1)
+    elif case == "resume":
+        data_factory.resume_from_checkpoint(master_job_id)

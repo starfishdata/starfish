@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List
 
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import TASK_RUNNER_TIMEOUT
+from starfish.data_factory.constants import IDX
 from starfish.data_factory.utils.errors import TimeoutErrorAsyncio
 
 logger = get_logger(__name__)
@@ -39,7 +40,9 @@ class TaskRunner:
         # maybe better to use retries in a single request instead in the batch level.
         while retries <= self.max_retries:
             try:
-                result = await asyncio.wait_for(func(**input_data), timeout=self.timeout)
+                # Create a copy of input_data without 'IDX' tp prevent insertion of IDX due to race condition
+                filtered_input = {k: v for k, v in input_data.items() if k != IDX}
+                result = await asyncio.wait_for(func(**filtered_input), timeout=self.timeout)
                 logger.debug(f"Task execution completed in {time.time() - start_time:.2f} seconds")
                 break
             except asyncio.TimeoutError as timeout_error:

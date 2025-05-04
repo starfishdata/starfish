@@ -2,6 +2,7 @@ import hashlib
 import json
 from queue import Queue
 from typing import Any, Callable, Dict
+import copy  # Added this import at the top of the file
 
 from starfish.common.logger import get_logger
 from starfish.data_factory.constants import (
@@ -117,15 +118,19 @@ class JobManagerRerun(JobManager):
     def _process_input_data(self, input_data: list) -> dict:
         """Process input data and create a hash map for tracking."""
         input_dict = {}
-        # add the idx back
-        for idx, item in enumerate(input_data):
-            input_data_str = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
+        idx = 0  # Initialize external counter to avoid use enumerate
+        for item in input_data:
+            # Create a deep copy of the item to avoid modifying the original
+            item_copy = {k: v for k, v in item.items() if k != IDX}
+
+            input_data_str = json.dumps(item_copy, sort_keys=True) if isinstance(item_copy, dict) else str(item_copy)
             input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
 
             if input_data_hash in input_dict:
                 input_dict[input_data_hash]["count"].append(idx)
             else:
-                input_dict[input_data_hash] = {"data": item, "data_str": input_data_str, "count": [idx]}
+                input_dict[input_data_hash] = {"data": item_copy, "data_str": input_data_str, "count": [idx]}
+            idx += 1  # Increment counter after processing each item
         return input_dict
 
     async def _handle_completed_tasks(self, input_dict: dict) -> None:
@@ -141,11 +146,22 @@ class JobManagerRerun(JobManager):
 
     async def _process_completed_tasks(self, completed_tasks: list, item: dict) -> None:
         """Process completed tasks and add their outputs to the job queue."""
+        record_idx = None
+        idx_list = item["count"]
+        logger.debug(idx_list)
         for task in completed_tasks:
             records_metadata = await self.storage.list_record_metadata(self.master_job_id, task.job_id)
             record_data_list = await self._get_record_data(records_metadata)
-
-            output_tmp = {IDX: item["count"].pop(), RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
+            try:
+                idx_list = item["count"]
+                logger.debug(idx_list)
+                # logger.info("the item['count'] is ======= %s", item["count"])
+                if len(idx_list) > 0:
+                    record_idx = item["count"].pop()
+                logger.debug(record_idx)
+                output_tmp = {IDX: record_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
+            except Exception as e:
+                logger.error(e)
             self.job_output.put(output_tmp)
 
     async def _get_record_data(self, records_metadata: list) -> list:
@@ -164,6 +180,15 @@ class JobManagerRerun(JobManager):
             remaining_count = len(item["count"])
             if remaining_count > 0:
                 logger.debug("Task not run, queuing for execution")
-                for _ in range(remaining_count):
-                    item["data"][IDX] = item["count"].pop()
-                    self.job_input_queue.put(item["data"])
+                try:
+                    for _ in range(remaining_count):
+                        item["data"][IDX] = item["count"].pop()
+                        self.job_input_queue.put(item["data"])
+                except Exception as e:
+                    logger.error(str(e))
+
+    def pop_from_list(ls: list):
+        try:
+            return ls.pop()
+        except Exception as e:
+            logger.error(str(e))
