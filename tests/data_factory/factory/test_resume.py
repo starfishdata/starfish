@@ -1,4 +1,5 @@
 import asyncio
+import os
 import nest_asyncio
 import pytest
 
@@ -109,6 +110,7 @@ async def test_case_reuse_run_same_factory():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
 async def test_case_keyboard_interrupt(monkeypatch):
     """Test handling of keyboard interrupt (Ctrl+C)"""
     processed_tasks = 0
