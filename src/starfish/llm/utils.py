@@ -72,9 +72,7 @@ def to_sync(async_func):
         except RuntimeError as e:
             if "cannot be called from a running event loop" in str(e):
                 raise RuntimeError(
-                    "This function can't be called in Jupyter without nest_asyncio. "
-                    "Please install nest_asyncio with 'pip install nest_asyncio' "
-                    "and add 'import nest_asyncio; nest_asyncio.apply()' to your notebook."
+                    "This function can't be called in Jupyter without nest_asyncio. " "Please add 'import nest_asyncio; nest_asyncio.apply()' to your notebook."
                 )
             raise
 

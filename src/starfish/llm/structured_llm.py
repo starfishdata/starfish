@@ -150,6 +150,6 @@ class StructuredLLM:
     async def run_sync(self, **kwargs) -> LLMResponse:
         """Synchronously call the LLM with the provided parameters.
 
-        For Jupyter notebooks, requires nest_asyncio.
+        When used in Jupyter notebooks, make sure to apply nest_asyncio.
         """
         return await self.run(**kwargs)
