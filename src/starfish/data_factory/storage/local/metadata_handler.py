@@ -1,5 +1,6 @@
 # synthetic_data_gen/storage/local/metadata.py
 import asyncio  # For Lock
+from contextlib import nullcontext
 import datetime
 import json
 import logging
@@ -104,9 +105,10 @@ class SQLiteMetadataHandler:
         async with self._write_lock:
             conn = await self.connect()
             try:
-                # Remove the explicit BEGIN IMMEDIATE since it's handled by the connection
-                async with conn.execute(sql, params) as _:
-                    await conn.commit()
+                # Check if a transaction is already active
+                async with conn.execute("BEGIN IMMEDIATE") if not conn.in_transaction else nullcontext():
+                    async with conn.execute(sql, params):
+                        await conn.commit()
                 logger.debug(f"Executed write SQL: {sql[:50]}... Params: {params}")
             except Exception as e:
                 try:
