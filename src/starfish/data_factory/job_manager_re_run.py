@@ -82,7 +82,9 @@ class JobManagerRerun(JobManager):
 
     def _extract_previous_job_data(self) -> list:
         """Extract and clean up previous job data."""
-        input_data = copy.deepcopy(self.prev_job["input_data"])
+        # input_data = copy.deepcopy(self.prev_job["input_data"])
+        # no need to deepcopy as it is a separate object from original_input_data in factory
+        input_data = self.prev_job["input_data"]
         del self.prev_job["input_data"]
         return input_data
 
@@ -156,8 +158,8 @@ class JobManagerRerun(JobManager):
                 idx_list = item["count"]
                 logger.debug(idx_list)
                 # logger.info("the item['count'] is ======= %s", item["count"])
-                if len(idx_list) > 0:
-                    record_idx = item["count"].pop()
+                # if len(idx_list) > 0:
+                record_idx = item["count"].pop()
                 logger.debug(record_idx)
                 output_tmp = {IDX: record_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
             except Exception as e:
