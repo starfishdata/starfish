@@ -1,5 +1,6 @@
 # synthetic_data_gen/storage/local/metadata.py
 import asyncio  # For Lock
+from contextlib import nullcontext
 import datetime
 import json
 import logging
