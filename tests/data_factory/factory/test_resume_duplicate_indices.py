@@ -278,7 +278,7 @@ async def test_resume_already_completed_job():
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip("Skipping in CI environment")
+@pytest.mark.skip("Skip because case not correct")
 async def test_resume_finish_and_repeat():
     """Test that matches the user's specific scenario.
 
@@ -289,10 +289,6 @@ async def test_resume_finish_and_repeat():
     4. Then performs multiple resume operations on the completed job
     """
     error_collector = ErrorCollector()
-
-    # @data_factory(max_concurrency=10)
-    # async def re_run_mock_llm(city_name: str, num_records_per_city: int):
-    #     return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=0.5)
 
     @data_factory(max_concurrency=10)
     async def re_run_mock_llm(city_name: str, num_records_per_city: int, fail_rate: float = 0.5):
@@ -372,3 +368,38 @@ async def test_resume_finish_and_repeat():
 
     # Assert that no errors were collected
     error_collector.assert_no_errors()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skip("Skip to update")
+async def test_run_consecutive_not_completed():
+    """Test that matches the user's specific scenario.
+
+    This test:
+    1. Creates a job with 100 records with a 50% failure rate
+    2. Runs it and resuming a few times to get close to completion
+    3. Forces it to complete (by setting fail_rate=0)
+    4. Then performs multiple resume operations on the completed job
+    """
+    error_collector = ErrorCollector()
+
+    @data_factory(max_concurrency=10)
+    async def re_run_mock_llm(city_name: str, num_records_per_city: int, fail_rate: float = 0.5):
+        """Modified version of the function to allow controlling the fail rate."""
+        return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=fail_rate)
+
+    # Generate test data: 100 numbered cities
+    cities = ["New York", "London", "Tokyo", "Paris", "Sydney"]
+    numbered_cities = [f"{i} - {cities[i % len(cities)]}" for i in range(100)]
+
+    # Initial run with 50% failure rate
+    logger.info("STARTING INITIAL RUN WITH 100% FAILURE RATE")
+    initial_data = re_run_mock_llm.run(city_name=numbered_cities, num_records_per_city=1, fail_rate=0.3)
+    initial_completed = len(re_run_mock_llm.get_index_completed())
+    logger.info(f"Initial run completed {initial_completed}/100 tasks")
+
+    # A few more resumes to get more completions
+    logger.info("RESUMING WITH 100% FAILURE RATE (FIRST)")
+    second_data = re_run_mock_llm.run(city_name=numbered_cities, num_records_per_city=1, fail_rate=1.0)
+    second_completed = len(re_run_mock_llm.get_index_completed())
+    logger.info(f"Initial run completed {second_completed}/100 tasks")

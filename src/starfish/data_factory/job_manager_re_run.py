@@ -82,39 +82,36 @@ class JobManagerRerun(JobManager):
 
     def _extract_previous_job_data(self) -> list:
         """Extract and clean up previous job data."""
-        # input_data = copy.deepcopy(self.prev_job["input_data"])
         # no need to deepcopy as it is a separate object from original_input_data in factory
         input_data = self.prev_job["input_data"]
         del self.prev_job["input_data"]
         return input_data
 
-    def _extract_master_job(self):
+    def _extract_master_job(self) -> dict:
         """Extract and clean up master job reference."""
         master_job = self.prev_job["master_job"]
         del self.prev_job["master_job"]
         del self.prev_job
         return master_job
 
-    def _log_resume_status(self, master_job, input_data: list) -> None:
+    def _log_resume_status(self, master_job: dict, input_data: list) -> None:
         """Log the status of the job at resume time."""
         logger.info("\033[1m[JOB RESUME START]\033[0m \033[33mPICKING UP FROM WHERE THE JOB WAS LEFT OFF...\033[0m\n")
         logger.info(
-            f"\033[1m[RESUME PROGRESS] STATUS AT THE TIME OF RESUME:\033[0m "
-            f"\033[32mCompleted: {master_job.completed_record_count} / {len(input_data)}\033[0m | "
-            f"\033[31mFailed: {master_job.failed_record_count}\033[0m | "
-            f"\033[31mDuplicate: {master_job.duplicate_record_count}\033[0m | "
-            f"\033[33mFiltered: {master_job.filtered_record_count}\033[0m"
+            f'\033[1m[RESUME PROGRESS] STATUS AT THE TIME OF RESUME:\033[0m '
+            f'\033[32mCompleted: {master_job["completed_count"]} / {len(input_data)}\033[0m | '
+            f'\033[31mFailed: {master_job["failed_count"]}\033[0m | '
+            f'\033[31mDuplicate: {master_job["duplicate_count"]}\033[0m | '
+            f'\033[33mFiltered: {master_job["filtered_count"]}\033[0m'
         )
 
-    def _initialize_counters_rerun(self, master_job, input_data_length: int) -> None:
+    def _initialize_counters_rerun(self, master_job: dict, input_data_length: int) -> None:
         """Initialize counters from previous run."""
-        self.total_count = (
-            master_job.completed_record_count + master_job.failed_record_count + master_job.duplicate_record_count + master_job.filtered_record_count
-        )
-        self.failed_count = master_job.failed_record_count
-        self.duplicate_count = master_job.duplicate_record_count
-        self.filtered_count = master_job.filtered_record_count
-        self.completed_count = master_job.completed_record_count
+        self.total_count = master_job["total_count"]
+        self.failed_count = master_job["failed_count"]
+        self.duplicate_count = master_job["duplicate_count"]
+        self.filtered_count = master_job["filtered_count"]
+        self.completed_count = master_job["completed_count"]
         self.job_config.target_count = input_data_length
 
     def _process_input_data(self, input_data: list) -> dict:
