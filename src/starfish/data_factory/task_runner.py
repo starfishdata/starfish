@@ -57,6 +57,7 @@ class TaskRunner:
                 if retries > self.max_retries:
                     # logger.error(f"Task execution failed after {self.max_retries} retries")
                     raise e
+                logger.warning(f"Task failed, retrying ({retries}/{self.max_retries})")
                 await asyncio.sleep(2**retries)  # exponential backoff
 
         return result
