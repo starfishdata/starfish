@@ -86,6 +86,8 @@ class JobManagerRerun(JobManager):
         # no need to deepcopy as it is a separate object from original_input_data in factory
         input_data = self.prev_job["input_data"]
         del self.prev_job["input_data"]
+        # if len(input_data) != len(set(input_data)):
+        #     logger.debug("input_data not right")
         return input_data
 
     def _extract_master_job(self):
@@ -164,7 +166,12 @@ class JobManagerRerun(JobManager):
                 output_tmp = {IDX: record_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
             except Exception as e:
                 logger.error(e)
-            self.job_output.put(output_tmp)
+            # Check if output_tmp already exists in job_output
+            # have not find duplicated. to remove this check for performance
+            if output_tmp not in list(self.job_output.queue):
+                self.job_output.put(output_tmp)
+            else:
+                logger.debug("db record duplicated")
 
     async def _get_record_data(self, records_metadata: list) -> list:
         """Retrieve record data from storage."""
@@ -185,7 +192,8 @@ class JobManagerRerun(JobManager):
                 try:
                     for _ in range(remaining_count):
                         item["data"][IDX] = item["count"].pop()
-                        self.job_input_queue.put(item["data"])
+                        _to_add_data = item["data"]
+                        self.job_input_queue.put(_to_add_data)
                 except Exception as e:
                     logger.error(str(e))
 
