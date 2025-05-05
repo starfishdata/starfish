@@ -8,6 +8,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiosqlite
+import sqlite3
 
 from starfish.data_factory.constants import (
     STATUS_COMPLETED,
@@ -101,20 +102,31 @@ class SQLiteMetadataHandler:
 
     async def _execute_sql(self, sql: str, params: tuple = ()):
         """Helper to execute write SQL with transactions."""
-        # Use the write lock to ensure only one write transaction at a time
         async with self._write_lock:
             conn = await self.connect()
             try:
-                # Check if a transaction is already active
-                async with conn.execute("BEGIN IMMEDIATE") if not conn.in_transaction else nullcontext():
-                    async with conn.execute(sql, params):
-                        await conn.commit()
+                # Only start a new transaction if one isn't already active
+                if not conn.in_transaction:
+                    await conn.execute("BEGIN IMMEDIATE")
+
+                await conn.execute(sql, params)
+                await conn.commit()
                 logger.debug(f"Executed write SQL: {sql[:50]}... Params: {params}")
+            except sqlite3.OperationalError as e:
+                if "cannot start a transaction within a transaction" in str(e):
+                    logger.warning(f"Transaction already active, continuing: {e}")
+                else:
+                    try:
+                        await conn.rollback()
+                    except Exception:
+                        pass
+                    logger.error(f"SQL write execution failed: {sql[:50]}... Error: {e}", exc_info=True)
+                    raise e
             except Exception as e:
                 try:
                     await conn.rollback()
                 except Exception:
-                    pass  # Ignore rollback errors after execute error
+                    pass
                 logger.error(f"SQL write execution failed: {sql[:50]}... Error: {e}", exc_info=True)
                 raise e
 
