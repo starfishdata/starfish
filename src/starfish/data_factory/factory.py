@@ -445,15 +445,19 @@ class DataFactory:
 
         # Check if cache is already populated for this status
         if status_filter in self._output_cache:
-            return self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
-        else:
-            # init the output_cache
-            self._output_cache = {
-                STATUS_COMPLETED: {"result": [], IDX: []},
-                STATUS_DUPLICATE: {"result": [], IDX: []},
-                STATUS_FAILED: {"result": [], IDX: []},
-                STATUS_FILTERED: {"result": [], IDX: []},
-            }
+            result = self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
+            if len(result) == 0 and self._check_process_out(status_filter=status_filter) != 0:
+                logger.warning("cache is not correct, going to repopelate the cache")
+            else:
+                return result
+
+        # init the output_cache
+        self._output_cache = {
+            STATUS_COMPLETED: {"result": [], IDX: []},
+            STATUS_DUPLICATE: {"result": [], IDX: []},
+            STATUS_FAILED: {"result": [], IDX: []},
+            STATUS_FILTERED: {"result": [], IDX: []},
+        }
         # Process records and populate cache
         for record in self.job_manager.job_output.queue:
             record_idx = record.get(IDX)
@@ -466,6 +470,18 @@ class DataFactory:
 
         result = self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
         return result
+
+    def _check_process_out(self, status_filter: str):
+        res = None
+        if status_filter == STATUS_COMPLETED:
+            res = self.job_manager.completed_count
+        elif status_filter == STATUS_DUPLICATE:
+            res = self.job_manager.duplicate_count
+        elif status_filter == STATUS_FAILED:
+            res = self.job_manager.failed_count
+        elif status_filter == STATUS_FILTERED:
+            res = self.job_manager.filtered_count
+        return res
 
     def _check_parameter_match(self):
         """Validate that input data parameters match the wrapped function's signature.
@@ -817,15 +833,12 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         TypeError: If master job ID is not provided or job not found
     """
     # call with instance
+    factory = None
     if "factory" in kwargs:
-        factory = kwargs["factory"]
-        factory._clean_up_in_same_session()
+        factory = await _same_session_factory(*args, **kwargs)
     else:
-        factory = DataFactory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
-        if len(args) == 1:
-            factory.config.master_job_id = args[0]
-        else:
-            raise InputError("Master job id is required, please pass it in the paramters")
+        factory = await _not_same_session_factory(*args, **kwargs)
+
     # Update config with any additional kwargs
     for key, value in kwargs.items():
         if hasattr(factory.config, key):
@@ -834,28 +847,55 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         raise InputError("Master job id is required")
 
     await factory._storage_setup()
-    master_job_config_data, master_job = await _re_run_get_master_job_request_config(factory=factory)
-    if not factory.same_session:
-        factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
-        factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
-        func_serilized = master_job_config_data.get("func")
-        if func_serilized:
-            factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
     if not factory.func or not factory.config:
         await factory._close_storage()
         raise NoResumeSupportError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
     factory.config.run_mode = RUN_MODE_RE_RUN
-    if not factory.same_session:
-        factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
-        # missing the idx but the input_data order keep the same; so add idx back in the job_maanger
-        factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
-    else:
-        factory.config.prev_job = {"master_job": master_job, "input_data": factory.original_input_data}
     factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
     factory.input_data_queue = Queue()
     # Call the __call__ method
     result = await factory()
     return result
+
+
+async def _not_same_session_factory(*args, **kwargs):
+    factory = DataFactory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
+    if len(args) == 1:
+        factory.config.master_job_id = args[0]
+    else:
+        raise InputError("Master job id is required, please pass it in the paramters")
+    await factory._storage_setup()
+    master_job_config_data, master_job = await _re_run_get_master_job_request_config(factory=factory)
+    master_job = {
+        "duplicate_count": master_job.duplicate_record_count,
+        "failed_count": master_job.failed_record_count,
+        "filtered_count": master_job.filtered_record_count,
+        "completed_count": master_job.completed_record_count,
+    }
+    master_job["total_count"] = master_job["duplicate_count"] + master_job["failed_count"] + master_job["filtered_count"] + master_job["completed_count"]
+    factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
+    factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
+    func_serilized = master_job_config_data.get("func")
+    if func_serilized:
+        factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
+    factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
+    factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
+    return factory
+
+
+async def _same_session_factory(*args, **kwargs):
+    factory = kwargs["factory"]
+
+    master_job = {
+        "duplicate_count": factory.job_manager.duplicate_count,
+        "failed_count": factory.job_manager.failed_count,
+        "filtered_count": factory.job_manager.filtered_count,
+        "completed_count": factory.job_manager.completed_count,
+        "total_count": factory.job_manager.total_count,
+    }
+    factory._clean_up_in_same_session()
+    factory.config.prev_job = {"master_job": master_job, "input_data": factory.original_input_data}
+    return factory
 
 
 def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
