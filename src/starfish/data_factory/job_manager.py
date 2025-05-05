@@ -289,7 +289,8 @@ class JobManager:
             input_data: Dictionary containing input data for the job
         """
         logger.debug("\n3. Creating execution job...")
-        input_data_str = json.dumps(input_data)
+        input_data_str = json.dumps(input_data, sort_keys=True) if isinstance(input_data, dict) else str(input_data)
+        # input_data_str = json.dumps(input_data)
         self.job = GenerationJob(
             job_id=job_uuid,
             master_job_id=self.master_job_id,

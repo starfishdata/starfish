@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 from os import environ
+import sys
 import uuid
 from inspect import Parameter, signature
 from queue import Queue
@@ -45,6 +46,47 @@ F = TypeVar("F", bound=Callable[..., Any])
 P = ParamSpec("P")
 
 T = TypeVar("T")
+
+# Flag to track if nest_asyncio has been applied
+_NEST_ASYNCIO_APPLIED = False
+
+
+def _ensure_nest_asyncio():
+    """Ensure nest_asyncio is applied if needed.
+
+    Returns:
+        bool: True if nest_asyncio is applied or not needed
+    """
+    global _NEST_ASYNCIO_APPLIED
+
+    if _NEST_ASYNCIO_APPLIED:
+        return True
+
+    # Check if we're in an environment that typically needs nest_asyncio
+    running_in_notebook = "ipykernel" in sys.modules
+    running_in_colab = "google.colab" in sys.modules
+
+    if running_in_notebook or running_in_colab or _is_event_loop_running():
+        import nest_asyncio
+
+        nest_asyncio.apply()
+        _NEST_ASYNCIO_APPLIED = True
+        logger.debug("nest_asyncio has been applied to support nested event loops")
+
+    return True
+
+
+def _is_event_loop_running():
+    """Check if an event loop is currently running.
+
+    Returns:
+        bool: True if an event loop is running, False otherwise
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        return loop.is_running()
+    except RuntimeError:
+        return False
 
 
 class DataFactoryWrapper(Generic[T]):
@@ -422,7 +464,8 @@ class DataFactory:
             self._output_cache[status][IDX].extend([record_idx] * len(record_output))
             self._output_cache[status]["result"].extend(record_output)
 
-        return self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
+        result = self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
+        return result
 
     def _check_parameter_match(self):
         """Validate that input data parameters match the wrapped function's signature.
@@ -802,10 +845,14 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         await factory._close_storage()
         raise NoResumeSupportError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
     factory.config.run_mode = RUN_MODE_RE_RUN
-    factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
-    # missing the idx but the input_data order keep the same; so add idx back in the job_maanger
-    factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
+    if not factory.same_session:
+        factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
+        # missing the idx but the input_data order keep the same; so add idx back in the job_maanger
+        factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
+    else:
+        factory.config.prev_job = {"master_job": master_job, "input_data": factory.original_input_data}
     factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
+    factory.input_data_queue = Queue()
     # Call the __call__ method
     result = await factory()
     return result
@@ -841,6 +888,12 @@ def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
 def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[Dict]:
     """Manage the event loop for executing an async callable in synchronous contexts.
 
+    This function intelligently manages asyncio event loops:
+    - Uses existing loops when available
+    - Creates new loops only when needed
+    - Automatically detects notebook environments
+    - Applies nest_asyncio when necessary
+
     Args:
         callable_func (Callable): The async function to execute
         *args: Positional arguments to pass to the callable
@@ -848,36 +901,29 @@ def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[Dict]:
 
     Returns:
         Any: The result of the callable function
-
-    Note:
-        Handles event loop creation and cleanup, ensuring proper resource management
-        when calling async functions from synchronous code.
     """
-    # Clean up existing event loop
+    # Try to ensure nest_asyncio is applied if needed
+    _ensure_nest_asyncio()
+
     try:
+        # Try to get the current event loop
         loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.close()  # Close if running
-        elif not loop.is_closed():
-            loop.close()  # Close if not running and not closed
-    except RuntimeError:  # Handle case where loop is closed or doesn't exist
-        pass  # No loop to close, proceed to create a new one
 
-    # Create new event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    # Execute the callable
-    try:
+        # Execute in current loop
+        logger.debug("Using existing event loop for execution")
         result = loop.run_until_complete(callable_func(*args, **kwargs))
         return result
-    finally:
-        # Clean up after execution
+
+    except RuntimeError as e:
+        # No event loop in current context or other RuntimeError
+        logger.debug(f"Creating new event loop: {str(e)}")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.close()  # Close if running
-            elif not loop.is_closed():
-                loop.close()  # Close if not running and not closed
-        except RuntimeError:
-            pass
+            result = loop.run_until_complete(callable_func(*args, **kwargs))
+            return result
+        finally:
+            # Only close the loop if we created it
+            loop.close()
+            logger.debug("Closed newly created event loop")
