@@ -82,7 +82,6 @@ class JobManagerRerun(JobManager):
 
     def _extract_previous_job_data(self) -> list:
         """Extract and clean up previous job data."""
-        # input_data = copy.deepcopy(self.prev_job["input_data"])
         # no need to deepcopy as it is a separate object from original_input_data in factory
         input_data = self.prev_job["input_data"]
         del self.prev_job["input_data"]
