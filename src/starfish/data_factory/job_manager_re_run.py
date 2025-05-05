@@ -86,8 +86,6 @@ class JobManagerRerun(JobManager):
         # no need to deepcopy as it is a separate object from original_input_data in factory
         input_data = self.prev_job["input_data"]
         del self.prev_job["input_data"]
-        # if len(input_data) != len(set(input_data)):
-        #     logger.debug("input_data not right")
         return input_data
 
     def _extract_master_job(self):
@@ -124,9 +122,6 @@ class JobManagerRerun(JobManager):
         input_dict = {}
         idx = 0  # Initialize external counter to avoid use enumerate
         for item in input_data:
-            # Create a deep copy of the item to avoid modifying the original
-            # item_copy = {k: v for k, v in item.items() if k != IDX}
-
             input_data_str = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
             input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
 
