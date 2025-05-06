@@ -3,6 +3,7 @@ import datetime
 from os import environ
 import sys
 import uuid
+import inspect
 from inspect import Parameter, signature
 from queue import Queue
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, cast, Protocol
@@ -114,7 +115,7 @@ class DataFactoryWrapper(Generic[T]):
         self.state = factory.state
         self.__func__ = func
 
-    def run(self, *args: P.args, **kwargs: P.kwargs) -> T:
+    def run(self, *args: P.args, **kwargs: P.kwargs) -> List[dict[str, Any]]:
         """Execute the data processing pipeline with normal configuration.
 
         Args:
@@ -127,7 +128,7 @@ class DataFactoryWrapper(Generic[T]):
         self.factory.config.run_mode = RUN_MODE_NORMAL
         return event_loop_manager(self.factory, *args, **kwargs)
 
-    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T:
+    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> List[dict[str, Any]]:
         """Test run with limited data for validation purposes.
 
         Args:
@@ -140,20 +141,39 @@ class DataFactoryWrapper(Generic[T]):
         self.factory.config.run_mode = RUN_MODE_DRY_RUN
         return event_loop_manager(self.factory, *args, **kwargs)
 
-    def resume(self, **kwargs) -> T:
-        """continue current data generation job.
+    def resume(
+        self,
+        storage: str = None,
+        batch_size: int = None,
+        target_count: int = None,
+        max_concurrency: int = None,
+        initial_state_values: Optional[Dict[str, Any]] = None,
+        on_record_complete: Optional[List[Callable]] = None,
+        on_record_error: Optional[List[Callable]] = None,
+        show_progress: bool = None,
+        task_runner_timeout: int = None,
+        job_run_stop_threshold: int = None,
+    ) -> List[Dict[str, Any]]:
+        """continue current data generation job."""
+        # Get all passed arguments
+        passed_args = {
+            "storage": storage,
+            "batch_size": batch_size,
+            "target_count": target_count,
+            "max_concurrency": max_concurrency,
+            "initial_state_values": initial_state_values,
+            "on_record_complete": on_record_complete,
+            "on_record_error": on_record_error,
+            "show_progress": show_progress,
+            "task_runner_timeout": task_runner_timeout,
+            "job_run_stop_threshold": job_run_stop_threshold,
+            "factory": self.factory,
+        }
 
-        Args:
-            master_job_id (str): ID of the master job to resume
+        # Filter and pass only explicitly provided arguments
+        return resume_from_checkpoint(**passed_args)
 
-
-        Returns:
-            T: Processed output data from the resume
-        """
-        kwargs["factory"] = self.factory
-        return resume_from_checkpoint(**kwargs)
-
-    def get_output_data(self, filter: str) -> T:
+    def get_output_data(self, filter: str) -> List[dict[str, Any]]:
         result = None
         _filter = self._convert_filter(filter=filter)
         if self._valid_filter(_filter):
@@ -162,22 +182,22 @@ class DataFactoryWrapper(Generic[T]):
             raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
         return result
 
-    def get_output_completed(self) -> T:
+    def get_output_completed(self) -> List[dict[str, Any]]:
         return self.factory._process_output()
 
-    def get_output_duplicate(self) -> T:
+    def get_output_duplicate(self) -> List[dict[str, Any]]:
         return self.factory._process_output(STATUS_DUPLICATE)
 
-    def get_output_filtered(self) -> T:
+    def get_output_filtered(self) -> List[dict[str, Any]]:
         return self.factory._process_output(STATUS_FILTERED)
 
-    def get_output_failed(self) -> T:
+    def get_output_failed(self) -> List[dict[str, Any]]:
         return self.factory._process_output(STATUS_FAILED)
 
-    def get_input_data(self) -> T:
+    def get_input_data(self) -> List[dict[str, Any]]:
         return self.factory.original_input_data
 
-    def get_index(self, filter: str) -> T:
+    def get_index(self, filter: str) -> List[int]:
         result = None
         _filter = self._convert_filter(filter)
         if self._valid_filter(_filter):
@@ -186,16 +206,16 @@ class DataFactoryWrapper(Generic[T]):
             raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
         return result
 
-    def get_index_completed(self) -> T:
+    def get_index_completed(self) -> List[int]:
         return self.factory._process_output(is_idx=True)
 
-    def get_index_duplicate(self) -> T:
+    def get_index_duplicate(self) -> List[int]:
         return self.factory._process_output(STATUS_DUPLICATE, is_idx=True)
 
-    def get_index_filtered(self) -> T:
+    def get_index_filtered(self) -> List[int]:
         return self.factory._process_output(STATUS_FILTERED, is_idx=True)
 
-    def get_index_failed(self) -> T:
+    def get_index_failed(self) -> List[int]:
         return self.factory._process_output(STATUS_FAILED, is_idx=True)
 
     def _valid_filter(self, filter: str) -> bool:
@@ -208,25 +228,58 @@ class DataFactoryWrapper(Generic[T]):
                 break
         return filter
 
+    def get_dead_queue_indices_and_data(self) -> tuple[List[dict], List[int]]:
+        """Get the indices of tasks that failed 3 times and were moved to the dead queue.
+
+        Returns:
+            tuple[List[dict], List[int]]: Tuple containing:
+                - List of dead queue task data (dicts)
+                - List of indices from the dead queue
+        """
+        if not hasattr(self.factory.job_manager, "dead_queue"):
+            return [], []
+
+        dead_input_data = []
+        dead_input_indices = []
+        # Iterate through the dead queue without modifying it
+        for task_data in list(self.factory.job_manager.dead_queue.queue):
+            dead_input_data.append(task_data)
+            dead_input_indices.append(task_data[IDX])
+
+        return dead_input_data, dead_input_indices
+
 
 class DataFactoryProtocol(Protocol[P, T]):
     """Protocol for the decorated function with additional methods."""
 
-    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
-    def resume(self, **kwargs) -> T: ...
-    def get_output_data(self, filter: str) -> T: ...
-    def get_output_completed(self) -> T: ...
-    def get_output_duplicate(self) -> T: ...
-    def get_output_filtered(self) -> T: ...
-    def get_output_failed(self) -> T: ...
-    def get_input_data(self) -> T: ...
-    def get_index(self, filter: str) -> T: ...
-    def get_index_completed(self) -> T: ...
-    def get_index_duplicate(self) -> T: ...
-    def get_index_filtered(self) -> T: ...
-    def get_index_failed(self) -> T: ...
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> List[Dict[str, Any]]: ...
+    def run(self, *args: P.args, **kwargs: P.kwargs) -> List[Dict[str, Any]]: ...
+    def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> List[Dict[str, Any]]: ...
+    def resume(
+        self,
+        storage: str = STORAGE_TYPE_LOCAL,
+        batch_size: int = 1,
+        target_count: int = 0,
+        max_concurrency: int = 10,
+        initial_state_values: Optional[Dict[str, Any]] = None,
+        on_record_complete: Optional[List[Callable]] = None,
+        on_record_error: Optional[List[Callable]] = None,
+        show_progress: bool = True,
+        task_runner_timeout: int = TASK_RUNNER_TIMEOUT,
+        job_run_stop_threshold: int = NOT_COMPLETED_THRESHOLD,
+    ) -> List[Dict[str, Any]]: ...
+    def get_output_data(self, filter: str) -> List[Dict[str, Any]]: ...
+    def get_output_completed(self) -> List[Dict[str, Any]]: ...
+    def get_output_duplicate(self) -> List[Dict[str, Any]]: ...
+    def get_output_filtered(self) -> List[Dict[str, Any]]: ...
+    def get_output_failed(self) -> List[Dict[str, Any]]: ...
+    def get_input_data(self) -> List[Dict[str, Any]]: ...
+    def get_index(self, filter: str) -> List[int]: ...
+    def get_index_completed(self) -> List[int]: ...
+    def get_index_duplicate(self) -> List[int]: ...
+    def get_index_filtered(self) -> List[int]: ...
+    def get_index_failed(self) -> List[int]: ...
+    def get_dead_queue_indices_and_data(self) -> tuple[List[Dict[str, Any]], List[int]]: ...
 
 
 class DataFactory:
@@ -294,7 +347,7 @@ class DataFactory:
             self._output_cache = {}
         # todo reuse the state from last same-factory state or a new state
 
-    async def __call__(self, *args, **kwargs) -> List[Dict]:
+    async def __call__(self, *args, **kwargs) -> List[dict[str, Any]]:
         """Execute the data processing pipeline based on the configured run mode."""
         try:
             # Initialize job based on run mode
@@ -358,7 +411,7 @@ class DataFactory:
         """Execute the main job processing."""
         self._process_batches()
 
-    async def _finalize_job(self) -> List[Dict]:
+    async def _finalize_job(self) -> List[dict[str, Any]]:
         """Complete job execution and return results."""
         result = None
         if self.job_manager:
@@ -787,22 +840,32 @@ def data_factory(
         wrapper = DataFactoryWrapper(_factory, func)
         return cast(DataFactoryProtocol[P, T], wrapper)
 
-    def _resume_from_checkpoint(master_job_id: str, **kwargs) -> List[Dict]:
+    def _resume_from_checkpoint(master_job_id: str, **kwargs) -> List[dict[str, Any]]:
         """Re-run a previously executed data generation job.
 
         Args:
-            master_job_id (str): ID of the master job to resume
-            **kwargs: Additional configuration overrides for the resume
+            master_job_id: ID of the master job to resume
+            storage: Storage backend to use ('local' or 'in_memory')
+            batch_size: Number of records to process in each batch
+            target_count: Target number of records to generate (0 means process all input)
+            max_concurrency: Maximum number of concurrent tasks
+            initial_state_values: Initial values for shared state
+            on_record_complete: Callbacks to execute after successful record processing
+            on_record_error: Callbacks to execute after failed record processing
+            show_progress: Whether to display progress bar
+            task_runner_timeout: Timeout in seconds for task execution
+            job_run_stop_threshold: Threshold for stopping job if too many records fail
+            factory: Optional DataFactory instance to use
 
         Returns:
-            List[Dict]: Processed output data from the resume
+            List[dict[str,Any]]: Processed output data from the resume
         """
         nonlocal _factory
         if _factory is None:
             raise RuntimeError("Factory not initialized. Please decorate a function first.")
-        # kwargs["factory"] = _factory
         return resume_from_checkpoint(master_job_id, **kwargs)
 
+    # Assign the static method to data_factory
     data_factory.resume_from_checkpoint = _resume_from_checkpoint
 
     return decorator
@@ -898,34 +961,65 @@ async def _same_session_factory(*args, **kwargs):
     return factory
 
 
-def resume_from_checkpoint(*args, **kwargs) -> List[Dict]:
-    """Re-run a previously executed data generation job.
-
-    This is the synchronous interface for re-running jobs.
+def _filter_passed_args(args: dict, valid_args: set) -> dict:
+    """Filter and return only the arguments that were explicitly passed.
 
     Args:
-        master_job_id (str): ID of the master job to resume
-        storage (str): Storage backend to use ('local' or 'in_memory')
-        batch_size (int): Number of records to process in each batch
-        target_count (int): Target number of records to generate (0 means process all input)
-        max_concurrency (int): Maximum number of concurrent tasks
-        initial_state_values (Optional[Dict[str, Any]]): Initial values for shared state
-        on_record_complete (Optional[List[Callable]]): Callbacks to execute after successful record processing
-        on_record_error (Optional[List[Callable]]): Callbacks to execute after failed record processing
-        show_progress (bool): Whether to display progress bar
-        task_runner_timeout (int): Timeout in seconds for task execution
-        job_run_stop_threshold (int): Threshold for stopping job if too many records fail
+        args: Dictionary of all arguments
+        valid_args: Set of argument names to consider
 
     Returns:
-        List[Any]: Processed output data from the resume
-
-    Raises:
-        TypeError: If master job ID is not provided or job not found
+        dict: Dictionary containing only the explicitly passed arguments
     """
-    return event_loop_manager(async_re_run, *args, **kwargs)
+    return {k: v for k, v in args.items() if k in valid_args and v is not None}
 
 
-def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[Dict]:
+def resume_from_checkpoint(*args, **kwargs) -> List[dict[str, Any]]:
+    """Re-run a previously executed data generation job.
+
+    Args:
+        master_job_id: ID of the master job to resume
+        storage: Storage backend to use ('local' or 'in_memory')
+        batch_size: Number of records to process in each batch
+        target_count: Target number of records to generate (0 means process all input)
+        max_concurrency: Maximum number of concurrent tasks
+        initial_state_values: Initial values for shared state
+        on_record_complete: Callbacks to execute after successful record processing
+        on_record_error: Callbacks to execute after failed record processing
+        show_progress: Whether to display progress bar
+        task_runner_timeout: Timeout in seconds for task execution
+        job_run_stop_threshold: Threshold for stopping job if too many records fail
+        factory: Optional DataFactory instance to use
+
+    Returns:
+        List[dict[str,Any]]: Processed output data from the resume
+    """
+    # Define valid arguments
+    valid_args = {
+        "storage",
+        "batch_size",
+        "target_count",
+        "max_concurrency",
+        "initial_state_values",
+        "on_record_complete",
+        "on_record_error",
+        "show_progress",
+        "task_runner_timeout",
+        "job_run_stop_threshold",
+        "factory",
+    }
+
+    # Filter passed arguments
+    filtered_args = _filter_passed_args(kwargs, valid_args)
+
+    # Handle factory if not provided and len(args) > 0 and hasattr(args[0], "factory")
+    # if "factory" not in filtered_args :
+    #     filtered_args["factory"] = args[0].factory
+
+    return event_loop_manager(async_re_run, *args, **filtered_args)
+
+
+def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[dict[str, Any]]:
     """Manage the event loop for executing an async callable in synchronous contexts.
 
     This function intelligently manages asyncio event loops:

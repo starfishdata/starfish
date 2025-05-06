@@ -55,6 +55,8 @@ class JobManager:
         job_run_stop_threshold (int): Threshold for stopping job
         active_operations (set): Set of active operations
         _progress_ticker_task (asyncio.Task): Task for progress logging
+        dead_queue (Queue): Queue for failed tasks
+        task_failure_count (dict): Track failure count per task
     """
 
     # ====================
@@ -96,6 +98,8 @@ class JobManager:
         self._progress_ticker_task = None
         self.execution_time = 0
         self.err_type_counter = {}
+        self.dead_queue = Queue()  # Add dead queue for failed tasks
+        self.task_failure_count = {}  # Track failure count per task
 
     def _initialize_counters(self):
         """Initialize all job counters."""
@@ -189,7 +193,7 @@ class JobManager:
             task_status, err_output = self._handle_task_error(e)
 
         if task_status != STATUS_COMPLETED:
-            self._requeue_task(input_data, input_data_idx)
+            await self._requeue_task(input_data, input_data_idx)
 
         return self._create_task_result(input_data_idx, task_status, output_ref, output, err_output)
 
@@ -214,10 +218,22 @@ class JobManager:
 
         return STATUS_FAILED, {"err_str": err_str, "err_trace": err_trace}
 
-    def _requeue_task(self, input_data, input_data_idx):
-        """Requeue a task that needs to be retried."""
-        input_data[IDX] = input_data_idx
-        self.job_input_queue.put(input_data)
+    async def _requeue_task(self, input_data, input_data_idx):
+        """Requeue a task that needs to be retried or move to dead queue if failed too many times."""
+        task_key = str(input_data_idx)  # Use index as task identifier
+
+        async with self.lock:  # Protect shared state with lock
+            # Update failure count
+            self.task_failure_count[task_key] = self.task_failure_count.get(task_key, 0) + 1
+            input_data[IDX] = input_data_idx
+            if self.task_failure_count[task_key] >= 3:
+                # Move to dead queue after 3 failures
+                self.dead_queue.put(input_data)
+                logger.warning(f"Task {task_key} failed 3 times, moving to dead queue")
+            else:
+                # Requeue for retry
+                self.job_input_queue.put(input_data)
+                logger.debug(f"Requeuing task {task_key} (failure count: {self.task_failure_count[task_key]})")
 
     def _create_task_result(self, input_data_idx, task_status, output_ref, output, err_output):
         """Create a standardized task result dictionary."""
