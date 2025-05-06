@@ -184,9 +184,11 @@ class JobManager:
         task_status = STATUS_COMPLETED
         err_output = {}
         input_data_idx = input_data.pop(IDX, None)
+        if input_data_idx == None:
+            logger.debug(f"found an input_data without index ")
 
         try:
-            output = await self.task_runner.run_task(self.job_config.user_func, input_data)
+            output = await self.task_runner.run_task(self.job_config.user_func, input_data, input_data_idx)
             task_status = self._evaluate_task_output(output)
             output_ref = await self._save_record_data(copy.deepcopy(output), task_status, input_data)
         except (Exception, TimeoutErrorAsyncio) as e:
@@ -221,11 +223,10 @@ class JobManager:
     async def _requeue_task(self, input_data, input_data_idx):
         """Requeue a task that needs to be retried or move to dead queue if failed too many times."""
         task_key = str(input_data_idx)  # Use index as task identifier
-
+        input_data[IDX] = input_data_idx
         async with self.lock:  # Protect shared state with lock
             # Update failure count
             self.task_failure_count[task_key] = self.task_failure_count.get(task_key, 0) + 1
-            input_data[IDX] = input_data_idx
             if self.task_failure_count[task_key] >= 3:
                 # Move to dead queue after 3 failures
                 self.dead_queue.put(input_data)

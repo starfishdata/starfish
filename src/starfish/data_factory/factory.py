@@ -345,6 +345,7 @@ class DataFactory:
             self.job_manager = None
             self.result_idx = []
             self._output_cache = {}
+            self.input_data_queue = Queue()
         # todo reuse the state from last same-factory state or a new state
 
     async def __call__(self, *args, **kwargs) -> List[dict[str, Any]]:
@@ -915,7 +916,7 @@ async def async_re_run(*args, **kwargs) -> List[Any]:
         raise NoResumeSupportError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
     factory.config.run_mode = RUN_MODE_RE_RUN
     factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
-    factory.input_data_queue = Queue()
+
     # Call the __call__ method
     result = await factory()
     return result

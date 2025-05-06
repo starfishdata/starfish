@@ -157,7 +157,7 @@ class JobManagerRerun(JobManager):
                 logger.debug(record_idx)
                 output_tmp = {IDX: record_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
             except Exception as e:
-                logger.error(e)
+                logger.warning(f" can not process completed_task {record_idx} in resume; error is  {str(e)}")
             # Check if output_tmp already exists in job_output
             # have not find duplicated. to remove this check for performance
             if output_tmp not in list(self.job_output.queue):

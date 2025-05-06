@@ -32,17 +32,18 @@ class TaskRunner:
         self.timeout = timeout
         self.master_job_id = master_job_id
 
-    async def run_task(self, func: Callable, input_data: Dict) -> List[Any]:
+    async def run_task(self, func: Callable, input_data: Dict, input_data_idx: str) -> List[Any]:
         """Process a single task with asyncio."""
         retries = 0
         start_time = time.time()
         result = None
+        # Create a copy of input_data without 'IDX' tp prevent insertion of IDX due to race condition
+        copy_input = {k: v for k, v in input_data.items() if k != IDX}
+        # input_data_idx = input_data.pop(IDX, None)
         # maybe better to use retries in a single request instead in the batch level.
         while retries <= self.max_retries:
             try:
-                # Create a copy of input_data without 'IDX' tp prevent insertion of IDX due to race condition
-                filtered_input = {k: v for k, v in input_data.items() if k != IDX}
-                result = await asyncio.wait_for(func(**filtered_input), timeout=self.timeout)
+                result = await asyncio.wait_for(func(**copy_input), timeout=self.timeout)
                 logger.debug(f"Task execution completed in {time.time() - start_time:.2f} seconds")
                 break
             except asyncio.TimeoutError as timeout_error:
@@ -57,6 +58,7 @@ class TaskRunner:
                 if retries > self.max_retries:
                     # logger.error(f"Task execution failed after {self.max_retries} retries")
                     raise e
-                await asyncio.sleep(2**retries)  # exponential backoff
+                logger.warning(f"Retry attempt {retries}/{self.max_retries} for input data index {input_data_idx}")
+                await asyncio.sleep(1**retries)  # exponential backoff
 
         return result
