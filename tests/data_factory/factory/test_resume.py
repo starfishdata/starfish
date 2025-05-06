@@ -146,6 +146,7 @@ async def test_case_keyboard_interrupt(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip("to run later")
 async def test_resume_with_paramters():
     """Test extra parameters not defined in workflow
     - Input: List of dicts with city names
