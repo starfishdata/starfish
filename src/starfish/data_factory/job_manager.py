@@ -108,6 +108,7 @@ class JobManager:
         self.filtered_count = 0
         self.failed_count = 0
         self.total_count = 0
+        self.dead_queue_count = 0
 
     async def setup_input_output_queue(self):
         pass
@@ -230,6 +231,7 @@ class JobManager:
             if self.task_failure_count[task_key] >= 3:
                 # Move to dead queue after 3 failures
                 self.dead_queue.put(input_data)
+                self.dead_queue_count += 1
                 logger.warning(f"Task {task_key} failed 3 times, moving to dead queue")
             else:
                 # Requeue for retry
@@ -381,14 +383,18 @@ class JobManager:
         consecutive_not_completed = len(items_check) == self.job_config.job_run_stop_threshold and all(
             item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check
         )
-        # consecutive_not_completed and
-        completed_tasks_reach_target = self.completed_count >= self.job_config.target_count
+
         if consecutive_not_completed:
             logger.error(
                 f"consecutive_not_completed: in {self.job_config.job_run_stop_threshold} times, "
                 f"stopping this job; please adjust factory config and input data then "
                 f"resume_from_checkpoint({self.master_job_id})"
             )
+        target_not_reach_count = self.job_config.target_count - self.completed_count
+        completed_tasks_reach_target = target_not_reach_count <= 0
+        if target_not_reach_count > 0 and target_not_reach_count == self.dead_queue_count:
+            logger.warning(f"there are {target_not_reach_count} iput data not able to process, pls remove them")
+            completed_tasks_reach_target = True
 
         return consecutive_not_completed or completed_tasks_reach_target
 

@@ -501,7 +501,7 @@ class DataFactory:
         if status_filter in self._output_cache:
             result = self._output_cache[status_filter].get(IDX, []) if is_idx else self._output_cache[status_filter].get("result", [])
             if len(result) == 0 and self._check_process_out(status_filter=status_filter) != 0:
-                logger.warning("cache is not correct, going to repopelate the cache")
+                logger.warning("_output_cache is not correct, going to repopelate the cache")
             else:
                 return result
 
@@ -711,7 +711,8 @@ class DataFactory:
             f"\033[33mAttempted: {self.job_manager.total_count}\033[0m "
             f"(Failed: {self.job_manager.failed_count}, "
             f"Filtered: {self.job_manager.filtered_count}, "
-            f"Duplicate: {self.job_manager.duplicate_count})"
+            f"Duplicate: {self.job_manager.duplicate_count}, "
+            f"InDeadQueue: {self.job_manager.dead_queue_count})"
         )
 
 
