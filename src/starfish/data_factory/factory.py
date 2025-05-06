@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 import datetime
 from os import environ
 import sys
@@ -783,7 +784,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
 
         results.put(record)
 
-        original_input_data.append({k: v for k, v in record.items() if k != IDX})
+        original_input_data.append({k: deepcopy(v) for k, v in record.items() if k != IDX})
 
     # Convert the list to an immutable tuple
     return results, original_input_data
