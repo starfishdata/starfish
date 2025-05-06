@@ -27,5 +27,7 @@ async def test_dead_queue():
         ],
         num_records_per_city=nums_per_record,
     )
-    dead_input_data, dead_input_data_indices = test1.get_dead_queue_indices_and_data()
+    dead_input_data, dead_input_data_indices = test1._get_dead_queue_indices_and_data()
+    assert len(dead_input_data) == len(dead_input_data_indices)
+    dead_input_data, dead_input_data_indices = test1.get_input_data_in_dead_queue(), test1.get_index_dead_queue()
     assert len(dead_input_data) == len(dead_input_data_indices)
