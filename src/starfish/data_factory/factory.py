@@ -125,7 +125,7 @@ class FactoryWrapper(Generic[T]):
             T: Processed output data
         """
         self.factory.config.run_mode = RUN_MODE_NORMAL
-        return FactoryExecutorManager.excutor(self.factory, *args, **kwargs)
+        return FactoryExecutorManager.execute(self.factory, *args, **kwargs)
 
     def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> List[dict[str, Any]]:
         """Test run with limited data for validation purposes.
@@ -138,7 +138,7 @@ class FactoryWrapper(Generic[T]):
             T: Processed output data from the test run
         """
         self.factory.config.run_mode = RUN_MODE_DRY_RUN
-        return FactoryExecutorManager.excutor(self.factory, *args, **kwargs)
+        return FactoryExecutorManager.execute(self.factory, *args, **kwargs)
 
     def resume(
         self,
@@ -170,7 +170,7 @@ class FactoryWrapper(Generic[T]):
         }
 
         # Filter and pass only explicitly provided arguments
-        return FactoryExecutorManager.resume_excutor(**passed_args)
+        return FactoryExecutorManager.resume(**passed_args)
 
     def get_output_data(self, filter: str) -> List[dict[str, Any]]:
         return FactoryExecutorManager.process_output(self.factory, filter=filter)
@@ -822,18 +822,6 @@ def _initialize_or_update_factory(
     return factory
 
 
-# def _create_resume_method(factory: Optional[Factory]) -> Callable:
-#     """Create the resume_from_checkpoint method with factory validation."""
-
-#     def _resume_from_checkpoint(master_job_id: str, **kwargs) -> List[dict[str, Any]]:
-#         """Re-run a previously executed data generation job."""
-#         if factory is None:
-#             raise RuntimeError("Factory not initialized. Please decorate a function first.")
-#         return resume_from_checkpoint(master_job_id, **kwargs)
-
-#     return _resume_from_checkpoint
-
-
 class ResumeManager:
     # ====================
     # Factory Initialization
@@ -918,38 +906,76 @@ class ResumeManager:
 # Argument Handling
 # ====================
 def resume_from_checkpoint(*args, **kwargs) -> List[dict[str, Any]]:
-    return FactoryExecutorManager.resume_excutor(*args, **kwargs)
+    return FactoryExecutorManager.resume(*args, **kwargs)
 
 
 class FactoryExecutorManager:
-    filter_mapping = {("duplicated",): STATUS_DUPLICATE, ("completed",): STATUS_COMPLETED, ("failed",): STATUS_FAILED, ("filtered",): STATUS_FILTERED}
-    valid_status = (STATUS_DUPLICATE, STATUS_COMPLETED, STATUS_FILTERED, STATUS_FAILED)
+    class Filters:
+        """Handles filter-related operations"""
 
-    # ====================
-    # Event Loop Management
-    # ====================
-    @staticmethod
-    def excutor(callable_func: Callable, *args, **kwargs) -> List[dict[str, Any]]:
-        """Manage the event loop for executing an async callable in synchronous contexts."""
-        _ensure_nest_asyncio()
+        filter_mapping = {("duplicated",): STATUS_DUPLICATE, ("completed",): STATUS_COMPLETED, ("failed",): STATUS_FAILED, ("filtered",): STATUS_FILTERED}
+        valid_status = (STATUS_DUPLICATE, STATUS_COMPLETED, STATUS_FILTERED, STATUS_FAILED)
 
-        try:
-            loop = asyncio.get_event_loop()
-            logger.debug("Using existing event loop for execution")
-            return loop.run_until_complete(callable_func(*args, **kwargs))
-        except RuntimeError as e:
-            logger.debug(f"Creating new event loop: {str(e)}")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        @staticmethod
+        def is_valid(filter: str) -> bool:
+            """Check if a filter is valid"""
+            return filter in FactoryExecutorManager.Filters.valid_status
+
+        @staticmethod
+        def convert(filter: str) -> str:
+            """Convert a filter string to its corresponding status"""
+            for keys, status in FactoryExecutorManager.Filters.filter_mapping.items():
+                if filter in keys:
+                    return status
+            return filter
+
+    class EventLoop:
+        """Manages event loop operations"""
+
+        @staticmethod
+        def execute(callable_func: Callable, *args, **kwargs) -> List[dict[str, Any]]:
+            """Execute an async callable in synchronous contexts"""
+            _ensure_nest_asyncio()
+
             try:
+                loop = asyncio.get_event_loop()
+                logger.debug("Using existing event loop for execution")
                 return loop.run_until_complete(callable_func(*args, **kwargs))
-            finally:
-                loop.close()
-                logger.debug("Closed newly created event loop")
+            except RuntimeError as e:
+                logger.debug(f"Creating new event loop: {str(e)}")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(callable_func(*args, **kwargs))
+                finally:
+                    loop.close()
+                    logger.debug("Closed newly created event loop")
+
+    class DeadQueue:
+        """Handles dead queue operations"""
+
+        @staticmethod
+        def get_indices_and_data(factory: Factory) -> tuple[List[dict], List[int]]:
+            """Get dead queue indices and data"""
+            if not hasattr(factory.job_manager, "dead_queue"):
+                return [], []
+
+            dead_input_data = []
+            dead_input_indices = []
+            for task_data in list(factory.job_manager.dead_queue.queue):
+                dead_input_data.append(task_data)
+                dead_input_indices.append(task_data[IDX])
+
+            return dead_input_data, dead_input_indices
 
     @staticmethod
-    def resume_excutor(*args, **kwargs) -> List[dict[str, Any]]:
-        """Re-run a previously executed data generation job."""
+    def execute(callable_func: Callable, *args, **kwargs) -> List[dict[str, Any]]:
+        """Execute an async callable"""
+        return FactoryExecutorManager.EventLoop.execute(callable_func, *args, **kwargs)
+
+    @staticmethod
+    def resume(*args, **kwargs) -> List[dict[str, Any]]:
+        """Re-run a previously executed data generation job"""
         valid_args = {
             "storage",
             "batch_size",
@@ -963,58 +989,19 @@ class FactoryExecutorManager:
             "job_run_stop_threshold",
             "factory",
         }
-        """Filter and return only the arguments that were explicitly passed."""
         filtered_args = {k: v for k, v in kwargs.items() if k in valid_args and v is not None}
-        return FactoryExecutorManager.excutor(ResumeManager.async_re_run, *args, **filtered_args)
+        return FactoryExecutorManager.execute(ResumeManager.async_re_run, *args, **filtered_args)
 
     @staticmethod
     def process_output(factory: Factory, filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[dict[str, Any]]:
-        result = None
-        _filter = FactoryExecutorManager._convert_filter(filter=filter)
-        if FactoryExecutorManager._valid_filter(_filter):
-            result = factory._process_output(_filter, is_idx)
-        else:
-            raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(FactoryExecutorManager.filter_mapping.keys())}")
-        return result
+        """Process and filter output data"""
+        _filter = FactoryExecutorManager.Filters.convert(filter)
+        if FactoryExecutorManager.Filters.is_valid(_filter):
+            return factory._process_output(_filter, is_idx)
+        raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(FactoryExecutorManager.Filters.filter_mapping.keys())}")
 
     @staticmethod
     def process_dead_queue(factory: Factory, is_idx: bool = False) -> List:
-        result = FactoryExecutorManager._get_dead_queue_indices_and_data(factory)
-        if is_idx:
-            return result[1]
-        return result[0]
-
-    @staticmethod
-    def _get_dead_queue_indices_and_data(
-        factory: Factory,
-    ) -> tuple[List[dict], List[int]]:
-        """Get the indices of tasks that failed 3 times and were moved to the dead queue.
-
-        Returns:
-            tuple[List[dict], List[int]]: Tuple containing:
-                - List of dead queue task data (dicts)
-                - List of indices from the dead queue
-        """
-        if not hasattr(factory.job_manager, "dead_queue"):
-            return [], []
-
-        dead_input_data = []
-        dead_input_indices = []
-        # Iterate through the dead queue without modifying it
-        for task_data in list(factory.job_manager.dead_queue.queue):
-            dead_input_data.append(task_data)
-            dead_input_indices.append(task_data[IDX])
-
-        return dead_input_data, dead_input_indices
-
-    @staticmethod
-    def _valid_filter(filter: str) -> bool:
-        return filter in FactoryExecutorManager.valid_status
-
-    @staticmethod
-    def _convert_filter(filter: str) -> str:
-        for keys, status in FactoryExecutorManager.filter_mapping.items():
-            if filter in keys:
-                filter = status
-                break
-        return filter
+        """Process dead queue data"""
+        result = FactoryExecutorManager.DeadQueue.get_indices_and_data(factory)
+        return result[1] if is_idx else result[0]
