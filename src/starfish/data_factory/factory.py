@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 import datetime
 from os import environ
 import sys
