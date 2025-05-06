@@ -187,7 +187,7 @@ class JobManager:
         err_output = {}
         input_data_idx = input_data.pop(IDX, None)
         if input_data_idx == None:
-            logger.debug(f"found an input_data without index ")
+            logger.warning(f"found an input_data without index ")
 
         try:
             output = await self.task_runner.run_task(self.job_config.user_func, input_data, input_data_idx)

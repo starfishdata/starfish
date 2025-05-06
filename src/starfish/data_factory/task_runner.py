@@ -39,8 +39,6 @@ class TaskRunner:
         result = None
         # Create a copy of input_data without 'IDX' tp prevent insertion of IDX due to race condition
         copy_input = {k: v for k, v in input_data.items() if k != IDX}
-        # input_data_idx = input_data.pop(IDX, None)
-        # maybe better to use retries in a single request instead in the batch level.
         while retries <= self.max_retries:
             try:
                 result = await asyncio.wait_for(func(**copy_input), timeout=self.timeout)

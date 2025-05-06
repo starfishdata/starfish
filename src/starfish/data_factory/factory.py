@@ -37,6 +37,7 @@ from starfish.data_factory.storage.models import GenerationMasterJob, Project
 from starfish.data_factory.utils.data_class import FactoryMasterConfig, TelemetryData
 from starfish.data_factory.utils.state import MutableSharedState
 from starfish.telemetry.posthog_client import Event, analytics
+from copy import deepcopy
 
 logger = get_logger(__name__)
 
@@ -90,25 +91,22 @@ def _is_event_loop_running():
         return False
 
 
-class DataFactoryWrapper(Generic[T]):
+class FactoryWrapper(Generic[T]):
     """Wrapper class that provides execution methods for data factory pipelines.
 
     This class acts as the interface returned by the @data_factory decorator,
     providing methods to run, dry-run, and resume data processing jobs.
 
     Attributes:
-        factory (DataFactory): The underlying DataFactory instance
+        factory (Factory): The underlying Factory instance
         state: Shared state object for tracking job state
     """
 
-    filter_mapping = {("duplicated",): STATUS_DUPLICATE, ("completed",): STATUS_COMPLETED, ("failed",): STATUS_FAILED, ("filtered",): STATUS_FILTERED}
-    valid_status = (STATUS_DUPLICATE, STATUS_COMPLETED, STATUS_FILTERED, STATUS_FAILED)
-
     def __init__(self, factory: Any, func: Callable[..., T]):
-        """Initialize the DataFactoryWrapper instance.
+        """Initialize the FactoryWrapper instance.
 
         Args:
-            factory (Any): The DataFactory instance to wrap
+            factory (Any): The Factory instance to wrap
             func (Callable[..., T]): The data processing function to execute
         """
         self.factory = factory
@@ -126,7 +124,7 @@ class DataFactoryWrapper(Generic[T]):
             T: Processed output data
         """
         self.factory.config.run_mode = RUN_MODE_NORMAL
-        return event_loop_manager(self.factory, *args, **kwargs)
+        return FactoryExecutorManager.excutor(self.factory, *args, **kwargs)
 
     def dry_run(self, *args: P.args, **kwargs: P.kwargs) -> List[dict[str, Any]]:
         """Test run with limited data for validation purposes.
@@ -139,7 +137,7 @@ class DataFactoryWrapper(Generic[T]):
             T: Processed output data from the test run
         """
         self.factory.config.run_mode = RUN_MODE_DRY_RUN
-        return event_loop_manager(self.factory, *args, **kwargs)
+        return FactoryExecutorManager.excutor(self.factory, *args, **kwargs)
 
     def resume(
         self,
@@ -171,88 +169,46 @@ class DataFactoryWrapper(Generic[T]):
         }
 
         # Filter and pass only explicitly provided arguments
-        return resume_from_checkpoint(**passed_args)
+        return FactoryExecutorManager.resume_excutor(**passed_args)
 
     def get_output_data(self, filter: str) -> List[dict[str, Any]]:
-        result = None
-        _filter = self._convert_filter(filter=filter)
-        if self._valid_filter(_filter):
-            result = self.factory._process_output(_filter)
-        else:
-            raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
-        return result
+        return FactoryExecutorManager.process_output(self.factory, filter=filter)
 
     def get_output_completed(self) -> List[dict[str, Any]]:
-        return self.factory._process_output()
+        return FactoryExecutorManager.process_output(self.factory)
 
     def get_output_duplicate(self) -> List[dict[str, Any]]:
-        return self.factory._process_output(STATUS_DUPLICATE)
+        return FactoryExecutorManager.process_output(self.factory, filter=STATUS_DUPLICATE)
 
     def get_output_filtered(self) -> List[dict[str, Any]]:
-        return self.factory._process_output(STATUS_FILTERED)
+        return FactoryExecutorManager.process_output(self.factory, filter=STATUS_FILTERED)
 
     def get_output_failed(self) -> List[dict[str, Any]]:
-        return self.factory._process_output(STATUS_FAILED)
+        return FactoryExecutorManager.process_output(self.factory, filter=STATUS_FAILED)
 
     def get_input_data_in_dead_queue(self) -> List[dict[str, Any]]:
-        return self._get_dead_queue_indices_and_data()[0]
+        return FactoryExecutorManager.process_dead_queue(self.factory)
 
     def get_input_data(self) -> List[dict[str, Any]]:
         return self.factory.original_input_data
 
     def get_index(self, filter: str) -> List[int]:
-        result = None
-        _filter = self._convert_filter(filter)
-        if self._valid_filter(_filter):
-            result = self.factory._process_output(_filter, is_idx=True)
-        else:
-            raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(self.__class__.filter_mapping.keys())}")
-        return result
+        return FactoryExecutorManager.process_output(self.factory, filter=filter, is_idx=True)
 
     def get_index_completed(self) -> List[int]:
-        return self.factory._process_output(is_idx=True)
+        return FactoryExecutorManager.process_output(self.factory, filter=STATUS_COMPLETED, is_idx=True)
 
     def get_index_duplicate(self) -> List[int]:
-        return self.factory._process_output(STATUS_DUPLICATE, is_idx=True)
+        return FactoryExecutorManager.process_output(self.factory, filter=STATUS_DUPLICATE, is_idx=True)
 
     def get_index_filtered(self) -> List[int]:
-        return self.factory._process_output(STATUS_FILTERED, is_idx=True)
+        return FactoryExecutorManager.process_output(self.factory, filter=STATUS_FILTERED, is_idx=True)
 
     def get_index_failed(self) -> List[int]:
-        return self.factory._process_output(STATUS_FAILED, is_idx=True)
+        return FactoryExecutorManager.process_output(self.factory, filter=STATUS_FAILED, is_idx=True)
 
     def get_index_dead_queue(self) -> List[int]:
-        return self._get_dead_queue_indices_and_data()[1]
-
-    def _valid_filter(self, filter: str) -> bool:
-        return filter in self.__class__.valid_status
-
-    def _convert_filter(self, filter: str) -> str:
-        for keys, status in self.__class__.filter_mapping.items():
-            if filter in keys:
-                filter = status
-                break
-        return filter
-
-    def _get_dead_queue_indices_and_data(self) -> tuple[List[dict], List[int]]:
-        """Get the indices of tasks that failed 3 times and were moved to the dead queue.
-
-        Returns:
-            tuple[List[dict], List[int]]: Tuple containing:
-                - List of dead queue task data (dicts)
-                - List of indices from the dead queue
-        """
-        if not hasattr(self.factory.job_manager, "dead_queue"):
-            return [], []
-
-        dead_input_data = []
-        dead_input_indices = []
-        # Iterate through the dead queue without modifying it
-        for task_data in list(self.factory.job_manager.dead_queue.queue):
-            dead_input_data.append(task_data)
-            dead_input_indices.append(task_data[IDX])
-
-        return dead_input_data, dead_input_indices
+        return FactoryExecutorManager.process_dead_queue(self.factory, is_idx=True)
 
 
 class DataFactoryProtocol(Protocol[P, T]):
@@ -291,7 +247,7 @@ class DataFactoryProtocol(Protocol[P, T]):
     # def _get_dead_queue_indices_and_data(self) -> tuple[List[Dict[str, Any]], List[int]]: ...
 
 
-class DataFactory:
+class Factory:
     """Core class for managing data generation pipelines.
 
     This class handles the orchestration of data generation tasks, including:
@@ -313,7 +269,7 @@ class DataFactory:
     """
 
     def __init__(self, master_job_config: FactoryMasterConfig, func: Callable = None):
-        """Initialize the DataFactory instance.
+        """Initialize the Factory instance.
 
         Args:
             master_job_config (FactoryMasterConfig): Configuration object containing:
@@ -780,7 +736,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
 
         results.put(record)
 
-        original_input_data.append({k: v for k, v in record.items() if k != IDX})
+        original_input_data.append({k: deepcopy(v) for k, v in record.items() if k != IDX})
 
     # Convert the list to an immutable tuple
     return results, original_input_data
@@ -822,7 +778,7 @@ def data_factory(
     initial_state_values = initial_state_values or {}
 
     # Create configuration
-    config = _create_master_config(
+    config = FactoryMasterConfig(
         storage=storage,
         batch_size=batch_size,
         target_count=target_count,
@@ -842,26 +798,21 @@ def data_factory(
         """Actual decorator that wraps the function."""
         nonlocal _factory
         _factory = _initialize_or_update_factory(_factory, config, func, initial_state_values)
-        wrapper = DataFactoryWrapper(_factory, func)
+        wrapper = FactoryWrapper(_factory, func)
         return cast(DataFactoryProtocol[P, T], wrapper)
 
     # Add resume capability as a static method
-    data_factory.resume_from_checkpoint = _create_resume_method(_factory)
+    data_factory.resume_from_checkpoint = resume_from_checkpoint
 
     return decorator
 
 
-def _create_master_config(**kwargs) -> FactoryMasterConfig:
-    """Create a FactoryMasterConfig instance from given parameters."""
-    return FactoryMasterConfig(**kwargs)
-
-
 def _initialize_or_update_factory(
-    factory: Optional[DataFactory], config: FactoryMasterConfig, func: Callable[P, T], initial_state_values: Dict[str, Any]
-) -> DataFactory:
-    """Initialize or update a DataFactory instance."""
+    factory: Optional[Factory], config: FactoryMasterConfig, func: Callable[P, T], initial_state_values: Dict[str, Any]
+) -> Factory:
+    """Initialize or update a Factory instance."""
     if factory is None:
-        factory = DataFactory(config, func)
+        factory = Factory(config, func)
         factory.state = MutableSharedState(initial_data=initial_state_values)
     else:
         factory.config = config
@@ -870,143 +821,199 @@ def _initialize_or_update_factory(
     return factory
 
 
-def _create_resume_method(factory: Optional[DataFactory]) -> Callable:
-    """Create the resume_from_checkpoint method with factory validation."""
+# def _create_resume_method(factory: Optional[Factory]) -> Callable:
+#     """Create the resume_from_checkpoint method with factory validation."""
 
-    def _resume_from_checkpoint(master_job_id: str, **kwargs) -> List[dict[str, Any]]:
-        """Re-run a previously executed data generation job."""
-        if factory is None:
-            raise RuntimeError("Factory not initialized. Please decorate a function first.")
-        return resume_from_checkpoint(master_job_id, **kwargs)
+#     def _resume_from_checkpoint(master_job_id: str, **kwargs) -> List[dict[str, Any]]:
+#         """Re-run a previously executed data generation job."""
+#         if factory is None:
+#             raise RuntimeError("Factory not initialized. Please decorate a function first.")
+#         return resume_from_checkpoint(master_job_id, **kwargs)
 
-    return _resume_from_checkpoint
-
-
-# ====================
-# Storage Helpers
-# ====================
-async def _re_run_get_master_job_request_config(factory: DataFactory):
-    master_job = await factory.factory_storage.get_master_job(factory.config.master_job_id)
-    if master_job:
-        master_job_config_data = await factory.factory_storage.get_request_config(master_job.request_config_ref)
-        return master_job_config_data, master_job
-    else:
-        await factory._close_storage()
-        raise InputError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
+#     return _resume_from_checkpoint
 
 
-# ====================
-# Factory Initialization
-# ====================
-async def _not_same_session_factory(*args, **kwargs):
-    factory = DataFactory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
-    if len(args) == 1:
-        factory.config.master_job_id = args[0]
-    else:
-        raise InputError("Master job id is required, please pass it in the parameters")
+class ResumeManager:
+    # ====================
+    # Factory Initialization
+    # ====================
+    @staticmethod
+    async def _not_same_session_factory(*args, **kwargs):
+        factory = Factory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
+        if len(args) == 1:
+            factory.config.master_job_id = args[0]
+        else:
+            raise InputError("Master job id is required, please pass it in the parameters")
 
-    await factory._storage_setup()
-    master_job_config_data, master_job = await _re_run_get_master_job_request_config(factory=factory)
+        await factory._storage_setup()
+        master_job_config_data, master_job = None, None
+        master_job = await factory.factory_storage.get_master_job(factory.config.master_job_id)
+        if master_job:
+            master_job_config_data = await factory.factory_storage.get_request_config(master_job.request_config_ref)
+        else:
+            await factory._close_storage()
+            raise InputError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
 
-    master_job = {
-        "duplicate_count": master_job.duplicate_record_count,
-        "failed_count": master_job.failed_record_count,
-        "filtered_count": master_job.filtered_record_count,
-        "completed_count": master_job.completed_record_count,
-        "total_count": (
-            master_job.duplicate_record_count + master_job.failed_record_count + master_job.filtered_record_count + master_job.completed_record_count
-        ),
-    }
+        master_job = {
+            "duplicate_count": master_job.duplicate_record_count,
+            "failed_count": master_job.failed_record_count,
+            "filtered_count": master_job.filtered_record_count,
+            "completed_count": master_job.completed_record_count,
+            "total_count": (
+                master_job.duplicate_record_count + master_job.failed_record_count + master_job.filtered_record_count + master_job.completed_record_count
+            ),
+        }
 
-    factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
-    factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
+        factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
+        factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
 
-    if func_serialized := master_job_config_data.get("func"):
-        factory.func = cloudpickle.loads(bytes.fromhex(func_serialized))
+        if func_serialized := master_job_config_data.get("func"):
+            factory.func = cloudpickle.loads(bytes.fromhex(func_serialized))
 
-    factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
-    factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
-    return factory
+        factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
+        factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
+        return factory
 
+    @staticmethod
+    async def _same_session_factory(*args, **kwargs):
+        factory = kwargs["factory"]
+        master_job = {
+            "duplicate_count": factory.job_manager.duplicate_count,
+            "failed_count": factory.job_manager.failed_count,
+            "filtered_count": factory.job_manager.filtered_count,
+            "completed_count": factory.job_manager.completed_count,
+            "total_count": factory.job_manager.total_count,
+        }
+        factory._clean_up_in_same_session()
+        factory.config.prev_job = {"master_job": master_job, "input_data": factory.original_input_data}
+        return factory
 
-async def _same_session_factory(*args, **kwargs):
-    factory = kwargs["factory"]
-    master_job = {
-        "duplicate_count": factory.job_manager.duplicate_count,
-        "failed_count": factory.job_manager.failed_count,
-        "filtered_count": factory.job_manager.filtered_count,
-        "completed_count": factory.job_manager.completed_count,
-        "total_count": factory.job_manager.total_count,
-    }
-    factory._clean_up_in_same_session()
-    factory.config.prev_job = {"master_job": master_job, "input_data": factory.original_input_data}
-    return factory
+    # ====================
+    # Resume Execution
+    # ====================
+    @staticmethod
+    async def async_re_run(*args, **kwargs) -> List[Any]:
+        """Asynchronously resume a previously executed data generation job."""
+        factory = await (ResumeManager._same_session_factory if "factory" in kwargs else ResumeManager._not_same_session_factory)(*args, **kwargs)
 
+        # Update config with any additional kwargs
+        for key, value in kwargs.items():
+            if hasattr(factory.config, key):
+                setattr(factory.config, key, value)
 
-# ====================
-# Resume Execution
-# ====================
-async def async_re_run(*args, **kwargs) -> List[Any]:
-    """Asynchronously resume a previously executed data generation job."""
-    factory = await (_same_session_factory if "factory" in kwargs else _not_same_session_factory)(*args, **kwargs)
+        await factory._storage_setup()
 
-    # Update config with any additional kwargs
-    for key, value in kwargs.items():
-        if hasattr(factory.config, key):
-            setattr(factory.config, key, value)
+        if not factory.func or not factory.config:
+            await factory._close_storage()
+            raise NoResumeSupportError("Function does not support resume_from_checkpoint. Please ensure it supports cloudpickle serialization")
 
-    await factory._storage_setup()
+        factory.config.run_mode = RUN_MODE_RE_RUN
+        factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
 
-    if not factory.func or not factory.config:
-        await factory._close_storage()
-        raise NoResumeSupportError("Function does not support resume_from_checkpoint. Please ensure it supports cloudpickle serialization")
-
-    factory.config.run_mode = RUN_MODE_RE_RUN
-    factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
-
-    return await factory()
+        return await factory()
 
 
 # ====================
 # Argument Handling
 # ====================
 def resume_from_checkpoint(*args, **kwargs) -> List[dict[str, Any]]:
-    """Re-run a previously executed data generation job."""
-    valid_args = {
-        "storage",
-        "batch_size",
-        "target_count",
-        "max_concurrency",
-        "initial_state_values",
-        "on_record_complete",
-        "on_record_error",
-        "show_progress",
-        "task_runner_timeout",
-        "job_run_stop_threshold",
-        "factory",
-    }
-    """Filter and return only the arguments that were explicitly passed."""
-    filtered_args = {k: v for k, v in args.items() if k in valid_args and v is not None}
-    return event_loop_manager(async_re_run, *args, **filtered_args)
+    return FactoryExecutorManager.resume_excutor(*args, **kwargs)
 
 
-# ====================
-# Event Loop Management
-# ====================
-def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[dict[str, Any]]:
-    """Manage the event loop for executing an async callable in synchronous contexts."""
-    _ensure_nest_asyncio()
+class FactoryExecutorManager:
+    filter_mapping = {("duplicated",): STATUS_DUPLICATE, ("completed",): STATUS_COMPLETED, ("failed",): STATUS_FAILED, ("filtered",): STATUS_FILTERED}
+    valid_status = (STATUS_DUPLICATE, STATUS_COMPLETED, STATUS_FILTERED, STATUS_FAILED)
 
-    try:
-        loop = asyncio.get_event_loop()
-        logger.debug("Using existing event loop for execution")
-        return loop.run_until_complete(callable_func(*args, **kwargs))
-    except RuntimeError as e:
-        logger.debug(f"Creating new event loop: {str(e)}")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    # ====================
+    # Event Loop Management
+    # ====================
+    @staticmethod
+    def excutor(callable_func: Callable, *args, **kwargs) -> List[dict[str, Any]]:
+        """Manage the event loop for executing an async callable in synchronous contexts."""
+        _ensure_nest_asyncio()
+
         try:
+            loop = asyncio.get_event_loop()
+            logger.debug("Using existing event loop for execution")
             return loop.run_until_complete(callable_func(*args, **kwargs))
-        finally:
-            loop.close()
-            logger.debug("Closed newly created event loop")
+        except RuntimeError as e:
+            logger.debug(f"Creating new event loop: {str(e)}")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(callable_func(*args, **kwargs))
+            finally:
+                loop.close()
+                logger.debug("Closed newly created event loop")
+
+    @staticmethod
+    def resume_excutor(*args, **kwargs) -> List[dict[str, Any]]:
+        """Re-run a previously executed data generation job."""
+        valid_args = {
+            "storage",
+            "batch_size",
+            "target_count",
+            "max_concurrency",
+            "initial_state_values",
+            "on_record_complete",
+            "on_record_error",
+            "show_progress",
+            "task_runner_timeout",
+            "job_run_stop_threshold",
+            "factory",
+        }
+        """Filter and return only the arguments that were explicitly passed."""
+        filtered_args = {k: v for k, v in kwargs.items() if k in valid_args and v is not None}
+        return FactoryExecutorManager.excutor(ResumeManager.async_re_run, *args, **filtered_args)
+
+    @staticmethod
+    def process_output(factory: Factory, filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[dict[str, Any]]:
+        result = None
+        _filter = FactoryExecutorManager._convert_filter(filter=filter)
+        if FactoryExecutorManager._valid_filter(_filter):
+            result = factory._process_output(_filter, is_idx)
+        else:
+            raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(FactoryExecutorManager.filter_mapping.keys())}")
+        return result
+
+    @staticmethod
+    def process_dead_queue(factory: Factory, is_idx: bool = False) -> List:
+        result = FactoryExecutorManager._get_dead_queue_indices_and_data(factory)
+        if is_idx:
+            return result[1]
+        return result[0]
+
+    @staticmethod
+    def _get_dead_queue_indices_and_data(
+        factory: Factory,
+    ) -> tuple[List[dict], List[int]]:
+        """Get the indices of tasks that failed 3 times and were moved to the dead queue.
+
+        Returns:
+            tuple[List[dict], List[int]]: Tuple containing:
+                - List of dead queue task data (dicts)
+                - List of indices from the dead queue
+        """
+        if not hasattr(factory.job_manager, "dead_queue"):
+            return [], []
+
+        dead_input_data = []
+        dead_input_indices = []
+        # Iterate through the dead queue without modifying it
+        for task_data in list(factory.job_manager.dead_queue.queue):
+            dead_input_data.append(task_data)
+            dead_input_indices.append(task_data[IDX])
+
+        return dead_input_data, dead_input_indices
+
+    @staticmethod
+    def _valid_filter(filter: str) -> bool:
+        return filter in FactoryExecutorManager.valid_status
+
+    @staticmethod
+    def _convert_filter(filter: str) -> str:
+        for keys, status in FactoryExecutorManager.filter_mapping.items():
+            if filter in keys:
+                filter = status
+                break
+        return filter
