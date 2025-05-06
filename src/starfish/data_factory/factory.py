@@ -822,93 +822,6 @@ def _initialize_or_update_factory(
     return factory
 
 
-class ResumeManager:
-    # ====================
-    # Factory Initialization
-    # ====================
-    @staticmethod
-    async def _not_same_session_factory(*args, **kwargs):
-        factory = Factory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
-        if len(args) == 1:
-            factory.config.master_job_id = args[0]
-        else:
-            raise InputError("Master job id is required, please pass it in the parameters")
-
-        await factory._storage_setup()
-        master_job_config_data, master_job = None, None
-        master_job = await factory.factory_storage.get_master_job(factory.config.master_job_id)
-        if master_job:
-            master_job_config_data = await factory.factory_storage.get_request_config(master_job.request_config_ref)
-        else:
-            await factory._close_storage()
-            raise InputError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
-
-        master_job = {
-            "duplicate_count": master_job.duplicate_record_count,
-            "failed_count": master_job.failed_record_count,
-            "filtered_count": master_job.filtered_record_count,
-            "completed_count": master_job.completed_record_count,
-            "total_count": (
-                master_job.duplicate_record_count + master_job.failed_record_count + master_job.filtered_record_count + master_job.completed_record_count
-            ),
-        }
-
-        factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
-        factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
-
-        if func_serialized := master_job_config_data.get("func"):
-            factory.func = cloudpickle.loads(bytes.fromhex(func_serialized))
-
-        factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
-        factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
-        return factory
-
-    @staticmethod
-    async def _same_session_factory(*args, **kwargs):
-        factory = kwargs["factory"]
-        master_job = {
-            "duplicate_count": factory.job_manager.duplicate_count,
-            "failed_count": factory.job_manager.failed_count,
-            "filtered_count": factory.job_manager.filtered_count,
-            "completed_count": factory.job_manager.completed_count,
-            "total_count": factory.job_manager.total_count,
-        }
-        factory._clean_up_in_same_session()
-        factory.config.prev_job = {"master_job": master_job, "input_data": factory.original_input_data}
-        return factory
-
-    # ====================
-    # Resume Execution
-    # ====================
-    @staticmethod
-    async def async_re_run(*args, **kwargs) -> List[Any]:
-        """Asynchronously resume a previously executed data generation job."""
-        factory = await (ResumeManager._same_session_factory if "factory" in kwargs else ResumeManager._not_same_session_factory)(*args, **kwargs)
-
-        # Update config with any additional kwargs
-        for key, value in kwargs.items():
-            if hasattr(factory.config, key):
-                setattr(factory.config, key, value)
-
-        await factory._storage_setup()
-
-        if not factory.func or not factory.config:
-            await factory._close_storage()
-            raise NoResumeSupportError("Function does not support resume_from_checkpoint. Please ensure it supports cloudpickle serialization")
-
-        factory.config.run_mode = RUN_MODE_RE_RUN
-        factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
-
-        return await factory()
-
-
-# ====================
-# Argument Handling
-# ====================
-def resume_from_checkpoint(*args, **kwargs) -> List[dict[str, Any]]:
-    return FactoryExecutorManager.resume(*args, **kwargs)
-
-
 class FactoryExecutorManager:
     class Filters:
         """Handles filter-related operations"""
@@ -968,6 +881,80 @@ class FactoryExecutorManager:
 
             return dead_input_data, dead_input_indices
 
+    class Resume:
+        @staticmethod
+        async def _not_same_session_factory(*args, **kwargs):
+            factory = Factory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
+            if len(args) == 1:
+                factory.config.master_job_id = args[0]
+            else:
+                raise InputError("Master job id is required, please pass it in the parameters")
+
+            await factory._storage_setup()
+            master_job_config_data, master_job = None, None
+            master_job = await factory.factory_storage.get_master_job(factory.config.master_job_id)
+            if master_job:
+                master_job_config_data = await factory.factory_storage.get_request_config(master_job.request_config_ref)
+            else:
+                await factory._close_storage()
+                raise InputError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
+
+            master_job = {
+                "duplicate_count": master_job.duplicate_record_count,
+                "failed_count": master_job.failed_record_count,
+                "filtered_count": master_job.filtered_record_count,
+                "completed_count": master_job.completed_record_count,
+                "total_count": (
+                    master_job.duplicate_record_count + master_job.failed_record_count + master_job.filtered_record_count + master_job.completed_record_count
+                ),
+            }
+
+            factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
+            factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
+
+            if func_serialized := master_job_config_data.get("func"):
+                factory.func = cloudpickle.loads(bytes.fromhex(func_serialized))
+
+            factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
+            factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
+            return factory
+
+        @staticmethod
+        async def _same_session_factory(*args, **kwargs):
+            factory = kwargs["factory"]
+            master_job = {
+                "duplicate_count": factory.job_manager.duplicate_count,
+                "failed_count": factory.job_manager.failed_count,
+                "filtered_count": factory.job_manager.filtered_count,
+                "completed_count": factory.job_manager.completed_count,
+                "total_count": factory.job_manager.total_count,
+            }
+            factory._clean_up_in_same_session()
+            factory.config.prev_job = {"master_job": master_job, "input_data": factory.original_input_data}
+            return factory
+
+        @staticmethod
+        async def async_re_run(*args, **kwargs) -> List[Any]:
+            factory = await (
+                FactoryExecutorManager.Resume._same_session_factory if "factory" in kwargs else FactoryExecutorManager.Resume._not_same_session_factory
+            )(*args, **kwargs)
+
+            # Update config with any additional kwargs
+            for key, value in kwargs.items():
+                if hasattr(factory.config, key):
+                    setattr(factory.config, key, value)
+
+            await factory._storage_setup()
+
+            if not factory.func or not factory.config:
+                await factory._close_storage()
+                raise NoResumeSupportError("Function does not support resume_from_checkpoint. Please ensure it supports cloudpickle serialization")
+
+            factory.config.run_mode = RUN_MODE_RE_RUN
+            factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
+
+            return await factory()
+
     @staticmethod
     def execute(callable_func: Callable, *args, **kwargs) -> List[dict[str, Any]]:
         """Execute an async callable"""
@@ -990,7 +977,7 @@ class FactoryExecutorManager:
             "factory",
         }
         filtered_args = {k: v for k, v in kwargs.items() if k in valid_args and v is not None}
-        return FactoryExecutorManager.execute(ResumeManager.async_re_run, *args, **filtered_args)
+        return FactoryExecutorManager.execute(FactoryExecutorManager.Resume.async_re_run, *args, **filtered_args)
 
     @staticmethod
     def process_output(factory: Factory, filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[dict[str, Any]]:
@@ -1005,3 +992,10 @@ class FactoryExecutorManager:
         """Process dead queue data"""
         result = FactoryExecutorManager.DeadQueue.get_indices_and_data(factory)
         return result[1] if is_idx else result[0]
+
+
+# ====================
+# Argument Handling
+# ====================
+def resume_from_checkpoint(*args, **kwargs) -> List[dict[str, Any]]:
+    return FactoryExecutorManager.resume(*args, **kwargs)
