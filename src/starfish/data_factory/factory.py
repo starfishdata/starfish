@@ -346,17 +346,14 @@ class DataFactory:
             self.result_idx = []
             self._output_cache = {}
             self.input_data_queue = Queue()
-        # todo reuse the state from last same-factory state or a new state
 
     async def __call__(self, *args, **kwargs) -> List[dict[str, Any]]:
         """Execute the data processing pipeline based on the configured run mode."""
         try:
             # Initialize job based on run mode
             await self._initialize_job(*args, **kwargs)
-            # Setup and execute job
             await self._setup_job_execution()
             self._execute_job()
-
         except (InputError, OutputError, KeyboardInterrupt, Exception) as e:
             self.err = e
         finally:
@@ -365,40 +362,57 @@ class DataFactory:
     async def _initialize_job(self, *args, **kwargs) -> None:
         """Initialize job configuration and manager based on run mode."""
 
-        if self.config.run_mode == RUN_MODE_RE_RUN:
-            self._setup_rerun_job()
-        elif self.config.run_mode == RUN_MODE_DRY_RUN:
-            await self._setup_dry_run_job(*args, **kwargs)
-        else:
-            await self._setup_normal_job(*args, **kwargs)
+        # Define job manager mapping
+        job_manager_mapping = {
+            RUN_MODE_RE_RUN: {
+                "manager": JobManagerRerun,
+                "setup": lambda: (),  # No additional setup needed for re-run
+            },
+            RUN_MODE_DRY_RUN: {
+                "manager": JobManagerDryRun,
+                "setup": lambda: (
+                    self._clean_up_in_same_session(),
+                    self._set_input_data(*args, **kwargs),
+                    self._check_parameter_match(),
+                    await self._storage_setup(),
+                ),
+            },
+            RUN_MODE_NORMAL: {
+                "manager": JobManager,
+                "setup": lambda: (
+                    self._clean_up_in_same_session(),
+                    self._set_input_data(*args, **kwargs),
+                    self._check_parameter_match(),
+                    await self._storage_setup(),
+                    self._generate_ids_and_update_target_count(),
+                ),
+            },
+        }
 
-    def _setup_rerun_job(self) -> None:
-        """Configure job for resume mode."""
-        self.job_manager = JobManagerRerun(
+        # Get the appropriate configuration
+        config = job_manager_mapping.get(self.config.run_mode, job_manager_mapping[RUN_MODE_NORMAL])
+
+        # Execute setup steps
+        if config["setup"]:
+            await config["setup"]()
+
+        # Initialize the job manager
+        self.job_manager = config["manager"](
             job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
         )
 
-    async def _setup_dry_run_job(self, *args, **kwargs) -> None:
-        """Configure job for dry-run mode."""
-        self.input_data_queue, _ = _default_input_converter(*args, **kwargs)
-        self._check_parameter_match()
-        await self._storage_setup()
-        self.job_manager = JobManagerDryRun(
-            job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
-        )
-
-    async def _setup_normal_job(self, *args, **kwargs) -> None:
-        """Configure job for normal execution mode."""
-        self._clean_up_in_same_session()
+    def _set_input_data(self, *args, **kwargs) -> None:
+        """Helper method to set input data and original input data."""
         self.input_data_queue, self.original_input_data = _default_input_converter(*args, **kwargs)
-        self._check_parameter_match()
-        await self._storage_setup()
-        self._update_job_config()
+
+    def _generate_ids_and_update_target_count(self) -> None:
+        """Helper method to generate project and master job IDs."""
         self.config.project_id = str(uuid.uuid4())
         self.config.master_job_id = str(uuid.uuid4())
-        self.job_manager = JobManager(
-            master_job_config=self.config, state=self.state, storage=self.factory_storage, input_data_queue=self.input_data_queue, user_func=self.func
-        )
+        # Adjusts the target count based on the input queue size if target_count is 0.
+        target_count = self.target_count
+        new_target_count = self.input_data_queue.qsize() if target_count == 0 else target_count
+        self.config.target_count = new_target_count
 
     async def _setup_job_execution(self) -> None:
         """Prepare job for execution."""
@@ -408,10 +422,6 @@ class DataFactory:
             await self._log_master_job_start()
         await self.job_manager.setup_input_output_queue()
 
-    def _execute_job(self) -> None:
-        """Execute the main job processing."""
-        self._process_batches()
-
     async def _finalize_job(self) -> List[dict[str, Any]]:
         """Complete job execution and return results."""
         result = None
@@ -419,7 +429,6 @@ class DataFactory:
             result = self._process_output()
             if len(result) == 0:
                 self.err = OutputError("No records generated")
-                # raise self.err
 
             await self._complete_master_job()
             self._show_job_progress_status()
@@ -436,7 +445,6 @@ class DataFactory:
                 await self._close_storage()
                 raise self.err
             else:
-                # log the error
                 err_msg = "KeyboardInterrupt" if isinstance(self.err, KeyboardInterrupt) else str(self.err)
                 logger.error(f"Error occurred: {err_msg}")
                 logger.info(
@@ -559,12 +567,8 @@ class DataFactory:
             if batch_param not in func_sig.parameters:
                 raise InputError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
-    def _process_batches(self) -> List[Any]:
+    def _execute_job(self):
         """Initiate batch processing through the job manager.
-
-        Returns:
-            List[Any]: Processed output from the job manager
-
         Note:
             Logs job start information and progress interval
         """
@@ -575,9 +579,7 @@ class DataFactory:
                 f"\033[33mLogging progress every {PROGRESS_LOG_INTERVAL} seconds\033[0m"
             )
 
-        # if self.config.run_mode == RUN_MODE_NORMAL:
-
-        return self.job_manager.run_orchestration()
+        self.job_manager.run_orchestration()
 
     async def _save_project(self):
         """Save project metadata to storage.
@@ -669,14 +671,6 @@ class DataFactory:
             except Exception as e:
                 raise e
 
-    async def _close_storage(self):
-        """Clean up and close the storage connection.
-
-        Ensures proper closure of storage resources when the job completes.
-        """
-        if self.factory_storage:
-            await self.factory_storage.close()
-
     async def _storage_setup(self):
         """Initialize the storage backend based on configuration.
 
@@ -689,14 +683,13 @@ class DataFactory:
                 self.factory_storage = InMemoryStorage()
             await self.factory_storage.setup()
 
-    def _update_job_config(self):
-        """Update job configuration based on input data.
+    async def _close_storage(self):
+        """Clean up and close the storage connection.
 
-        Adjusts the target count based on the input queue size if target_count is 0.
+        Ensures proper closure of storage resources when the job completes.
         """
-        target_count = self.target_count
-        new_target_count = self.input_data_queue.qsize() if target_count == 0 else target_count
-        self.config.target_count = new_target_count
+        if self.factory_storage:
+            await self.factory_storage.close()
 
     def _show_job_progress_status(self):
         """Display final job statistics and completion status.

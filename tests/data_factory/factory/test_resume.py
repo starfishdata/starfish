@@ -176,3 +176,4 @@ async def test_resume_with_paramters():
     assert len(result) == 2
     result = resume_from_checkpoint(master_job_id, max_concurrency=30)
     assert len(result) == 2
+    data_factory.r
