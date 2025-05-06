@@ -374,7 +374,7 @@ class DataFactory:
                     self._clean_up_in_same_session(),
                     self._set_input_data(*args, **kwargs),
                     self._check_parameter_match(),
-                    await self._storage_setup(),
+                    asyncio.create_task(self._storage_setup()),
                 ),
             },
             RUN_MODE_NORMAL: {
@@ -383,7 +383,7 @@ class DataFactory:
                     self._clean_up_in_same_session(),
                     self._set_input_data(*args, **kwargs),
                     self._check_parameter_match(),
-                    await self._storage_setup(),
+                    asyncio.create_task(self._storage_setup()),
                     self._generate_ids_and_update_target_count(),
                 ),
             },
@@ -394,11 +394,15 @@ class DataFactory:
 
         # Execute setup steps
         if config["setup"]:
-            await config["setup"]()
+            setup_results = config["setup"]()
+            # Await any async tasks in the setup results
+            for result in setup_results:
+                if asyncio.isfuture(result) or isinstance(result, asyncio.Task):
+                    await result
 
         # Initialize the job manager
         self.job_manager = config["manager"](
-            job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
+            master_job_config=self.config, state=self.state, storage=self.factory_storage, user_func=self.func, input_data_queue=self.input_data_queue
         )
 
     def _set_input_data(self, *args, **kwargs) -> None:
@@ -787,27 +791,27 @@ def data_factory(
     """Decorator for creating data processing pipelines.
 
     Args:
-        storage (str): Storage backend to use ('local' or 'in_memory')
-        batch_size (int): Number of records to process in each batch
-        target_count (int): Target number of records to generate (0 means process all input)
-        max_concurrency (int): Maximum number of concurrent tasks
-        initial_state_values (Optional[Dict[str, Any]]): Initial values for shared state
-        on_record_complete (Optional[List[Callable]]): Callbacks to execute after successful record processing
-        on_record_error (Optional[List[Callable]]): Callbacks to execute after failed record processing
-        show_progress (bool): Whether to display progress bar
-        task_runner_timeout (int): Timeout in seconds for task execution
-        job_run_stop_threshold (int): Threshold for stopping job if too many records fail
+        storage: Storage backend to use ('local' or 'in_memory')
+        batch_size: Number of records to process in each batch
+        target_count: Target number of records to generate (0 means process all input)
+        max_concurrency: Maximum number of concurrent tasks
+        initial_state_values: Initial values for shared state
+        on_record_complete: Callbacks to execute after successful record processing
+        on_record_error: Callbacks to execute after failed record processing
+        show_progress: Whether to display progress bar
+        task_runner_timeout: Timeout in seconds for task execution
+        job_run_stop_threshold: Threshold for stopping job if too many records fail
 
     Returns:
-        Callable[[Callable[P, T]], DataFactoryProtocol[P, T]]: Decorated function with additional execution methods
+        Decorated function with additional execution methods
     """
-    if on_record_error is None:
-        on_record_error = []
-    if on_record_complete is None:
-        on_record_complete = []
-    if initial_state_values is None:
-        initial_state_values = {}
-    master_job_config = FactoryMasterConfig(
+    # Initialize default values
+    on_record_error = on_record_error or []
+    on_record_complete = on_record_complete or []
+    initial_state_values = initial_state_values or {}
+
+    # Create configuration
+    config = _create_master_config(
         storage=storage,
         batch_size=batch_size,
         target_count=target_count,
@@ -818,124 +822,96 @@ def data_factory(
         on_record_error=on_record_error,
         job_run_stop_threshold=job_run_stop_threshold,
     )
+
+    # Initialize factory instance
     _factory = None
 
     def decorator(func: Callable[P, T]) -> DataFactoryProtocol[P, T]:
-        nonlocal _factory  # Use nonlocal instead of global for better scoping
-        if _factory is None:  # Only create new factory if one doesn't exist
-            factory = DataFactory(master_job_config, func)
-            factory.state = MutableSharedState(initial_data=initial_state_values)
-            _factory = factory
-        else:
-            # Update existing factory with new config
-            _factory.config = master_job_config
-            _factory.func = func
-            _factory.state = MutableSharedState(initial_data=initial_state_values)
-
+        """Actual decorator that wraps the function."""
+        nonlocal _factory
+        _factory = _initialize_or_update_factory(_factory, config, func, initial_state_values)
         wrapper = DataFactoryWrapper(_factory, func)
         return cast(DataFactoryProtocol[P, T], wrapper)
 
-    def _resume_from_checkpoint(master_job_id: str, **kwargs) -> List[dict[str, Any]]:
-        """Re-run a previously executed data generation job.
-
-        Args:
-            master_job_id: ID of the master job to resume
-            storage: Storage backend to use ('local' or 'in_memory')
-            batch_size: Number of records to process in each batch
-            target_count: Target number of records to generate (0 means process all input)
-            max_concurrency: Maximum number of concurrent tasks
-            initial_state_values: Initial values for shared state
-            on_record_complete: Callbacks to execute after successful record processing
-            on_record_error: Callbacks to execute after failed record processing
-            show_progress: Whether to display progress bar
-            task_runner_timeout: Timeout in seconds for task execution
-            job_run_stop_threshold: Threshold for stopping job if too many records fail
-            factory: Optional DataFactory instance to use
-
-        Returns:
-            List[dict[str,Any]]: Processed output data from the resume
-        """
-        nonlocal _factory
-        if _factory is None:
-            raise RuntimeError("Factory not initialized. Please decorate a function first.")
-        return resume_from_checkpoint(master_job_id, **kwargs)
-
-    # Assign the static method to data_factory
-    data_factory.resume_from_checkpoint = _resume_from_checkpoint
+    # Add resume capability as a static method
+    data_factory.resume_from_checkpoint = _create_resume_method(_factory)
 
     return decorator
 
 
+def _create_master_config(**kwargs) -> FactoryMasterConfig:
+    """Create a FactoryMasterConfig instance from given parameters."""
+    return FactoryMasterConfig(**kwargs)
+
+
+def _initialize_or_update_factory(
+    factory: Optional[DataFactory], config: FactoryMasterConfig, func: Callable[P, T], initial_state_values: Dict[str, Any]
+) -> DataFactory:
+    """Initialize or update a DataFactory instance."""
+    if factory is None:
+        factory = DataFactory(config, func)
+        factory.state = MutableSharedState(initial_data=initial_state_values)
+    else:
+        factory.config = config
+        factory.func = func
+        factory.state = MutableSharedState(initial_data=initial_state_values)
+    return factory
+
+
+def _create_resume_method(factory: Optional[DataFactory]) -> Callable:
+    """Create the resume_from_checkpoint method with factory validation."""
+
+    def _resume_from_checkpoint(master_job_id: str, **kwargs) -> List[dict[str, Any]]:
+        """Re-run a previously executed data generation job."""
+        if factory is None:
+            raise RuntimeError("Factory not initialized. Please decorate a function first.")
+        return resume_from_checkpoint(master_job_id, **kwargs)
+
+    return _resume_from_checkpoint
+
+
+# ====================
+# Storage Helpers
+# ====================
 async def _re_run_get_master_job_request_config(factory: DataFactory):
     master_job = await factory.factory_storage.get_master_job(factory.config.master_job_id)
     if master_job:
         master_job_config_data = await factory.factory_storage.get_request_config(master_job.request_config_ref)
-        # Convert list to dict with count tracking using hash values
         return master_job_config_data, master_job
     else:
         await factory._close_storage()
         raise InputError(f"Master job not found for master_job_id: {factory.config.master_job_id}")
 
 
-async def async_re_run(*args, **kwargs) -> List[Any]:
-    """Asynchronously resume a previously executed data generation job.
-
-    Args:
-        master_job_id (str): ID of the master job to resume
-        **kwargs: Additional configuration overrides for the resume
-
-    Returns:
-        List[Any]: Processed output data from the resume
-
-    Raises:
-        TypeError: If master job ID is not provided or job not found
-    """
-    # call with instance
-    factory = None
-    if "factory" in kwargs:
-        factory = await _same_session_factory(*args, **kwargs)
-    else:
-        factory = await _not_same_session_factory(*args, **kwargs)
-
-    # Update config with any additional kwargs
-    for key, value in kwargs.items():
-        if hasattr(factory.config, key):
-            setattr(factory.config, key, value)
-    if not factory.config.master_job_id:
-        raise InputError("Master job id is required")
-
-    await factory._storage_setup()
-    if not factory.func or not factory.config:
-        await factory._close_storage()
-        raise NoResumeSupportError("do not support resume_from_checkpoint, please update the function to support cloudpickle serilization")
-    factory.config.run_mode = RUN_MODE_RE_RUN
-    factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
-
-    # Call the __call__ method
-    result = await factory()
-    return result
-
-
+# ====================
+# Factory Initialization
+# ====================
 async def _not_same_session_factory(*args, **kwargs):
     factory = DataFactory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
     if len(args) == 1:
         factory.config.master_job_id = args[0]
     else:
-        raise InputError("Master job id is required, please pass it in the paramters")
+        raise InputError("Master job id is required, please pass it in the parameters")
+
     await factory._storage_setup()
     master_job_config_data, master_job = await _re_run_get_master_job_request_config(factory=factory)
+
     master_job = {
         "duplicate_count": master_job.duplicate_record_count,
         "failed_count": master_job.failed_record_count,
         "filtered_count": master_job.filtered_record_count,
         "completed_count": master_job.completed_record_count,
+        "total_count": (
+            master_job.duplicate_record_count + master_job.failed_record_count + master_job.filtered_record_count + master_job.completed_record_count
+        ),
     }
-    master_job["total_count"] = master_job["duplicate_count"] + master_job["failed_count"] + master_job["filtered_count"] + master_job["completed_count"]
+
     factory.state = MutableSharedState(initial_data=master_job_config_data.get("state"))
     factory.config = FactoryMasterConfig.from_dict(master_job_config_data.get("config"))
-    func_serilized = master_job_config_data.get("func")
-    if func_serilized:
-        factory.func = cloudpickle.loads(bytes.fromhex(master_job_config_data.get("func")))
+
+    if func_serialized := master_job_config_data.get("func"):
+        factory.func = cloudpickle.loads(bytes.fromhex(func_serialized))
+
     factory.config.prev_job = {"master_job": master_job, "input_data": master_job_config_data.get("input_data")}
     factory.original_input_data = [dict(item) for item in factory.config.prev_job["input_data"]]
     return factory
@@ -943,7 +919,6 @@ async def _not_same_session_factory(*args, **kwargs):
 
 async def _same_session_factory(*args, **kwargs):
     factory = kwargs["factory"]
-
     master_job = {
         "duplicate_count": factory.job_manager.duplicate_count,
         "failed_count": factory.job_manager.failed_count,
@@ -956,40 +931,35 @@ async def _same_session_factory(*args, **kwargs):
     return factory
 
 
-def _filter_passed_args(args: dict, valid_args: set) -> dict:
-    """Filter and return only the arguments that were explicitly passed.
+# ====================
+# Resume Execution
+# ====================
+async def async_re_run(*args, **kwargs) -> List[Any]:
+    """Asynchronously resume a previously executed data generation job."""
+    factory = await (_same_session_factory if "factory" in kwargs else _not_same_session_factory)(*args, **kwargs)
 
-    Args:
-        args: Dictionary of all arguments
-        valid_args: Set of argument names to consider
+    # Update config with any additional kwargs
+    for key, value in kwargs.items():
+        if hasattr(factory.config, key):
+            setattr(factory.config, key, value)
 
-    Returns:
-        dict: Dictionary containing only the explicitly passed arguments
-    """
-    return {k: v for k, v in args.items() if k in valid_args and v is not None}
+    await factory._storage_setup()
+
+    if not factory.func or not factory.config:
+        await factory._close_storage()
+        raise NoResumeSupportError("Function does not support resume_from_checkpoint. Please ensure it supports cloudpickle serialization")
+
+    factory.config.run_mode = RUN_MODE_RE_RUN
+    factory.config_ref = factory.factory_storage.generate_request_config_path(factory.config.master_job_id)
+
+    return await factory()
 
 
+# ====================
+# Argument Handling
+# ====================
 def resume_from_checkpoint(*args, **kwargs) -> List[dict[str, Any]]:
-    """Re-run a previously executed data generation job.
-
-    Args:
-        master_job_id: ID of the master job to resume
-        storage: Storage backend to use ('local' or 'in_memory')
-        batch_size: Number of records to process in each batch
-        target_count: Target number of records to generate (0 means process all input)
-        max_concurrency: Maximum number of concurrent tasks
-        initial_state_values: Initial values for shared state
-        on_record_complete: Callbacks to execute after successful record processing
-        on_record_error: Callbacks to execute after failed record processing
-        show_progress: Whether to display progress bar
-        task_runner_timeout: Timeout in seconds for task execution
-        job_run_stop_threshold: Threshold for stopping job if too many records fail
-        factory: Optional DataFactory instance to use
-
-    Returns:
-        List[dict[str,Any]]: Processed output data from the resume
-    """
-    # Define valid arguments
+    """Re-run a previously executed data generation job."""
     valid_args = {
         "storage",
         "batch_size",
@@ -1003,56 +973,28 @@ def resume_from_checkpoint(*args, **kwargs) -> List[dict[str, Any]]:
         "job_run_stop_threshold",
         "factory",
     }
-
-    # Filter passed arguments
-    filtered_args = _filter_passed_args(kwargs, valid_args)
-
-    # Handle factory if not provided and len(args) > 0 and hasattr(args[0], "factory")
-    # if "factory" not in filtered_args :
-    #     filtered_args["factory"] = args[0].factory
-
+    """Filter and return only the arguments that were explicitly passed."""
+    filtered_args = {k: v for k, v in args.items() if k in valid_args and v is not None}
     return event_loop_manager(async_re_run, *args, **filtered_args)
 
 
+# ====================
+# Event Loop Management
+# ====================
 def event_loop_manager(callable_func: Callable, *args, **kwargs) -> List[dict[str, Any]]:
-    """Manage the event loop for executing an async callable in synchronous contexts.
-
-    This function intelligently manages asyncio event loops:
-    - Uses existing loops when available
-    - Creates new loops only when needed
-    - Automatically detects notebook environments
-    - Applies nest_asyncio when necessary
-
-    Args:
-        callable_func (Callable): The async function to execute
-        *args: Positional arguments to pass to the callable
-        **kwargs: Keyword arguments to pass to the callable
-
-    Returns:
-        Any: The result of the callable function
-    """
-    # Try to ensure nest_asyncio is applied if needed
+    """Manage the event loop for executing an async callable in synchronous contexts."""
     _ensure_nest_asyncio()
 
     try:
-        # Try to get the current event loop
         loop = asyncio.get_event_loop()
-
-        # Execute in current loop
         logger.debug("Using existing event loop for execution")
-        result = loop.run_until_complete(callable_func(*args, **kwargs))
-        return result
-
+        return loop.run_until_complete(callable_func(*args, **kwargs))
     except RuntimeError as e:
-        # No event loop in current context or other RuntimeError
         logger.debug(f"Creating new event loop: {str(e)}")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-
         try:
-            result = loop.run_until_complete(callable_func(*args, **kwargs))
-            return result
+            return loop.run_until_complete(callable_func(*args, **kwargs))
         finally:
-            # Only close the loop if we created it
             loop.close()
             logger.debug("Closed newly created event loop")
