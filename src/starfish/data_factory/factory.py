@@ -934,7 +934,7 @@ class FactoryExecutorManager:
             return factory
 
         @staticmethod
-        async def async_re_run(*args, **kwargs) -> List[Any]:
+        async def resume(*args, **kwargs) -> List[Any]:
             factory = await (
                 FactoryExecutorManager.Resume._same_session_factory if "factory" in kwargs else FactoryExecutorManager.Resume._not_same_session_factory
             )(*args, **kwargs)
@@ -977,7 +977,7 @@ class FactoryExecutorManager:
             "factory",
         }
         filtered_args = {k: v for k, v in kwargs.items() if k in valid_args and v is not None}
-        return FactoryExecutorManager.execute(FactoryExecutorManager.Resume.async_re_run, *args, **filtered_args)
+        return FactoryExecutorManager.execute(FactoryExecutorManager.Resume.resume, *args, **filtered_args)
 
     @staticmethod
     def process_output(factory: Factory, filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[dict[str, Any]]:
