@@ -78,6 +78,7 @@ class JobManager:
         self.job_config = FactoryJobConfig(
             batch_size=master_job_config.batch_size,
             target_count=master_job_config.target_count,
+            dead_queue_threshold=master_job_config.dead_queue_threshold,
             show_progress=master_job_config.show_progress,
             user_func=user_func,
             run_mode=master_job_config.run_mode,
@@ -228,7 +229,7 @@ class JobManager:
         async with self.lock:  # Protect shared state with lock
             # Update failure count
             self.task_failure_count[task_key] = self.task_failure_count.get(task_key, 0) + 1
-            if self.task_failure_count[task_key] >= 3:
+            if self.task_failure_count[task_key] >= self.job_config.dead_queue_threshold:
                 # Move to dead queue after 3 failures
                 self.dead_queue.put(input_data)
                 self.dead_queue_count += 1

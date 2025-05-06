@@ -194,6 +194,9 @@ class DataFactoryWrapper(Generic[T]):
     def get_output_failed(self) -> List[dict[str, Any]]:
         return self.factory._process_output(STATUS_FAILED)
 
+    def get_input_data_in_dead_queue(self) -> List[dict[str, Any]]:
+        return self._get_dead_queue_indices_and_data()[0]
+
     def get_input_data(self) -> List[dict[str, Any]]:
         return self.factory.original_input_data
 
@@ -218,6 +221,9 @@ class DataFactoryWrapper(Generic[T]):
     def get_index_failed(self) -> List[int]:
         return self.factory._process_output(STATUS_FAILED, is_idx=True)
 
+    def get_index_dead_queue(self) -> List[int]:
+        return self._get_dead_queue_indices_and_data()[1]
+
     def _valid_filter(self, filter: str) -> bool:
         return filter in self.__class__.valid_status
 
@@ -228,7 +234,7 @@ class DataFactoryWrapper(Generic[T]):
                 break
         return filter
 
-    def get_dead_queue_indices_and_data(self) -> tuple[List[dict], List[int]]:
+    def _get_dead_queue_indices_and_data(self) -> tuple[List[dict], List[int]]:
         """Get the indices of tasks that failed 3 times and were moved to the dead queue.
 
         Returns:
@@ -273,13 +279,16 @@ class DataFactoryProtocol(Protocol[P, T]):
     def get_output_duplicate(self) -> List[Dict[str, Any]]: ...
     def get_output_filtered(self) -> List[Dict[str, Any]]: ...
     def get_output_failed(self) -> List[Dict[str, Any]]: ...
+    def get_input_data_in_dead_queue(self) -> List[Dict[str, Any]]: ...
     def get_input_data(self) -> List[Dict[str, Any]]: ...
     def get_index(self, filter: str) -> List[int]: ...
     def get_index_completed(self) -> List[int]: ...
     def get_index_duplicate(self) -> List[int]: ...
     def get_index_filtered(self) -> List[int]: ...
     def get_index_failed(self) -> List[int]: ...
-    def get_dead_queue_indices_and_data(self) -> tuple[List[Dict[str, Any]], List[int]]: ...
+    def get_index_dead_queue(self) -> List[int]: ...
+
+    # def _get_dead_queue_indices_and_data(self) -> tuple[List[Dict[str, Any]], List[int]]: ...
 
 
 class DataFactory:
@@ -474,6 +483,7 @@ class DataFactory:
             config={
                 "batch_size": self.config.batch_size,
                 "target_count": self.config.target_count,
+                "dead_queue_threshold": self.config.dead_queue_threshold,
                 "max_concurrency": self.config.max_concurrency,
                 "task_runner_timeout": self.config.task_runner_timeout,
                 "job_run_stop_threshold": self.config.job_run_stop_threshold,
@@ -780,6 +790,7 @@ def data_factory(
     storage: str = STORAGE_TYPE_LOCAL,
     batch_size: int = 1,
     target_count: int = 0,
+    dead_queue_threshold: int = 3,
     max_concurrency: int = 10,
     initial_state_values: Optional[Dict[str, Any]] = None,
     on_record_complete: Optional[List[Callable]] = None,
@@ -815,6 +826,7 @@ def data_factory(
         storage=storage,
         batch_size=batch_size,
         target_count=target_count,
+        dead_queue_threshold=dead_queue_threshold,
         max_concurrency=max_concurrency,
         show_progress=show_progress,
         task_runner_timeout=task_runner_timeout,
