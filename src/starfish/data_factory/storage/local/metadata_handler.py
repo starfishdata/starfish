@@ -5,6 +5,7 @@ import datetime
 import json
 import logging
 import os
+import random
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiosqlite
@@ -78,6 +79,7 @@ class SQLiteMetadataHandler:
                     await self._conn.execute("PRAGMA journal_mode=WAL;")
                     await self._conn.execute("PRAGMA synchronous=NORMAL;")
                     await self._conn.execute("PRAGMA foreign_keys=ON;")
+                    await self._conn.execute("PRAGMA cache_size=-2000;")  # Increase cache size (2MB)
                     # Set a longer busy timeout (60 seconds instead of 30)
                     await self._conn.execute("PRAGMA busy_timeout=60000;")
                     await self._conn.commit()
@@ -104,8 +106,9 @@ class SQLiteMetadataHandler:
         """Helper to execute write SQL with transactions."""
         async with self._write_lock:
             conn = await self.connect()
-            max_retries = 3
-            retry_delay = 1.0  # seconds
+            max_retries = 5  # Increased from 3
+            base_retry_delay = 0.1  # Start with shorter delay
+            jitter = 0.05  # Add jitter to avoid thundering herd
 
             for attempt in range(max_retries):
                 try:
@@ -119,9 +122,10 @@ class SQLiteMetadataHandler:
                     break  # Success, exit retry loop
                 except sqlite3.OperationalError as e:
                     if "database is locked" in str(e) and attempt < max_retries - 1:
-                        logger.warning(f"Database locked, retrying ({attempt + 1}/{max_retries})...")
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 1.5  # Exponential backoff
+                        # Calculate exponential backoff with jitter
+                        delay = base_retry_delay * (2**attempt) + (jitter * (1 - 2 * random.random()))
+                        logger.warning(f"Database locked, retrying in {delay:.2f}s ({attempt + 1}/{max_retries})...")
+                        await asyncio.sleep(delay)
                         continue
                     elif "cannot start a transaction within a transaction" in str(e):
                         logger.warning(f"Transaction already active, continuing: {e}")
