@@ -36,6 +36,7 @@ class FactoryMasterConfig:
     project_id: str = None
     batch_size: int = 1
     target_count: int = 0
+    dead_queue_threshold: int = 3
     max_concurrency: int = 50
     show_progress: bool = True
     task_runner_timeout: int = TASK_RUNNER_TIMEOUT
@@ -147,6 +148,7 @@ class FactoryJobConfig:
     master_job_id: str = None
     batch_size: int = 1
     target_count: int = 0
+    dead_queue_threshold: int = 3
     show_progress: bool = True
     task_runner_timeout: int = TASK_RUNNER_TIMEOUT
     user_func: Callable = None
@@ -183,7 +185,14 @@ class TelemetryData:
     num_inputs: int = 0
     library_version: str = "starfish-core"
     config: dict = field(
-        default_factory=lambda: {"batch_size": 0, "target_count": 0, "max_concurrency": 0, "task_runner_timeout": 0, "job_run_stop_threshold": 0}
+        default_factory=lambda: {
+            "batch_size": 0,
+            "target_count": 0,
+            "dead_queue_threshold": 0,
+            "max_concurrency": 0,
+            "task_runner_timeout": 0,
+            "job_run_stop_threshold": 0,
+        }
     )
     execution_time: float = 0.0
     count_summary: dict = field(default_factory=lambda: {"completed": 0, "failed": 0, "filtered": 0, "duplicate": 0})

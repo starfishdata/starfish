@@ -27,7 +27,7 @@ class JobManagerRerun(JobManager):
     - Maintaining accurate counters for completed/failed/duplicate/filtered records
 
     Args:
-        job_config (Dict[str, Any]): Configuration dictionary containing job parameters
+        master_job_config (Dict[str, Any]): Configuration dictionary containing job parameters
             including max_concurrency, target_count, and task configurations.
         storage (Storage): Storage instance for persisting job results and metadata.
         user_func (Callable): User-defined function to execute for each task.
@@ -43,11 +43,11 @@ class JobManagerRerun(JobManager):
         - completed_count (int): Completed records from previous run
     """
 
-    def __init__(self, job_config: Dict[str, Any], state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None):
+    def __init__(self, master_job_config: Dict[str, Any], state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None):
         """Initialize the JobManager with job configuration and storage.
 
         Args:
-            job_config: Dictionary containing job configuration parameters including:
+            master_job_config: Dictionary containing job configuration parameters including:
                 - max_concurrency: Maximum number of concurrent tasks
                 - target_count: Target number of records to generate
                 - user_func: Function to execute for each task
@@ -59,7 +59,7 @@ class JobManagerRerun(JobManager):
             input_data_queue: Queue containing input data for the job. Defaults to an empty Queue.
         """
         # self.setup_input_output_queue()
-        super().__init__(job_config, state, storage, user_func, input_data_queue)
+        super().__init__(master_job_config, state, storage, user_func, input_data_queue)
 
     async def setup_input_output_queue(self):
         """Initialize input/output queues for job resume."""
@@ -157,7 +157,7 @@ class JobManagerRerun(JobManager):
                 logger.debug(record_idx)
                 output_tmp = {IDX: record_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
             except Exception as e:
-                logger.error(e)
+                logger.warning(f" can not process completed_task {record_idx} in resume; error is  {str(e)}")
             # Check if output_tmp already exists in job_output
             # have not find duplicated. to remove this check for performance
             if output_tmp not in list(self.job_output.queue):

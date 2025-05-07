@@ -18,7 +18,7 @@ class JobManagerDryRun(JobManager):
     - Providing a way to test job execution without side effects
 
     Args:
-        job_config (Dict[str, Any]): Configuration dictionary containing job parameters
+        master_job_config (Dict[str, Any]): Configuration dictionary containing job parameters
             including max_concurrency, target_count, and task configurations.
         storage (Storage): Storage instance (results won't be persisted).
         user_func (Callable): User-defined function to execute for the test task.
@@ -29,11 +29,11 @@ class JobManagerDryRun(JobManager):
         Inherits all attributes from JobManager.
     """
 
-    def __init__(self, job_config: Dict[str, Any], state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None):
+    def __init__(self, master_job_config: Dict[str, Any], state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None):
         """Initialize the JobManager with job configuration and storage.
 
         Args:
-            job_config: Dictionary containing job configuration parameters including:
+            master_job_config: Dictionary containing job configuration parameters including:
                 - max_concurrency: Maximum number of concurrent tasks
                 - target_count: Target number of records to generate
                 - user_func: Function to execute for each task
@@ -44,7 +44,7 @@ class JobManagerDryRun(JobManager):
             user_func: User-defined function to execute for each task
             input_data_queue: Queue containing input data for the job. Defaults to None.
         """
-        super().__init__(job_config, state, storage, user_func, input_data_queue)
+        super().__init__(master_job_config, state, storage, user_func, input_data_queue)
 
     async def setup_input_output_queue(self):
         """Initialize input/output queues for dry run.

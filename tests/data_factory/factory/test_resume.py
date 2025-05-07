@@ -56,6 +56,7 @@ async def test_case_job_re_run():
     assert len(result) == 2
     result = resume_from_checkpoint(master_job_id)
     assert len(result) == 2
+    # data_factory.re
 
 
 @pytest.mark.asyncio
@@ -144,17 +145,34 @@ async def test_case_keyboard_interrupt(monkeypatch):
         monkeypatch.undo()
 
 
-# @pytest.mark.asyncio
-# async def test_case_reuse_run_same_factory():
-#     @data_factory(max_concurrency=10)
-#     async def re_run_mock_llm(city_name: str, num_records_per_city: int):
-#         return await mock_llm_call(city_name=city_name, num_records_per_city=num_records_per_city, fail_rate=0.1)
+@pytest.mark.asyncio
+# @pytest.mark.skip("to run later")
+async def test_resume_with_paramters():
+    """Test extra parameters not defined in workflow
+    - Input: List of dicts with city names
+    - Extra: random_param not defined in workflow
+    - Expected: TypeError due to unexpected parameter
+    """
 
-#     cities = ["New York", "London", "Tokyo", "Paris", "Sydney"]
-#     numbered_cities = [f"{cities[i % len(cities)]} {i}" for i in range(100)]
-#     case = "run"
-#     master_job_id = ""
-#     if case == "run":
-#         re_run_mock_llm_data_1 = re_run_mock_llm.run(city_name=numbered_cities, num_records_per_city=1)
-#     elif case == "resume":
-#         data_factory.resume_from_checkpoint(master_job_id)
+    @data_factory(max_concurrency=2, job_run_stop_threshold=2)
+    async def test1(city_name, num_records_per_city, fail_rate=0.1, sleep_time=0.05):
+        # global master_job_id
+        result = await mock_llm_call(city_name, num_records_per_city, fail_rate=fail_rate, sleep_time=sleep_time)
+        # master_job_id = test1.factory.config.master_job_id
+        return result
+
+    result = test1.run(
+        data=[
+            {"city_name": "1. New York"},
+            {"city_name": "2. Los Angeles"},
+        ],
+        num_records_per_city=1,
+    )
+    assert len(result) == 2
+    master_job_id = test1.factory.config.master_job_id
+    result = data_factory.resume_from_checkpoint(master_job_id, max_concurrency=30)
+    assert len(result) == 2
+    result = test1.resume(max_concurrency=30)
+    assert len(result) == 2
+    result = resume_from_checkpoint(master_job_id, max_concurrency=30)
+    assert len(result) == 2

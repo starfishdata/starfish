@@ -42,7 +42,8 @@ async def test_input_output_idx():
     idx_dup = test1.get_index_duplicate()
     assert len(idx_dup) == 0
     idx_fail = test1.get_index_failed()
-    assert len(idx_fail) + len(idx_com) == 25
+    # the failed task can be requeue and become completed
+    assert len(idx_fail) + len(idx_com) >= 25
     idx_fil = test1.get_index_filtered()
     assert len(idx_fil) == 0
     completed_data = test1.get_output_data(filter="completed")
@@ -54,4 +55,4 @@ async def test_input_output_idx():
     filtered_data = test1.get_output_filtered()
     assert len(filtered_data) == 0
     failed_data = test1.get_output_failed()
-    assert len(failed_data) + len(completed_data) == 25
+    assert len(failed_data) + len(completed_data) >= 25
