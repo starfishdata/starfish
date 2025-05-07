@@ -71,15 +71,15 @@ class SQLiteMetadataHandler:
                 try:
                     # Ensure directory exists
                     os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-                    # Increase timeout to handle higher concurrency (30 seconds instead of 5)
-                    self._conn = await aiosqlite.connect(self.db_path, timeout=30.0)
+                    # Increase timeout to handle higher concurrency (60 seconds instead of 30)
+                    self._conn = await aiosqlite.connect(self.db_path, timeout=60.0)
                     self._conn.row_factory = aiosqlite.Row
                     # Set PRAGMAs every time connection is potentially new
                     await self._conn.execute("PRAGMA journal_mode=WAL;")
                     await self._conn.execute("PRAGMA synchronous=NORMAL;")
                     await self._conn.execute("PRAGMA foreign_keys=ON;")
-                    # Set a busy timeout that's long enough for concurrent operations
-                    await self._conn.execute("PRAGMA busy_timeout=30000;")  # 30 seconds
+                    # Set a longer busy timeout (60 seconds instead of 30)
+                    await self._conn.execute("PRAGMA busy_timeout=60000;")
                     await self._conn.commit()
                     logger.info(f"SQLite connection established/verified: {self.db_path}")
                 except Exception as e:
@@ -104,31 +104,42 @@ class SQLiteMetadataHandler:
         """Helper to execute write SQL with transactions."""
         async with self._write_lock:
             conn = await self.connect()
-            try:
-                # Only start a new transaction if one isn't already active
-                if not conn.in_transaction:
-                    await conn.execute("BEGIN IMMEDIATE")
+            max_retries = 3
+            retry_delay = 1.0  # seconds
 
-                await conn.execute(sql, params)
-                await conn.commit()
-                logger.debug(f"Executed write SQL: {sql[:50]}... Params: {params}")
-            except sqlite3.OperationalError as e:
-                if "cannot start a transaction within a transaction" in str(e):
-                    logger.warning(f"Transaction already active, continuing: {e}")
-                else:
+            for attempt in range(max_retries):
+                try:
+                    # Only start a new transaction if one isn't already active
+                    if not conn.in_transaction:
+                        await conn.execute("BEGIN IMMEDIATE")
+
+                    await conn.execute(sql, params)
+                    await conn.commit()
+                    logger.debug(f"Executed write SQL: {sql[:50]}... Params: {params}")
+                    break  # Success, exit retry loop
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e) and attempt < max_retries - 1:
+                        logger.warning(f"Database locked, retrying ({attempt + 1}/{max_retries})...")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 1.5  # Exponential backoff
+                        continue
+                    elif "cannot start a transaction within a transaction" in str(e):
+                        logger.warning(f"Transaction already active, continuing: {e}")
+                        break
+                    else:
+                        try:
+                            await conn.rollback()
+                        except Exception:
+                            pass
+                        logger.error(f"SQL write execution failed: {sql[:50]}... Error: {e}", exc_info=True)
+                        raise e
+                except Exception as e:
                     try:
                         await conn.rollback()
                     except Exception:
                         pass
                     logger.error(f"SQL write execution failed: {sql[:50]}... Error: {e}", exc_info=True)
                     raise e
-            except Exception as e:
-                try:
-                    await conn.rollback()
-                except Exception:
-                    pass
-                logger.error(f"SQL write execution failed: {sql[:50]}... Error: {e}", exc_info=True)
-                raise e
 
     async def _execute_batch_sql(self, statements: List[Tuple[str, tuple]]):
         """Execute multiple SQL statements in a single transaction."""
