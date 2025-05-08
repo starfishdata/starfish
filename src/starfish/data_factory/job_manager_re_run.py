@@ -74,11 +74,11 @@ class JobManagerRerun(JobManager):
         self._initialize_counters_rerun(master_job, len(input_data))
 
         # Process input data and handle completed tasks
-        input_dict = self._process_input_data(input_data)
-        re_move_hashes = await self._handle_completed_tasks(input_dict)
+        input_data_hashed = self._process_input_data(input_data)
+        await self._handle_completed_tasks(input_data_hashed)
 
         # Queue remaining tasks for execution
-        self._queue_remaining_tasks(input_dict, re_move_hashes)
+        self._queue_remaining_tasks(input_data_hashed)
 
     def _extract_previous_job_data(self) -> list:
         """Extract and clean up previous job data."""
@@ -114,28 +114,35 @@ class JobManagerRerun(JobManager):
         self.completed_count = master_job["completed_count"]
         self.job_config.target_count = input_data_length
 
-    def _process_input_data(self, input_data: list) -> dict:
+    def _process_input_data(self, input_data: list) -> list:
         """Process input data and create a hash map for tracking."""
-        input_dict = {}
+        input_data_hashed = []
         for item in input_data:
             input_data_str = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
             input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
-            input_dict[input_data_hash] = {"data": item, "data_str": input_data_str}
-        return input_dict
+            input_data_hashed.append({"data": item, "input_data_hash": input_data_hash})
+        return input_data_hashed
 
-    async def _handle_completed_tasks(self, input_dict: dict) -> list:
+    async def _handle_completed_tasks(self, input_data_hashed: list) -> None:
         """Handle already completed tasks by retrieving their outputs from storage."""
-        to_removed_hashes = []
-        for input_data_hash, item in input_dict.items():
+        remaining_items = []
+
+        for item in input_data_hashed:
+            input_data_hash = item["input_data_hash"]
             completed_tasks = await self.storage.list_execution_jobs_by_master_id_and_config_hash(self.master_job_id, input_data_hash, STATUS_COMPLETED)
 
-            if not completed_tasks:
-                continue
+            if completed_tasks:
+                logger.debug("Task already run, returning output from storage")
+                await self._process_completed_tasks(completed_tasks, item["data"].get(IDX, None))
+            else:
+                remaining_items.append(item)
 
-            logger.debug("Task already run, returning output from storage")
-            await self._process_completed_tasks(completed_tasks, item["data"].get(IDX, None))
-            to_removed_hashes.append(input_data_hash)
-        return to_removed_hashes
+        # Update the input_data_hashed list with remaining items
+        input_data_hashed[:] = remaining_items
+        db_completed_count = self.job_output.qsize()
+        if self.completed_count != db_completed_count:
+            logger.warning("completed_count not match in resume; update it")
+            self.completed_count = db_completed_count
 
     async def _process_completed_tasks(self, completed_tasks: list, input_data_idx: int) -> None:
         """Process completed tasks and add their outputs to the job queue."""
@@ -162,11 +169,9 @@ class JobManagerRerun(JobManager):
             record_data_list.append(record_data)
         return record_data_list
 
-    def _queue_remaining_tasks(self, input_dict: dict, to_remove_hashes: list) -> None:
-        for hash_k in to_remove_hashes:
-            del input_dict[hash_k]
+    def _queue_remaining_tasks(self, input_data_hashed: list) -> None:
         """Queue remaining tasks for execution."""
-        for item in input_dict.values():
+        for item in input_data_hashed:
             logger.debug("Task not run, queuing for execution")
             try:
                 self.job_input_queue.put(item["data"])

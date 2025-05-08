@@ -145,7 +145,8 @@ class JobManager:
         self.running_tasks = set()
 
         try:
-            await self._process_tasks()
+            if not self.job_input_queue.empty():
+                await self._process_tasks()
         finally:
             await self._cleanup()
 
