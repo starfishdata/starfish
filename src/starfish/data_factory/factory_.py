@@ -325,7 +325,7 @@ class Factory:
                 raise InputError(f"Batch item is missing required parameter '{param_name}' " f"for function {self.func.__name__}")
         # Check 2: Ensure all batch parameters exist in function signature
         for batch_param in batch_item.keys():
-            if batch_param not in func_sig.parameters:
+            if batch_param != IDX and batch_param not in func_sig.parameters:
                 raise InputError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
     def _execute_job(self):
@@ -504,10 +504,9 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
 
     # Determine batch size (L)
     batch_size = lengths[0] if lengths else 1
-
-    # Prepare results
-    results = Queue()
-    original_input_data = []
+    # original_input_data = []
+    # Prepare input_data_queue
+    input_data_queue = Queue()
     for i in range(batch_size):
         record = {IDX: i}
 
@@ -525,9 +524,9 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
             if not isinstance(value, (list, tuple)):
                 record[key] = value
 
-        results.put(record)
+        input_data_queue.put(record)
 
-        original_input_data.append({k: deepcopy(v) for k, v in record.items() if k != IDX})
+        # original_input_data.append({k: deepcopy(v) for k, v in record.items() if k != IDX})
 
-    # Convert the list to an immutable tuple
-    return results, original_input_data
+    # Convert the list to an immutable tuple original_input_data
+    return input_data_queue, deepcopy(list(input_data_queue.queue))

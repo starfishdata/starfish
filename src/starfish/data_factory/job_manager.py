@@ -185,7 +185,7 @@ class JobManager:
         output_ref = []
         task_status = STATUS_COMPLETED
         err_output = {}
-        input_data_idx = input_data.pop(IDX, None)
+        input_data_idx = input_data.get(IDX, None)
         if input_data_idx == None:
             logger.warning(f"found an input_data without index ")
 
@@ -225,7 +225,7 @@ class JobManager:
     async def _requeue_task(self, input_data, input_data_idx):
         """Requeue a task that needs to be retried or move to dead queue if failed too many times."""
         task_key = str(input_data_idx)  # Use index as task identifier
-        input_data[IDX] = input_data_idx
+        # input_data[IDX] = input_data_idx
         async with self.lock:  # Protect shared state with lock
             # Update failure count
             self.task_failure_count[task_key] = self.task_failure_count.get(task_key, 0) + 1
