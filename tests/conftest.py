@@ -12,12 +12,6 @@ def pytest_configure(config):
     # Register the notebook marker
     config.addinivalue_line("markers", "notebook: mark test as a notebook test")
 
-    # Make sure nbval is loaded if available
-    try:
-        import nbval
-    except ImportError:
-        pass
-
 
 @pytest.fixture(scope="session")
 def notebook_tempdir(tmpdir_factory):

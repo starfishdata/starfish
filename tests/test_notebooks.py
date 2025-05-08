@@ -33,10 +33,10 @@ def get_notebooks(base_dir=None):
 @pytest.mark.parametrize("notebook_file", get_notebooks())
 def test_notebook_execution(notebook_file):
     """Run the notebook through pytest to verify it executes without errors."""
-    pytest.importorskip("pytest_notebook")
+    pytest.importorskip("nbval")
 
-    # This test will be collected by pytest-notebook
+    # This test will be collected by pytest
     # We just need to ensure the file exists
     assert os.path.exists(notebook_file), f"Notebook file not found: {notebook_file}"
 
-    # The actual testing of the notebook is handled by pytest-notebook plugin
+    # The actual testing of the notebook is handled by nbval
