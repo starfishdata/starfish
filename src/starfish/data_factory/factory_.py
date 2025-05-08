@@ -191,7 +191,7 @@ class Factory:
                 self.err = OutputError("No records generated")
 
             await self._complete_master_job()
-            self._show_job_progress_status()
+            self._show_final_job_progress_status()
 
         return result
 
@@ -207,9 +207,7 @@ class Factory:
             else:
                 err_msg = "KeyboardInterrupt" if isinstance(self.err, KeyboardInterrupt) else str(self.err)
                 logger.error(f"Error occurred: {err_msg}")
-                logger.info(
-                    f"[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling resume_from_checkpoint(master_job_id='{self.config.master_job_id}')"
-                )
+                logger.info(f"[RESUME INFO] 🚨 Job stopped unexpectedly. You can resume the job by calling .resume()")
         # save request config and close storage
         await self._save_request_config()
         await self._close_storage()
@@ -325,7 +323,7 @@ class Factory:
                 raise InputError(f"Batch item is missing required parameter '{param_name}' " f"for function {self.func.__name__}")
         # Check 2: Ensure all batch parameters exist in function signature
         for batch_param in batch_item.keys():
-            if batch_param not in func_sig.parameters:
+            if batch_param != IDX and batch_param not in func_sig.parameters:
                 raise InputError(f"Batch items contains unexpected parameter '{batch_param}' " f"not found in function {self.func.__name__}")
 
     def _execute_job(self):
@@ -452,7 +450,7 @@ class Factory:
         if self.factory_storage:
             await self.factory_storage.close()
 
-    def _show_job_progress_status(self):
+    def _show_final_job_progress_status(self):
         """Display final job statistics and completion status.
 
         Logs the final counts of completed, failed, filtered, and duplicate records.
@@ -468,6 +466,13 @@ class Factory:
             f"Duplicate: {self.job_manager.duplicate_count}, "
             f"InDeadQueue: {self.job_manager.dead_queue_count})"
         )
+
+        # Add DLQ retrieval information if there are items in the dead queue
+        if self.job_manager.dead_queue_count > 0:
+            logger.warning(
+                f"\033[1;31m[DLQ]\033[0m {self.job_manager.dead_queue_count} items failed after {self.config.dead_queue_threshold} retries. "
+                f"Retrieve its index with: \033[1mfunction_name.get_index_dead_queue()\033[0m"
+            )
 
 
 def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tuple[Queue[Dict[str, Any]], list[Dict[str, Any]]]:
@@ -504,10 +509,9 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
 
     # Determine batch size (L)
     batch_size = lengths[0] if lengths else 1
-
-    # Prepare results
-    results = Queue()
-    original_input_data = []
+    # original_input_data = []
+    # Prepare input_data_queue
+    input_data_queue = Queue()
     for i in range(batch_size):
         record = {IDX: i}
 
@@ -525,9 +529,9 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
             if not isinstance(value, (list, tuple)):
                 record[key] = value
 
-        results.put(record)
+        input_data_queue.put(record)
 
-        original_input_data.append({k: deepcopy(v) for k, v in record.items() if k != IDX})
+        # original_input_data.append({k: deepcopy(v) for k, v in record.items() if k != IDX})
 
-    # Convert the list to an immutable tuple
-    return results, original_input_data
+    # Convert the list to an immutable tuple original_input_data
+    return input_data_queue, deepcopy(list(input_data_queue.queue))

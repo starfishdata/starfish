@@ -1,7 +1,7 @@
 import asyncio
 import time
 from typing import Any, Callable, Dict, List
-
+from copy import deepcopy
 from starfish.common.logger import get_logger
 from starfish.data_factory.config import TASK_RUNNER_TIMEOUT
 from starfish.data_factory.constants import IDX
@@ -38,7 +38,7 @@ class TaskRunner:
         start_time = time.time()
         result = None
         # Create a copy of input_data without 'IDX' tp prevent insertion of IDX due to race condition
-        copy_input = {k: v for k, v in input_data.items() if k != IDX}
+        copy_input = deepcopy({k: v for k, v in input_data.items() if k != IDX})
         while retries <= self.max_retries:
             try:
                 result = await asyncio.wait_for(func(**copy_input), timeout=self.timeout)
@@ -56,7 +56,7 @@ class TaskRunner:
                 if retries > self.max_retries:
                     # logger.error(f"Task execution failed after {self.max_retries} retries")
                     raise e
-                logger.warning(f"Retry attempt {retries}/{self.max_retries} for input data index {input_data_idx}")
+                logger.debug(f"Retry attempt {retries}/{self.max_retries} for input data index {input_data_idx}")
                 await asyncio.sleep(1**retries)  # exponential backoff
 
         return result
