@@ -414,7 +414,8 @@ class JobManager:
                 f"    (\033[32mCompleted: {self.completed_count}\033[0m, "
                 f"\033[31mFailed: {self.failed_count}\033[0m, "
                 f"\033[35mFiltered: {self.filtered_count}\033[0m, "
-                f"\033[34mDuplicate: {self.duplicate_count}\033[0m)"
+                f"\033[34mDuplicate: {self.duplicate_count}\033[0m, "
+                f"\033[1;31mInDeadQueue: {self.dead_queue_count}\033[0m)"
             )
             await asyncio.sleep(PROGRESS_LOG_INTERVAL)
 
