@@ -117,16 +117,17 @@ class JobManagerRerun(JobManager):
     def _process_input_data(self, input_data: list) -> dict:
         """Process input data and create a hash map for tracking."""
         input_dict = {}
-        idx = 0  # Initialize external counter to avoid use enumerate
+        # idx = 0  # Initialize external counter to avoid use enumerate
         for item in input_data:
+            input_data_idx = item.get(IDX, None)
             input_data_str = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
             input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
 
             if input_data_hash in input_dict:
-                input_dict[input_data_hash]["count"].append(idx)
+                input_dict[input_data_hash]["count"].append(input_data_idx)
             else:
-                input_dict[input_data_hash] = {"data": item, "data_str": input_data_str, "count": [idx]}
-            idx += 1  # Increment counter after processing each item
+                input_dict[input_data_hash] = {"data": item, "data_str": input_data_str, "count": [input_data_idx]}
+            # idx += 1  # Increment counter after processing each item
         return input_dict
 
     async def _handle_completed_tasks(self, input_dict: dict) -> None:
