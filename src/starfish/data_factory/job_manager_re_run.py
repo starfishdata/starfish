@@ -152,7 +152,9 @@ class JobManagerRerun(JobManager):
             record_data_list = await self._get_record_data(records_metadata)
             try:
                 output_tmp = {IDX: input_data_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
+                output_tmp = {IDX: input_data_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
             except Exception as e:
+                logger.warning(f" can not process completed_task {input_data_idx} in resume; error is  {str(e)}")
                 logger.warning(f" can not process completed_task {input_data_idx} in resume; error is  {str(e)}")
             # Check if output_tmp already exists in job_output
             # have not find duplicated. to remove this check for performance
