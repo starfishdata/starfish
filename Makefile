@@ -8,9 +8,16 @@ docstring:
 test:
 	poetry run pytest tests/	
 
-install:
-	@echo "Installing dependencies..."
-	poetry install
-	poetry run pre-commit install --install-hooks
+install: install-extras
 
+install-extras:
+	@echo "Installing dependencies with extras: $(EXTRAS)"
+	poetry install $(if $(EXTRAS),--extras "$(EXTRAS)",) --with dev
+#poetry install --extras "code_execution vllm" --with dev
+# Install with specific extras
+#make install EXTRAS="pdf docx"
+# Install all extras
+#make install EXTRAS="all"
+# Install without extras (default)
+#make install
 

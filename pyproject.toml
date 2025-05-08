@@ -26,6 +26,22 @@ nest_asyncio = "^1.6.0"
 # See: https://openssl-library.org/news/secadv/20250211.txt
 cryptography = ">=44.0.1"
 
+# Add optional dependencies for parsers
+[tool.poetry.extras]
+docx = ["python-docx"]
+ppt = ["python-pptx"]
+excel = ["openpyxl"]
+youtube = ["pytube", "youtube-transcript-api"]
+pdf = ["pdfminer.six"]
+all = [
+    "python-docx",
+    "python-pptx",
+    "openpyxl",
+    "pytube",
+    "youtube-transcript-api",
+    "pdfminer.six"
+]
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
