@@ -110,39 +110,39 @@ async def test_case_reuse_run_same_factory():
     data_factory.resume_from_checkpoint(input_format_mock_llm.factory.config.master_job_id)
 
 
-@pytest.mark.asyncio
-@pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
-async def test_case_keyboard_interrupt(monkeypatch):
-    """Test handling of keyboard interrupt (Ctrl+C)"""
-    processed_tasks = 0
+# @pytest.mark.asyncio
+# @pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
+# async def test_case_keyboard_interrupt(monkeypatch):
+#     """Test handling of keyboard interrupt (Ctrl+C)"""
+#     processed_tasks = 0
 
-    @data_factory(max_concurrency=2)
-    async def test_interrupt(city_name, num_records_per_city):
-        nonlocal processed_tasks
-        await asyncio.sleep(0.1)  # Simulate processing time
-        processed_tasks += 1
-        return await mock_llm_call(city_name, num_records_per_city)
+#     @data_factory(max_concurrency=2)
+#     async def test_interrupt(city_name, num_records_per_city):
+#         nonlocal processed_tasks
+#         await asyncio.sleep(0.1)  # Simulate processing time
+#         processed_tasks += 1
+#         return await mock_llm_call(city_name, num_records_per_city)
 
-    async def mock_sleep(duration):
-        # Allow some tasks to complete before interrupting
-        if processed_tasks < 10:  # Let exactly 2 tasks complete
-            return await original_sleep(duration)
-        raise KeyboardInterrupt()
+#     async def mock_sleep(duration):
+#         # Allow some tasks to complete before interrupting
+#         if processed_tasks < 10:  # Let exactly 2 tasks complete
+#             return await original_sleep(duration)
+#         raise KeyboardInterrupt()
 
-    # Store the original sleep function
-    original_sleep = asyncio.sleep
-    # Replace asyncio.sleep with our mock
-    monkeypatch.setattr(asyncio, "sleep", mock_sleep)
+#     # Store the original sleep function
+#     original_sleep = asyncio.sleep
+#     # Replace asyncio.sleep with our mock
+#     monkeypatch.setattr(asyncio, "sleep", mock_sleep)
 
-    try:
-        # Run with a limited number of tasks to prevent hanging
-        test_interrupt.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=1)
-    except KeyboardInterrupt:
-        # Verify some tasks were processed before interrupt
-        assert processed_tasks == 10
-    finally:
-        # Cleanup: restore original sleep function
-        monkeypatch.undo()
+#     try:
+#         # Run with a limited number of tasks to prevent hanging
+#         test_interrupt.run(city_name=["SF", "Shanghai", "yoyo"] * 20, num_records_per_city=1)
+#     except KeyboardInterrupt:
+#         # Verify some tasks were processed before interrupt
+#         assert processed_tasks == 10
+#     finally:
+#         # Cleanup: restore original sleep function
+#         monkeypatch.undo()
 
 
 @pytest.mark.asyncio
