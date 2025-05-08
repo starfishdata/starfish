@@ -75,10 +75,10 @@ class JobManagerRerun(JobManager):
 
         # Process input data and handle completed tasks
         input_dict = self._process_input_data(input_data)
-        await self._handle_completed_tasks(input_dict)
+        re_move_hashes = await self._handle_completed_tasks(input_dict)
 
         # Queue remaining tasks for execution
-        self._queue_remaining_tasks(input_dict)
+        self._queue_remaining_tasks(input_dict, re_move_hashes)
 
     def _extract_previous_job_data(self) -> list:
         """Extract and clean up previous job data."""
@@ -117,21 +117,15 @@ class JobManagerRerun(JobManager):
     def _process_input_data(self, input_data: list) -> dict:
         """Process input data and create a hash map for tracking."""
         input_dict = {}
-        # idx = 0  # Initialize external counter to avoid use enumerate
         for item in input_data:
-            input_data_idx = item.get(IDX, None)
             input_data_str = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
             input_data_hash = hashlib.sha256(input_data_str.encode()).hexdigest()
-
-            if input_data_hash in input_dict:
-                input_dict[input_data_hash]["count"].append(input_data_idx)
-            else:
-                input_dict[input_data_hash] = {"data": item, "data_str": input_data_str, "count": [input_data_idx]}
-            # idx += 1  # Increment counter after processing each item
+            input_dict[input_data_hash] = {"data": item, "data_str": input_data_str}
         return input_dict
 
-    async def _handle_completed_tasks(self, input_dict: dict) -> None:
+    async def _handle_completed_tasks(self, input_dict: dict) -> list:
         """Handle already completed tasks by retrieving their outputs from storage."""
+        to_removed_hashes = []
         for input_data_hash, item in input_dict.items():
             completed_tasks = await self.storage.list_execution_jobs_by_master_id_and_config_hash(self.master_job_id, input_data_hash, STATUS_COMPLETED)
 
@@ -139,26 +133,20 @@ class JobManagerRerun(JobManager):
                 continue
 
             logger.debug("Task already run, returning output from storage")
-            await self._process_completed_tasks(completed_tasks, item)
+            await self._process_completed_tasks(completed_tasks, item["data"].get(IDX, None))
+            to_removed_hashes.append(input_data_hash)
+        return to_removed_hashes
 
-    async def _process_completed_tasks(self, completed_tasks: list, item: dict) -> None:
+    async def _process_completed_tasks(self, completed_tasks: list, input_data_idx: int) -> None:
         """Process completed tasks and add their outputs to the job queue."""
-        record_idx = None
-        idx_list = item["count"]
-        logger.debug(idx_list)
+
         for task in completed_tasks:
             records_metadata = await self.storage.list_record_metadata(self.master_job_id, task.job_id)
             record_data_list = await self._get_record_data(records_metadata)
             try:
-                idx_list = item["count"]
-                logger.debug(idx_list)
-                # logger.info("the item['count'] is ======= %s", item["count"])
-                # if len(idx_list) > 0:
-                record_idx = item["count"].pop()
-                logger.debug(record_idx)
-                output_tmp = {IDX: record_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
+                output_tmp = {IDX: input_data_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
             except Exception as e:
-                logger.warning(f" can not process completed_task {record_idx} in resume; error is  {str(e)}")
+                logger.warning(f" can not process completed_task {input_data_idx} in resume; error is  {str(e)}")
             # Check if output_tmp already exists in job_output
             # have not find duplicated. to remove this check for performance
             if output_tmp not in list(self.job_output.queue):
@@ -174,21 +162,16 @@ class JobManagerRerun(JobManager):
             record_data_list.append(record_data)
         return record_data_list
 
-    def _queue_remaining_tasks(self, input_dict: dict) -> None:
+    def _queue_remaining_tasks(self, input_dict: dict, to_remove_hashes: list) -> None:
+        for hash_k in to_remove_hashes:
+            del input_dict[hash_k]
         """Queue remaining tasks for execution."""
         for item in input_dict.values():
-            # item["count"] is mutable, already updated in process_complete by deducting
-            # the completed tasks
-            remaining_count = len(item["count"])
-            if remaining_count > 0:
-                logger.debug("Task not run, queuing for execution")
-                try:
-                    for _ in range(remaining_count):
-                        item["data"][IDX] = item["count"].pop()
-                        _to_add_data = item["data"]
-                        self.job_input_queue.put(_to_add_data)
-                except Exception as e:
-                    logger.error(str(e))
+            logger.debug("Task not run, queuing for execution")
+            try:
+                self.job_input_queue.put(item["data"])
+            except Exception as e:
+                logger.error(str(e))
 
     def pop_from_list(ls: list):
         try:
