@@ -5,7 +5,7 @@ from starfish.data_ingest.splitter.base_splitter import TextSplitter
 
 
 class TokenTextSplitter(TextSplitter):
-    """Splitting text to tokens using model tokenizer."""
+    """Splits text into chunks using a tokenizer, with configurable chunk size and overlap."""
 
     def __init__(
         self,
@@ -13,59 +13,48 @@ class TokenTextSplitter(TextSplitter):
         model_name: Optional[str] = None,
         allowed_special: Union[Literal["all"], AbstractSet[str]] = set(),
         disallowed_special: Union[Literal["all"], Collection[str]] = "all",
+        chunk_size: int = 400,
+        chunk_overlap: int = 20,
         **kwargs: Any,
     ) -> None:
-        """Create a new TextSplitter."""
-        super().__init__(**kwargs)
-        try:
-            import tiktoken
-        except ImportError:
-            raise ImportError(
-                "Could not import tiktoken python package. "
-                "This is needed in order to for TokenTextSplitter. "
-                "Please install it with `pip install tiktoken`."
-            )
-
-        if model_name is not None:
-            enc = tiktoken.encoding_for_model(model_name)
-        else:
-            enc = tiktoken.get_encoding(encoding_name)
-        self._tokenizer = enc
-        self._allowed_special = allowed_special
-        self._disallowed_special = disallowed_special
-        self._chunk_overlap = 20
-        self._chunk_size = 400
-
-    def split_text(self, text: str) -> List[str]:
-        """Splits the input text into smaller chunks based on tokenization.
-
-        This method uses a custom tokenizer configuration to encode the input text
-        into tokens, processes the tokens in chunks of a specified size with overlap,
-        and decodes them back into text chunks. The splitting is performed using the
-        `split_text_on_tokens` function.
+        """Initialize the token splitter.
 
         Args:
-            text (str): The input text to be split into smaller chunks.
-
-        Returns:
-            List[str]: A list of text chunks, where each chunk is derived from a portion
-            of the input text based on the tokenization and chunking rules.
+            encoding_name: Name of the encoding to use
+            model_name: Optional model name to get encoding for
+            allowed_special: Special tokens to allow
+            disallowed_special: Special tokens to disallow
+            chunk_size: Maximum number of tokens per chunk
+            chunk_overlap: Number of overlapping tokens between chunks
         """
+        super().__init__(**kwargs)
+        self._tokenizer = self._get_tokenizer(encoding_name, model_name)
+        self._allowed_special = allowed_special
+        self._disallowed_special = disallowed_special
+        self._chunk_size = chunk_size
+        self._chunk_overlap = chunk_overlap
 
-        def _encode(_text: str) -> List[int]:
-            return self._tokenizer.encode(
-                _text,
-                allowed_special=self._allowed_special,
-                disallowed_special=self._disallowed_special,
-            )
+    def _get_tokenizer(self, encoding_name: str, model_name: Optional[str]) -> Any:
+        """Get tokenizer instance."""
+        try:
+            import tiktoken
 
+            return tiktoken.encoding_for_model(model_name) if model_name else tiktoken.get_encoding(encoding_name)
+        except ImportError:
+            raise ImportError("tiktoken package required. Install with `pip install tiktoken`.")
+
+    def split_text(self, text: str) -> List[str]:
+        """Split text into chunks based on tokenization."""
         tokenizer = Tokenizer(
             chunk_overlap=self._chunk_overlap,
             tokens_per_chunk=self._chunk_size,
             decode=self._tokenizer.decode,
-            encode=_encode,
+            encode=lambda t: self._tokenizer.encode(
+                t,
+                allowed_special=self._allowed_special,
+                disallowed_special=self._disallowed_special,
+            ),
         )
-
         return split_text_on_tokens(text=text, tokenizer=tokenizer)
 
 
