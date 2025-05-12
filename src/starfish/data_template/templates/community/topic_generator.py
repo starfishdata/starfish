@@ -25,7 +25,7 @@ class TopicGeneratorOutput(BaseModel):
     description="Generates relevant topics for community discussions using AI models",
     author="Your Name",
     starfish_version="0.1.0",
-    dependencies=["transformers>=4.0.0"],
+    dependencies=["transformers_1>=4.0.0"],
 )
 # @data_factory(max_concurrency=10)
 def topic_generator(input_data: TopicGeneratorInput) -> TopicGeneratorOutput:

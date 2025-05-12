@@ -1,6 +1,6 @@
 import hashlib
 import json
-from queue import Queue
+import asyncio
 from typing import Any, Callable, Dict
 import copy  # Added this import at the top of the file
 
@@ -31,7 +31,7 @@ class JobManagerRerun(JobManager):
             including max_concurrency, target_count, and task configurations.
         storage (Storage): Storage instance for persisting job results and metadata.
         user_func (Callable): User-defined function to execute for each task.
-        input_data_queue (Queue, optional): Queue containing input data for the job.
+        input_data_queue (asyncio.Queue, optional): Queue containing input data for the job.
             Defaults to an empty Queue.
 
     Attributes:
@@ -43,7 +43,9 @@ class JobManagerRerun(JobManager):
         - completed_count (int): Completed records from previous run
     """
 
-    def __init__(self, master_job_config: Dict[str, Any], state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: Queue = None):
+    def __init__(
+        self, master_job_config: Dict[str, Any], state: MutableSharedState, storage: Storage, user_func: Callable, input_data_queue: asyncio.Queue = None
+    ):
         """Initialize the JobManager with job configuration and storage.
 
         Args:
@@ -56,9 +58,8 @@ class JobManagerRerun(JobManager):
             state: MutableSharedState instance for storing job state
             storage: Storage instance for persisting job results and metadata
             user_func: User-defined function to execute for each task
-            input_data_queue: Queue containing input data for the job. Defaults to an empty Queue.
+            input_data_queue: asyncio.Queue containing input data for the job. Defaults to an empty Queue.
         """
-        # self.setup_input_output_queue()
         super().__init__(master_job_config, state, storage, user_func, input_data_queue)
 
     async def setup_input_output_queue(self):
@@ -78,7 +79,7 @@ class JobManagerRerun(JobManager):
         await self._handle_completed_tasks(input_data_hashed)
 
         # Queue remaining tasks for execution
-        self._queue_remaining_tasks(input_data_hashed)
+        await self._queue_remaining_tasks(input_data_hashed)
 
     def _extract_previous_job_data(self) -> list:
         """Extract and clean up previous job data."""
@@ -126,16 +127,18 @@ class JobManagerRerun(JobManager):
     async def _handle_completed_tasks(self, input_data_hashed: list) -> None:
         """Handle already completed tasks by retrieving their outputs from storage."""
         remaining_items = []
-
+        all_completed_taks = []
         for item in input_data_hashed:
             input_data_hash = item["input_data_hash"]
             completed_tasks = await self.storage.list_execution_jobs_by_master_id_and_config_hash(self.master_job_id, input_data_hash, STATUS_COMPLETED)
 
             if completed_tasks:
                 logger.debug("Task already run, returning output from storage")
-                await self._process_completed_tasks(completed_tasks, item["data"].get(IDX, None))
+                all_completed_taks.extend(self._process_completed_tasks(completed_tasks, item["data"].get(IDX, None)))
             else:
                 remaining_items.append(item)
+        # Wait for all tasks to complete
+        await asyncio.gather(*all_completed_taks)
 
         # Update the input_data_hashed list with remaining items
         input_data_hashed[:] = remaining_items
@@ -144,24 +147,30 @@ class JobManagerRerun(JobManager):
             logger.warning("completed_count not match in resume; update it")
             self.completed_count = db_completed_count
 
-    async def _process_completed_tasks(self, completed_tasks: list, input_data_idx: int) -> None:
+    def _process_completed_tasks(self, completed_tasks: list, input_data_idx: int) -> list:
         """Process completed tasks and add their outputs to the job queue."""
-
+        tasks = []
         for task in completed_tasks:
-            records_metadata = await self.storage.list_record_metadata(self.master_job_id, task.job_id)
-            record_data_list = await self._get_record_data(records_metadata)
-            try:
-                output_tmp = {IDX: input_data_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
-                output_tmp = {IDX: input_data_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
-            except Exception as e:
-                logger.warning(f" can not process completed_task {input_data_idx} in resume; error is  {str(e)}")
-                logger.warning(f" can not process completed_task {input_data_idx} in resume; error is  {str(e)}")
-            # Check if output_tmp already exists in job_output
-            # have not find duplicated. to remove this check for performance
-            if output_tmp not in list(self.job_output.queue):
-                self.job_output.put(output_tmp)
-            else:
-                logger.debug("db record duplicated")
+            # Create tasks for concurrent execution
+            task = asyncio.create_task(self._process_single_task(task, input_data_idx))
+            tasks.append(task)
+        return tasks
+
+    async def _process_single_task(self, task, input_data_idx: int) -> None:
+        """Process a single completed task."""
+        records_metadata = await self.storage.list_record_metadata(self.master_job_id, task.job_id)
+        record_data_list = await self._get_record_data(records_metadata)
+        try:
+            output_tmp = {IDX: input_data_idx, RECORD_STATUS: STATUS_COMPLETED, "output": record_data_list}
+        except Exception as e:
+            logger.warning(f" can not process completed_task {input_data_idx} in resume; error is  {str(e)}")
+            return
+
+        # Check if output_tmp already exists in job_output
+        if output_tmp not in self.job_output._queue:  # Access the internal queue for checking
+            await self.job_output.put(output_tmp)  # Use await with asyncio.Queue
+        else:
+            logger.debug("db record duplicated")
 
     async def _get_record_data(self, records_metadata: list) -> list:
         """Retrieve record data from storage."""
@@ -171,14 +180,10 @@ class JobManagerRerun(JobManager):
             record_data_list.append(record_data)
         return record_data_list
 
-    def _queue_remaining_tasks(self, input_data_hashed: list) -> None:
+    async def _queue_remaining_tasks(self, input_data_hashed: list) -> None:
         """Queue remaining tasks for execution."""
-        for item in input_data_hashed:
-            logger.debug("Task not run, queuing for execution")
-            try:
-                self.job_input_queue.put(item["data"])
-            except Exception as e:
-                logger.error(str(e))
+        tasks = [asyncio.create_task(self.job_input_queue.put(item["data"])) for item in input_data_hashed]
+        await asyncio.gather(*tasks)
 
     def pop_from_list(ls: list):
         try:
