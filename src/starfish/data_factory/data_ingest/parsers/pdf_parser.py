@@ -70,13 +70,13 @@ class PDFParser(BaseParser):
         """
         return os.path.splitext(file_path)[1].lower() in self.supported_extensions
 
-    def save(self, content: str, output_path: str) -> None:
-        """Save the extracted text to a file
+    # def save(self, content: str, output_path: str) -> None:
+    #     """Save the extracted text to a file
 
-        Args:
-            content: Extracted text content
-            output_path: Path to save the text
-        """
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(content)
+    #     Args:
+    #         content: Extracted text content
+    #         output_path: Path to save the text
+    #     """
+    #     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    #     with open(output_path, "w", encoding="utf-8") as f:
+    #         f.write(content)
