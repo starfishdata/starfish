@@ -184,7 +184,7 @@ files = [
 name = "antlr4-python3-runtime"
 version = "4.9.3"
 description = "ANTLR 4.9.3 runtime for Python 3.7"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -313,7 +313,7 @@ testing = ["jaraco.test", "pytest (!=8.0.*)", "pytest (>=6,!=8.1.*)", "pytest-ch
 name = "beautifulsoup4"
 version = "4.13.4"
 description = "Screen-scraping library"
-optional = false
+optional = true
 python-versions = ">=3.7.0"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -457,7 +457,7 @@ files = [
 name = "chardet"
 version = "5.2.0"
 description = "Universal encoding detector for Python 3"
-optional = false
+optional = true
 python-versions = ">=3.7"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -615,7 +615,7 @@ markers = {main = "(sys_platform == \"win32\" or platform_system == \"Windows\")
 name = "coloredlogs"
 version = "15.0.1"
 description = "Colored terminal output for Python's logging module"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -653,7 +653,7 @@ test = ["pytest"]
 name = "contourpy"
 version = "1.3.0"
 description = "Python library for calculating contours of 2D quadrilateral grids"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "python_version < \"3.10\" and (python_version == \"3.9\" or platform_system == \"Linux\") and (python_version == \"3.9\" or platform_machine == \"aarch64\") and (extra == \"unstructured\" or extra == \"all\")"
@@ -739,7 +739,7 @@ test-no-images = ["pytest", "pytest-cov", "pytest-rerunfailures", "pytest-xdist"
 name = "contourpy"
 version = "1.3.2"
 description = "Python library for calculating contours of 2D quadrilateral grids"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "python_version >= \"3.10\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -958,7 +958,7 @@ test-randomorder = ["pytest-randomly"]
 name = "cycler"
 version = "0.12.1"
 description = "Composable style cycles"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -975,7 +975,7 @@ tests = ["pytest", "pytest-cov", "pytest-xdist"]
 name = "dataclasses-json"
 version = "0.6.7"
 description = "Easily serialize dataclasses to and from JSON."
-optional = false
+optional = true
 python-versions = "<4.0,>=3.7"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -1039,6 +1039,19 @@ files = [
 ]
 
 [[package]]
+name = "defusedxml"
+version = "0.7.1"
+description = "XML bomb protection for Python stdlib modules"
+optional = true
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+groups = ["main"]
+markers = "python_version < \"3.12\" and (extra == \"youtube\" or extra == \"all\") and (platform_system == \"Linux\" or python_version == \"3.9\" or python_version == \"3.11\" or python_version == \"3.10\") and (platform_machine == \"aarch64\" or python_version == \"3.9\" or python_version == \"3.11\" or python_version == \"3.10\")"
+files = [
+    {file = "defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61"},
+    {file = "defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69"},
+]
+
+[[package]]
 name = "distlib"
 version = "0.3.9"
 description = "Distribution utilities"
@@ -1081,7 +1094,7 @@ files = [
 name = "effdet"
 version = "0.4.1"
 description = "EfficientDet for PyTorch"
-optional = false
+optional = true
 python-versions = ">=3.7"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -1101,7 +1114,7 @@ torchvision = "*"
 name = "emoji"
 version = "2.14.1"
 description = "Emoji for Python"
-optional = false
+optional = true
 python-versions = ">=3.7"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -1112,6 +1125,19 @@ files = [
 
 [package.extras]
 dev = ["coverage", "pytest (>=7.4.4)"]
+
+[[package]]
+name = "et-xmlfile"
+version = "2.0.0"
+description = "An implementation of lxml.xmlfile for the standard library"
+optional = true
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "(extra == \"excel\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+files = [
+    {file = "et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa"},
+    {file = "et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54"},
+]
 
 [[package]]
 name = "exceptiongroup"
@@ -1183,7 +1209,7 @@ typing = ["typing-extensions (>=4.12.2) ; python_version < \"3.11\""]
 name = "filetype"
 version = "1.2.0"
 description = "Infer file type and MIME type of any file/buffer. No external dependencies."
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -1196,7 +1222,7 @@ files = [
 name = "flatbuffers"
 version = "25.2.10"
 description = "The FlatBuffers serialization format for Python"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -1209,7 +1235,7 @@ files = [
 name = "fonttools"
 version = "4.57.0"
 description = "Tools to manipulate font files"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -1562,7 +1588,7 @@ typing = ["types-PyYAML", "types-requests", "types-simplejson", "types-toml", "t
 name = "humanfriendly"
 version = "10.0"
 description = "Human friendly output for text interfaces using Python"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -1635,7 +1661,7 @@ type = ["pytest-mypy"]
 name = "importlib-resources"
 version = "6.5.2"
 description = "Read resources from Python packages"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "python_version < \"3.10\" and (python_version == \"3.9\" or platform_system == \"Linux\") and (python_version == \"3.9\" or platform_machine == \"aarch64\") and (extra == \"unstructured\" or extra == \"all\")"
@@ -1672,7 +1698,7 @@ files = [
 name = "iopath"
 version = "0.1.10"
 description = "A library for providing I/O abstraction."
-optional = false
+optional = true
 python-versions = ">=3.6"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -2030,7 +2056,7 @@ files = [
 name = "joblib"
 version = "1.5.0"
 description = "Lightweight pipelining with Python functions"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -2160,7 +2186,7 @@ type = ["pygobject-stubs", "pytest-mypy", "shtab", "types-pywin32"]
 name = "kiwisolver"
 version = "1.4.7"
 description = "A fast implementation of the Cassowary constraint solver"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "python_version < \"3.10\" and (python_version == \"3.9\" or platform_system == \"Linux\") and (python_version == \"3.9\" or platform_machine == \"aarch64\") and (extra == \"unstructured\" or extra == \"all\")"
@@ -2285,7 +2311,7 @@ files = [
 name = "kiwisolver"
 version = "1.4.8"
 description = "A fast implementation of the Cassowary constraint solver"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "python_version >= \"3.10\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -2376,7 +2402,7 @@ files = [
 name = "langdetect"
 version = "1.0.9"
 description = "Language detection library ported from Google's language-detection."
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -2392,7 +2418,7 @@ six = "*"
 name = "layoutparser"
 version = "0.3.4"
 description = "A unified toolkit for Deep Learning Based Document Image Analysis"
-optional = false
+optional = true
 python-versions = ">=3.6"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -2478,10 +2504,10 @@ dev = ["Sphinx (==8.1.3) ; python_version >= \"3.11\"", "build (==1.2.2) ; pytho
 name = "lxml"
 version = "5.4.0"
 description = "Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API."
-optional = false
+optional = true
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+markers = "(extra == \"unstructured\" or extra == \"all\" or extra == \"docx\" or extra == \"ppt\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
 files = [
     {file = "lxml-5.4.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:e7bc6df34d42322c5289e37e9971d6ed114e3776b45fa879f734bded9d1fea9c"},
     {file = "lxml-5.4.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:6854f8bd8a1536f8a1d9a3655e6354faa6406621cf857dc27b681b69860645c7"},
@@ -2726,7 +2752,7 @@ files = [
 name = "marshmallow"
 version = "3.26.1"
 description = "A lightweight library for converting complex datatypes to and from native Python datatypes."
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -2747,7 +2773,7 @@ tests = ["pytest", "simplejson"]
 name = "matplotlib"
 version = "3.9.4"
 description = "Python plotting package"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "python_version < \"3.10\" and (python_version == \"3.9\" or platform_system == \"Linux\") and (python_version == \"3.9\" or platform_machine == \"aarch64\") and (extra == \"unstructured\" or extra == \"all\")"
@@ -2814,7 +2840,7 @@ dev = ["meson-python (>=0.13.1,<0.17.0)", "numpy (>=1.25)", "pybind11 (>=2.6,!=2
 name = "matplotlib"
 version = "3.10.3"
 description = "Python plotting package"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "python_version >= \"3.10\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -2928,7 +2954,7 @@ files = [
 name = "mpmath"
 version = "1.3.0"
 description = "Python library for arbitrary-precision floating-point arithmetic"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3065,7 +3091,7 @@ typing-extensions = {version = ">=4.1.0", markers = "python_version < \"3.11\""}
 name = "mypy-extensions"
 version = "1.1.0"
 description = "Type system extensions for programs checked with the mypy type checker."
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3134,7 +3160,7 @@ files = [
 name = "networkx"
 version = "3.2.1"
 description = "Python package for creating and manipulating graphs and networks"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "python_version < \"3.10\" and (python_version == \"3.9\" or platform_system == \"Linux\") and (python_version == \"3.9\" or platform_machine == \"aarch64\") and (extra == \"unstructured\" or extra == \"all\")"
@@ -3154,7 +3180,7 @@ test = ["pytest (>=7.2)", "pytest-cov (>=4.0)"]
 name = "networkx"
 version = "3.4.2"
 description = "Python package for creating and manipulating graphs and networks"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "python_version >= \"3.10\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3210,7 +3236,7 @@ files = [
 name = "nltk"
 version = "3.9.1"
 description = "Natural Language Toolkit"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3250,7 +3276,7 @@ files = [
 name = "numpy"
 version = "2.0.2"
 description = "Fundamental package for array computing in Python"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "python_version < \"3.10\" and (python_version == \"3.9\" or platform_system == \"Linux\") and (python_version == \"3.9\" or platform_machine == \"aarch64\") and (extra == \"unstructured\" or extra == \"all\")"
@@ -3306,7 +3332,7 @@ files = [
 name = "numpy"
 version = "2.2.5"
 description = "Fundamental package for array computing in Python"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "python_version >= \"3.10\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3372,7 +3398,7 @@ files = [
 name = "nvidia-cublas-cu12"
 version = "12.6.4.1"
 description = "CUBLAS native runtime libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3386,7 +3412,7 @@ files = [
 name = "nvidia-cuda-cupti-cu12"
 version = "12.6.80"
 description = "CUDA profiling tools runtime libs."
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3402,7 +3428,7 @@ files = [
 name = "nvidia-cuda-nvrtc-cu12"
 version = "12.6.77"
 description = "NVRTC native runtime libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3416,7 +3442,7 @@ files = [
 name = "nvidia-cuda-runtime-cu12"
 version = "12.6.77"
 description = "CUDA Runtime native Libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3432,7 +3458,7 @@ files = [
 name = "nvidia-cudnn-cu12"
 version = "9.5.1.17"
 description = "cuDNN runtime libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3449,7 +3475,7 @@ nvidia-cublas-cu12 = "*"
 name = "nvidia-cufft-cu12"
 version = "11.3.0.4"
 description = "CUFFT native runtime libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3468,7 +3494,7 @@ nvidia-nvjitlink-cu12 = "*"
 name = "nvidia-cufile-cu12"
 version = "1.11.1.6"
 description = "cuFile GPUDirect libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3481,7 +3507,7 @@ files = [
 name = "nvidia-curand-cu12"
 version = "10.3.7.77"
 description = "CURAND native runtime libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3497,7 +3523,7 @@ files = [
 name = "nvidia-cusolver-cu12"
 version = "11.7.1.2"
 description = "CUDA solver native runtime libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3518,7 +3544,7 @@ nvidia-nvjitlink-cu12 = "*"
 name = "nvidia-cusparse-cu12"
 version = "12.5.4.2"
 description = "CUSPARSE native runtime libraries"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3537,7 +3563,7 @@ nvidia-nvjitlink-cu12 = "*"
 name = "nvidia-cusparselt-cu12"
 version = "0.6.3"
 description = "NVIDIA cuSPARSELt"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3551,7 +3577,7 @@ files = [
 name = "nvidia-nccl-cu12"
 version = "2.26.2"
 description = "NVIDIA Collective Communication Library (NCCL) Runtime"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3564,7 +3590,7 @@ files = [
 name = "nvidia-nvjitlink-cu12"
 version = "12.6.85"
 description = "Nvidia JIT LTO Library"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3578,7 +3604,7 @@ files = [
 name = "nvidia-nvtx-cu12"
 version = "12.6.77"
 description = "NVIDIA Tools Extension"
-optional = false
+optional = true
 python-versions = ">=3"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -3611,7 +3637,7 @@ pydantic = ">=2.9.0,<3.0.0"
 name = "omegaconf"
 version = "2.3.0"
 description = "A flexible configuration library"
-optional = false
+optional = true
 python-versions = ">=3.6"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3628,7 +3654,7 @@ PyYAML = ">=5.1.0"
 name = "onnx"
 version = "1.17.0"
 description = "Open Neural Network Exchange"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3672,7 +3698,7 @@ reference = ["Pillow", "google-re2"]
 name = "onnxruntime"
 version = "1.15.1"
 description = "ONNX Runtime is a runtime accelerator for Machine Learning models"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3743,7 +3769,7 @@ voice-helpers = ["numpy (>=2.0.2)", "sounddevice (>=0.5.1)"]
 name = "opencv-python"
 version = "4.11.0.86"
 description = "Wrapper package for OpenCV python bindings."
-optional = false
+optional = true
 python-versions = ">=3.6"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3768,6 +3794,22 @@ numpy = [
 ]
 
 [[package]]
+name = "openpyxl"
+version = "3.1.5"
+description = "A Python library to read/write Excel 2010 xlsx/xlsm files"
+optional = true
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "(extra == \"excel\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+files = [
+    {file = "openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"},
+    {file = "openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050"},
+]
+
+[package.dependencies]
+et-xmlfile = "*"
+
+[[package]]
 name = "packaging"
 version = "25.0"
 description = "Core utilities for Python packages"
@@ -3784,7 +3826,7 @@ files = [
 name = "pandas"
 version = "2.2.3"
 description = "Powerful data structures for data analysis, time series, and statistics"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3889,7 +3931,7 @@ testing = ["docopt", "pytest"]
 name = "pdf2image"
 version = "1.17.0"
 description = "A wrapper around the pdftoppm and pdftocairo command line tools to convert PDF to a PIL Image list."
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3905,10 +3947,10 @@ pillow = "*"
 name = "pdfminer-six"
 version = "20250506"
 description = "PDF parser and analyzer"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+markers = "(extra == \"unstructured\" or extra == \"all\" or extra == \"pdf\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
 files = [
     {file = "pdfminer_six-20250506-py3-none-any.whl", hash = "sha256:d81ad173f62e5f841b53a8ba63af1a4a355933cfc0ffabd608e568b9193909e3"},
     {file = "pdfminer_six-20250506.tar.gz", hash = "sha256:b03cc8df09cf3c7aba8246deae52e0bca7ebb112a38895b5e1d4f5dd2b8ca2e7"},
@@ -3927,7 +3969,7 @@ image = ["Pillow"]
 name = "pdfplumber"
 version = "0.5.3"
 description = "Plumb a PDF for detailed information about each char, rectangle, and line."
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -3963,10 +4005,10 @@ ptyprocess = ">=0.5"
 name = "pillow"
 version = "11.2.1"
 description = "Python Imaging Library (Fork)"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+markers = "(extra == \"unstructured\" or extra == \"all\" or extra == \"ppt\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
 files = [
     {file = "pillow-11.2.1-cp310-cp310-macosx_10_10_x86_64.whl", hash = "sha256:d57a75d53922fc20c165016a20d9c44f73305e67c351bbc60d1adaf662e74047"},
     {file = "pillow-11.2.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:127bf6ac4a5b58b3d32fc8289656f77f80567d65660bc46f72c0d77e6600cc95"},
@@ -4115,7 +4157,7 @@ testing = ["pytest", "pytest-benchmark"]
 name = "portalocker"
 version = "3.1.1"
 description = "Wraps the portalocker recipe for easy usage"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4308,7 +4350,7 @@ files = [
 name = "protobuf"
 version = "6.30.2"
 description = ""
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4382,7 +4424,7 @@ tests = ["pytest"]
 name = "pycocotools"
 version = "2.0.8"
 description = "Official APIs for the MS-COCO dataset"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4439,7 +4481,7 @@ markers = {main = "platform_python_implementation != \"PyPy\"", dev = "platform_
 name = "pycrypto"
 version = "2.6.1"
 description = "Cryptographic modules for Python."
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4603,7 +4645,7 @@ windows-terminal = ["colorama (>=0.4.6)"]
 name = "pyparsing"
 version = "3.2.3"
 description = "pyparsing module - Classes and methods to define and execute parsing grammars"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4619,7 +4661,7 @@ diagrams = ["jinja2", "railroad-diagrams"]
 name = "pyreadline3"
 version = "3.5.4"
 description = "A python implementation of GNU readline."
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "sys_platform == \"win32\" and (extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4635,7 +4677,7 @@ dev = ["build", "flake8", "mypy", "pytest", "twine"]
 name = "pytesseract"
 version = "0.3.13"
 description = "Python-tesseract is a python wrapper for Google's Tesseract-OCR"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4761,6 +4803,23 @@ files = [
 six = ">=1.5"
 
 [[package]]
+name = "python-docx"
+version = "1.1.2"
+description = "Create, read, and update Microsoft Word .docx files."
+optional = true
+python-versions = ">=3.7"
+groups = ["main"]
+markers = "(extra == \"docx\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+files = [
+    {file = "python_docx-1.1.2-py3-none-any.whl", hash = "sha256:08c20d6058916fb19853fcf080f7f42b6270d89eac9fa5f8c15f691c0017fabe"},
+    {file = "python_docx-1.1.2.tar.gz", hash = "sha256:0cf1f22e95b9002addca7948e16f2cd7acdfd498047f1941ca5d293db7762efd"},
+]
+
+[package.dependencies]
+lxml = ">=3.1.0"
+typing-extensions = ">=4.9.0"
+
+[[package]]
 name = "python-dotenv"
 version = "1.1.0"
 description = "Read key-value pairs from a .env file and set them as environment variables"
@@ -4780,7 +4839,7 @@ cli = ["click (>=5.0)"]
 name = "python-iso639"
 version = "2025.2.18"
 description = "ISO 639 language codes, names, and other associated information"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4796,7 +4855,7 @@ dev = ["black (==25.1.0)", "build (==1.2.2)", "flake8 (==7.1.1)", "mypy (==1.15.
 name = "python-magic"
 version = "0.4.27"
 description = "File type identification using libmagic"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4809,7 +4868,7 @@ files = [
 name = "python-multipart"
 version = "0.0.20"
 description = "A streaming multipart parser for Python"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -4819,10 +4878,42 @@ files = [
 ]
 
 [[package]]
+name = "python-pptx"
+version = "1.0.2"
+description = "Create, read, and update PowerPoint 2007+ (.pptx) files."
+optional = true
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "(extra == \"ppt\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+files = [
+    {file = "python_pptx-1.0.2-py3-none-any.whl", hash = "sha256:160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba"},
+    {file = "python_pptx-1.0.2.tar.gz", hash = "sha256:479a8af0eaf0f0d76b6f00b0887732874ad2e3188230315290cd1f9dd9cc7095"},
+]
+
+[package.dependencies]
+lxml = ">=3.1.0"
+Pillow = ">=3.3.2"
+typing-extensions = ">=4.9.0"
+XlsxWriter = ">=0.5.7"
+
+[[package]]
+name = "pytube"
+version = "15.0.0"
+description = "Python 3 library for downloading YouTube Videos."
+optional = true
+python-versions = ">=3.7"
+groups = ["main"]
+markers = "(extra == \"youtube\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+files = [
+    {file = "pytube-15.0.0-py3-none-any.whl", hash = "sha256:07b9904749e213485780d7eb606e5e5b8e4341aa4dccf699160876da00e12d78"},
+    {file = "pytube-15.0.0.tar.gz", hash = "sha256:076052efe76f390dfa24b1194ff821d4e86c17d41cb5562f3a276a8bcbfc9d1d"},
+]
+
+[[package]]
 name = "pytz"
 version = "2025.2"
 description = "World timezone definitions, modern and historical"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -5046,7 +5137,7 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 name = "rapidfuzz"
 version = "3.13.0"
 description = "rapid fuzzy string matching"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -5528,7 +5619,7 @@ files = [
 name = "safetensors"
 version = "0.5.3"
 description = ""
-optional = false
+optional = true
 python-versions = ">=3.7"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -5567,7 +5658,7 @@ torch = ["safetensors[numpy]", "torch (>=1.10)"]
 name = "scipy"
 version = "1.13.1"
 description = "Fundamental algorithms for scientific computing in Python"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "python_version < \"3.10\" and (python_version == \"3.9\" or platform_system == \"Linux\") and (python_version == \"3.9\" or platform_machine == \"aarch64\") and (extra == \"unstructured\" or extra == \"all\")"
@@ -5611,7 +5702,7 @@ test = ["array-api-strict", "asv", "gmpy2", "hypothesis (>=6.30)", "mpmath", "po
 name = "scipy"
 version = "1.15.3"
 description = "Fundamental algorithms for scientific computing in Python"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "python_version >= \"3.10\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -5741,7 +5832,7 @@ files = [
 name = "soupsieve"
 version = "2.7"
 description = "A modern CSS selector implementation for Beautiful Soup."
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -5775,7 +5866,7 @@ tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 name = "sympy"
 version = "1.14.0"
 description = "Computer algebra system (CAS) in Python"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -5794,7 +5885,7 @@ dev = ["hypothesis (>=6.70.0)", "pytest (>=7.1.0)"]
 name = "tabulate"
 version = "0.9.0"
 description = "Pretty-print tabular data"
-optional = false
+optional = true
 python-versions = ">=3.7"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -5859,7 +5950,7 @@ blobfile = ["blobfile (>=2)"]
 name = "timm"
 version = "1.0.15"
 description = "PyTorch Image Models"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -5956,7 +6047,7 @@ files = [
 name = "torch"
 version = "2.7.0"
 description = "Tensors and Dynamic neural networks in Python with strong GPU acceleration"
-optional = false
+optional = true
 python-versions = ">=3.9.0"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6019,7 +6110,7 @@ optree = ["optree (>=0.13.0)"]
 name = "torchvision"
 version = "0.22.0"
 description = "image and video datasets and models for torch deep learning"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6125,7 +6216,7 @@ test = ["argcomplete (>=3.0.3)", "mypy (>=1.7.0)", "pre-commit", "pytest (>=7.0,
 name = "transformers"
 version = "4.51.3"
 description = "State-of-the-art Machine Learning for JAX, PyTorch and TensorFlow"
-optional = false
+optional = true
 python-versions = ">=3.9.0"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6199,7 +6290,7 @@ vision = ["Pillow (>=10.0.1,<=15.0)"]
 name = "triton"
 version = "3.3.0"
 description = "A language and compiler for custom Deep Learning operations"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\" and (extra == \"unstructured\" or extra == \"all\")"
@@ -6261,7 +6352,7 @@ files = [
 name = "typing-inspect"
 version = "0.9.0"
 description = "Runtime inspection utilities for typing module."
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6294,7 +6385,7 @@ typing-extensions = ">=4.12.0"
 name = "tzdata"
 version = "2025.2"
 description = "Provider of IANA time zone data"
-optional = false
+optional = true
 python-versions = ">=2"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6307,7 +6398,7 @@ files = [
 name = "unicodecsv"
 version = "0.14.1"
 description = "Python2's stdlib csv module is nice, but it doesn't support unicode. This module is a drop-in replacement which *does*."
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6319,7 +6410,7 @@ files = [
 name = "unstructured"
 version = "0.10.30"
 description = "A library that prepares raw documents for downstream ML tasks."
-optional = false
+optional = true
 python-versions = ">=3.7.0"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6404,7 +6495,7 @@ xlsx = ["networkx", "openpyxl", "pandas", "xlrd"]
 name = "unstructured-inference"
 version = "0.7.11"
 description = "A library for performing inference using trained models."
-optional = false
+optional = true
 python-versions = ">=3.7.0"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6430,7 +6521,7 @@ supergradients = ["super-gradients", "supervision"]
 name = "unstructured-pytesseract"
 version = "0.3.15"
 description = "Python-tesseract is a python wrapper for Google's Tesseract-OCR"
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6531,7 +6622,7 @@ test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess
 name = "wand"
 version = "0.6.13"
 description = "Ctypes-based simple MagickWand API binding for Python"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "(extra == \"unstructured\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
@@ -6664,6 +6755,19 @@ files = [
 ]
 
 [[package]]
+name = "xlsxwriter"
+version = "3.2.3"
+description = "A Python module for creating Excel XLSX files."
+optional = true
+python-versions = ">=3.6"
+groups = ["main"]
+markers = "(extra == \"ppt\" or extra == \"all\") and platform_system == \"Linux\" and platform_machine == \"aarch64\""
+files = [
+    {file = "XlsxWriter-3.2.3-py3-none-any.whl", hash = "sha256:593f8296e8a91790c6d0378ab08b064f34a642b3feb787cf6738236bd0a4860d"},
+    {file = "xlsxwriter-3.2.3.tar.gz", hash = "sha256:ad6fd41bdcf1b885876b1f6b7087560aecc9ae5a9cc2ba97dcac7ab2e210d3d5"},
+]
+
+[[package]]
 name = "yarl"
 version = "1.20.0"
 description = "Yet another URL library"
@@ -6784,6 +6888,39 @@ multidict = ">=4.0"
 propcache = ">=0.2.1"
 
 [[package]]
+name = "youtube-transcript-api"
+version = "0.6.2"
+description = "This is an python API which allows you to get the transcripts/subtitles for a given YouTube video. It also works for automatically generated subtitles, supports translating subtitles and it does not require a headless browser, like other selenium based solutions do!"
+optional = true
+python-versions = "*"
+groups = ["main"]
+markers = "python_version >= \"3.12\" and (extra == \"youtube\" or extra == \"all\")"
+files = [
+    {file = "youtube_transcript_api-0.6.2-py3-none-any.whl", hash = "sha256:019dbf265c6a68a0591c513fff25ed5a116ce6525832aefdfb34d4df5567121c"},
+    {file = "youtube_transcript_api-0.6.2.tar.gz", hash = "sha256:cad223d7620633cec44f657646bffc8bbc5598bd8e70b1ad2fa8277dec305eb7"},
+]
+
+[package.dependencies]
+requests = "*"
+
+[[package]]
+name = "youtube-transcript-api"
+version = "0.6.3"
+description = "This is an python API which allows you to get the transcripts/subtitles for a given YouTube video. It also works for automatically generated subtitles, supports translating subtitles and it does not require a headless browser, like other selenium based solutions do!"
+optional = true
+python-versions = "<3.14,>=3.8"
+groups = ["main"]
+markers = "python_version < \"3.12\" and (extra == \"youtube\" or extra == \"all\") and (platform_system == \"Linux\" or python_version == \"3.9\" or python_version == \"3.11\" or python_version == \"3.10\") and (platform_machine == \"aarch64\" or python_version == \"3.9\" or python_version == \"3.11\" or python_version == \"3.10\")"
+files = [
+    {file = "youtube_transcript_api-0.6.3-py3-none-any.whl", hash = "sha256:297a74c1863d9df88f6885229f33a7eda61493d73ecb13ec80e876b65423e9b4"},
+    {file = "youtube_transcript_api-0.6.3.tar.gz", hash = "sha256:4d1f6451ae508390a5279f98519efb45e091bf60d3cca5ea0bb122800ab6a011"},
+]
+
+[package.dependencies]
+defusedxml = ">=0.7.1,<0.8.0"
+requests = "*"
+
+[[package]]
 name = "zipp"
 version = "3.21.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -6805,15 +6942,15 @@ test = ["big-O", "importlib-resources ; python_version < \"3.9\"", "jaraco.funct
 type = ["pytest-mypy"]
 
 [extras]
-all = ["unstructured"]
-docx = []
-excel = []
-pdf = []
-ppt = []
+all = ["openpyxl", "pdfminer_six", "python-docx", "python-pptx", "pytube", "unstructured", "youtube-transcript-api"]
+docx = ["python-docx"]
+excel = ["openpyxl"]
+pdf = ["pdfminer_six"]
+ppt = ["python-pptx"]
 unstructured = ["unstructured"]
-youtube = []
+youtube = ["pytube", "youtube-transcript-api"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9.2,<4.0"
-content-hash = "894501f6a7432a2c732421b662015878c4b4762d4d2f0ad99220544e1d9d673c"
+content-hash = "ca85ade2678674096f2f3f1fb4578361bc5780adfe4745ba4d7b9a86dc939ca9"

@@ -15,7 +15,7 @@ install-extras:
 	poetry install $(if $(EXTRAS),--extras "$(EXTRAS)",) --with dev
 #poetry install --extras "code_execution vllm" --with dev
 # Install with specific extras
-#make install EXTRAS="pdf docx"
+#make install EXTRAS="pdf"
 # Install all extras
 #make install EXTRAS="all"
 # Install without extras (default)

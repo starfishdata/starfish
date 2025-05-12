@@ -1,11 +1,13 @@
 import os
 import re
-from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 from urllib.parse import urlparse
+from starfish.data_ingest.formatter.template_format import PromptFormatter, QAGenerationPrompt
+from starfish.data_ingest.splitter.base_splitter import TextSplitter
+
 
 # Import parsers from parsers folder
-from starfish.data_factory.data_ingest.parsers import (
+from starfish.data_ingest.parsers import (
     BaseParser,
     PDFParser,
     HTMLDocumentParser,
@@ -14,8 +16,9 @@ from starfish.data_factory.data_ingest.parsers import (
     PPTParser,
     TXTParser,
     ExcelParser,
+    GoogleDriveParser,
 )
-from starfish.data_factory.utils.util import split_into_chunks
+
 
 PARSER_MAPPING = {
     # URL patterns
@@ -29,7 +32,6 @@ PARSER_MAPPING = {
     ".pptx": PPTParser,
     ".txt": TXTParser,
     ".xlsx": ExcelParser,
-    ".xls": ExcelParser,
 }
 
 
@@ -64,7 +66,7 @@ def determine_parser(file_path: str) -> BaseParser:
     raise ValueError(f"Unsupported file extension: {ext}")
 
 
-def generate_output_name(file_path: str) -> str:
+def _generate_output_name(file_path: str) -> str:
     """Generate output filename based on input file or URL.
 
     Args:
@@ -113,7 +115,7 @@ def process_file(
     content = parser.parse(file_path)
 
     # Generate output filename
-    output_name = output_name or generate_output_name(file_path)
+    output_name = output_name or _generate_output_name(file_path)
     if not output_name.endswith(".txt"):
         output_name += ".txt"
 
@@ -124,20 +126,37 @@ def process_file(
     return output_path
 
 
-def generate_input_data(document_text: str, chunk_size: int = 400, min_chunk_size: int = 100, overlap: int = 20, num_pairs: int = 100) -> list:
-    from starfish.llm.prompt.prompt_template import qa_generation
+def generate_input_data(
+    document_text: str,
+    splitter: TextSplitter,
+    prompt_formatter: PromptFormatter,  # Accept any PromptFormatter implementation
+    num_pairs: int = 5,  # Optional parameter for QA-specific formatters
+) -> list:
+    """Generate input data from document text using a given PromptFormatter.
 
-    chunks = split_into_chunks(document_text, chunk_size=chunk_size, min_chunk_size=min_chunk_size, overlap=overlap)
+    Args:
+        document_text: The text to split and process.
+        splitter: The text splitter to use for dividing the text into chunks.
+        prompt_formatter: An instance of a PromptFormatter subclass.
+        num_pairs: The number of QA pairs to generate (used for QA-specific formatters).
 
-    all_qa_pairs = []
-    pairs_per_chunk = max(1, round(num_pairs / len(chunks)))
-    qa_prompt_template = qa_generation
+    Returns:
+        A list of formatted prompts.
+    """
+    chunks = splitter.split_text(document_text)
     all_messages = []
-    for i, chunk in enumerate(chunks):
-        # Format the prompt with summary and text
-        qa_prompt = qa_prompt_template.format(num_pairs=pairs_per_chunk, text=chunk)
 
-        messages = [{"role": "system", "content": qa_prompt}]
-        all_messages.append(messages)
-    print(f"Processing {len(chunks)} chunks to generate QA pairs...")
+    # If the formatter is QAGenerationPrompt, calculate pairs_per_chunk
+    if isinstance(prompt_formatter, QAGenerationPrompt):
+        pairs_per_chunk = max(1, round(num_pairs / len(chunks)))
+        prompt_formatter.num_pairs = pairs_per_chunk
+
+    for chunk in chunks:
+        # Update the text for the current chunk
+        prompt_formatter.text = chunk
+        # Format the prompt using the provided formatter
+        prompt = prompt_formatter.format()
+        all_messages.append(prompt)
+
+    print(f"Processing {len(chunks)} chunks to generate prompts...")
     return all_messages

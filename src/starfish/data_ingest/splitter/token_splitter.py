@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from typing import Any, Callable, Collection, List, Literal, Optional, Union, AbstractSet
 
+from starfish.data_ingest.splitter.base_splitter import TextSplitter
 
-class TokenTextSplitter:
+
+class TokenTextSplitter(TextSplitter):
     """Splitting text to tokens using model tokenizer."""
 
     def __init__(

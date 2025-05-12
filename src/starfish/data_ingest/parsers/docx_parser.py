@@ -1,6 +1,6 @@
 # DOCX parsers
 import os
-from starfish.data_factory.data_ingest.parsers.base_parser import BaseParser
+from starfish.data_ingest.parsers.base_parser import BaseParser
 from typing import Dict, Any
 
 

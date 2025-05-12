@@ -1,7 +1,7 @@
 from urllib.parse import urlparse
 import requests
 from typing import Dict, Any, Tuple
-from starfish.data_factory.data_ingest.parsers.base_parser import BaseParser
+from starfish.data_ingest.parsers.base_parser import BaseParser
 
 
 class HTMLDocumentParser(BaseParser):
