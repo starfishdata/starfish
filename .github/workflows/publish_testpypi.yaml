@@ -13,7 +13,15 @@ jobs:
     steps:
     - uses: actions/checkout@v3
       with:
-        fetch-depth: 0
+        fetch-depth: 0  # Required for full commit history check
+    - name: Verify tag is on dev branch
+      run: |
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        COMMIT=$(git rev-parse $TAG_NAME)
+        if ! git branch --contains $COMMIT | grep -qw dev; then
+          echo "::error::Tag $TAG_NAME must be created from dev branch"
+          exit 1
+        fi
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -27,6 +35,8 @@ jobs:
         TWINE_USERNAME: ${{ secrets.TEST_PYPI_USERNAME }}
         TWINE_PASSWORD: ${{ secrets.TEST_PYPI_PASSWORD }}
       run: |
+        echo "TWINE_USERNAME is set to $TWINE_USERNAME"
+        echo "TWINE_PASSWORD is set to $TWINE_PASSWORD"
         python -m build
         twine upload --repository-url https://test.pypi.org/legacy/ dist/*
 
