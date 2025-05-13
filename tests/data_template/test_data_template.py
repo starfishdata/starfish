@@ -71,6 +71,18 @@ async def test_get_run_dependencies_not_met():
     - Expected: All cities processed successfully
     """
     data_gen_template.list()
+    with pytest.raises(ModuleNotFoundError):
+        topic_generator = data_gen_template.get("starfish/math_problem_gen_wf")
+
+
+@pytest.mark.asyncio
+async def test_get_run_dependencies_not_met():
+    """Test with input data and broadcast variables
+    - Input: List of dicts with city names
+    - Broadcast: num_records_per_city
+    - Expected: All cities processed successfully
+    """
+    data_gen_template.list()
     with pytest.raises(ImportPackageError):
         topic_generator = data_gen_template.get("community/topic_generator")
 

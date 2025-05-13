@@ -25,6 +25,31 @@ nest_asyncio = "^1.6.0"
 # Force cryptography >=44.0.1 due to transitive security vulnerability
 # See: https://openssl-library.org/news/secadv/20250211.txt
 cryptography = ">=44.0.1"
+unstructured = { version = "^0.10.0", extras = ["pdf"], optional = true }
+python-docx = { version = "*", optional = true }
+python-pptx = { version = "*", optional = true }
+openpyxl = { version = "*", optional = true }
+pytube = { version = "^15.0.0", optional = true }
+youtube-transcript-api = { version = "^0.6.1", optional = true }
+pdfminer_six = { version = "^20250506", optional = true }
+
+# Add optional dependencies for parsers
+[tool.poetry.extras]
+docx = ["python-docx"]
+ppt = ["python-pptx"]
+excel = ["openpyxl"]
+youtube = ["pytube", "youtube-transcript-api"]
+pdf = ["pdfminer_six"]
+unstructured = ["unstructured"]
+all = [
+    "python-docx",
+    "python-pptx",
+    "openpyxl",
+    "pytube",
+    "youtube-transcript-api",
+    "pdfminer_six",
+    "unstructured",
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
