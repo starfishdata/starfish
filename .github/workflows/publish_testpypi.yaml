@@ -45,6 +45,7 @@ jobs:
   test-colab:
     #needs: deploy_testpypi
     runs-on: ubuntu-latest
+    #a Public “Colab-like” Image
     container:
       image: jupyter/minimal-notebook:latest   # from Docker Hub
       options: --user 1001:1001
@@ -52,11 +53,22 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v3
+      # Authenticate to GCP
+      # - name: Authenticate to GCP
+      #   uses: google-github-actions/auth@v1
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # # Configure Docker to use GCR credentials
+      # - name: Configure Docker for GCR
+      #   uses: google-github-actions/docker-auth@v1
+
+      # # Now you can pull the image
+      # - name: Use Colab base image
+      #   run: docker pull gcr.io/colab-images/base:latest
       - name: Install starfish-core and dependencies
         run: |
           pip install --upgrade pip
-          
-          
           pip install --index-url https://test.pypi.org/simple/ \
                    --extra-index-url https://pypi.org/simple \
                     "cryptography!=40.0.0,!=40.0.1,<42,>=38.0.0" \
