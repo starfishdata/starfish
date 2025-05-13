@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'test-v*'
+    branches:
+      - 'dev'
 
 jobs:
   deploy_testpypi:
