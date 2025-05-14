@@ -62,6 +62,10 @@ jobs:
         run: |
           apt-get update
           apt-get install -y libssl3  # Removed sudo since we're running as root
+      - name: Print Python and Jupyter versions
+        run: |
+          python --version
+          pip list | grep -E 'jupyter|ipykernel|nbconvert|notebook'
       # Authenticate to GCP
       # - name: Authenticate to GCP
       #   uses: google-github-actions/auth@v1
@@ -75,23 +79,19 @@ jobs:
       # # Now you can pull the image
       # - name: Use Colab base image
       #   run: docker pull gcr.io/colab-images/base:latest
-# pip install --index-url https://test.pypi.org/simple/ \
-#          --extra-index-url https://pypi.org/simple \
-#           "cryptography!=40.0.0,!=40.0.1,<42,>=38.0.0" \
-#          starfish-core
-      # - name: Install starfish-core and dependencies
-      #   run: |
-      #     pip install --upgrade pip
 
-      #     pip install pytest nbval
-
+      # --no-prompt --no-input \ suppress the output
       - name: Run Colab-style tests
         run: |
-          jupyter nbconvert --execute --to notebook --inplace \
+          if ! jupyter nbconvert --execute --to notebook --inplace \
             --ExecutePreprocessor.kernel_name=python3 \
             --ExecutePreprocessor.timeout=120 \
+            --no-prompt --no-input \
             --stdout \
-            tests/data_factory/factory/test_resume_index_1.ipynb && \
+            tests/data_factory/factory/test_resume_index_1.ipynb; then
+            echo "::error::Notebook execution failed"
+
+          fi
           echo "Notebook executed successfully. Summary:" && \
           jupyter nbconvert --to markdown --stdout \
             tests/data_factory/factory/test_resume_index_1.ipynb | \
@@ -99,7 +99,7 @@ jobs:
 
       # Add tag deletion step
       - name: Delete triggering tag after successful test
-        if: success() && startsWith(github.ref, 'refs/tags/test-v')
+        if: startsWith(github.ref, 'refs/tags/test-v')
         run: |
           gh api -X DELETE /repos/$GITHUB_REPOSITORY/git/refs/tags/${GITHUB_REF#refs/tags/}
         env:
