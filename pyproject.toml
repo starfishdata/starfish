@@ -9,7 +9,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.9.2,<4.0"
+python = ">=3.10,<4.0"
 litellm = ">=1.65.1,<2.0.0"
 loguru = ">=0.7.3,<0.8.0"
 cachetools = ">=5.5.2,<6.0.0"
@@ -22,6 +22,7 @@ posthog = "^3.11.0"
 cloudpickle = "^2.2.0"
 psutil = ">=7.0.0,<8.0.0"
 nest_asyncio = "^1.6.0"
+anthropic = "^0.35.0"
 # Force cryptography >=44.0.1 due to transitive security vulnerability
 # See: https://openssl-library.org/news/secadv/20250211.txt
 cryptography = ">=44.0.1"
@@ -32,6 +33,7 @@ openpyxl = { version = "*", optional = true }
 pytube = { version = "^15.0.0", optional = true }
 youtube-transcript-api = { version = "^0.6.1", optional = true }
 pdfminer_six = { version = "^20250506", optional = true }
+mcp = { version = "^1.8.1", extras = ["cli"], optional = true }
 
 # Add optional dependencies for parsers
 [tool.poetry.extras]
@@ -41,6 +43,7 @@ excel = ["openpyxl"]
 youtube = ["pytube", "youtube-transcript-api"]
 pdf = ["pdfminer_six"]
 unstructured = ["unstructured"]
+cli = ["mcp"]
 all = [
     "python-docx",
     "python-pptx",
@@ -49,6 +52,7 @@ all = [
     "youtube-transcript-api",
     "pdfminer_six",
     "unstructured",
+    "mcp",
 ]
 
 [build-system]
