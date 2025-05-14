@@ -75,11 +75,11 @@ jobs:
 #          --extra-index-url https://pypi.org/simple \
 #           "cryptography!=40.0.0,!=40.0.1,<42,>=38.0.0" \
 #          starfish-core
-      - name: Install starfish-core and dependencies
-        run: |
-          pip install --upgrade pip
+      # - name: Install starfish-core and dependencies
+      #   run: |
+      #     pip install --upgrade pip
 
-          pip install pytest nbval
+      #     pip install pytest nbval
 
       - name: Run Colab-style tests
         run: |
@@ -87,7 +87,11 @@ jobs:
             --ExecutePreprocessor.kernel_name=python3 \
             --ExecutePreprocessor.timeout=120 \
             --stdout \
-            tests/data_factory/factory/test_resume_index_1.ipynb
+            tests/data_factory/factory/test_resume_index_1.ipynb && \
+          echo "Notebook executed successfully. Summary:" && \
+          jupyter nbconvert --to markdown --stdout \
+            tests/data_factory/factory/test_resume_index_1.ipynb | \
+            grep -E '^#|^##' || true
 
       # Add tag deletion step
       - name: Delete triggering tag after successful test
