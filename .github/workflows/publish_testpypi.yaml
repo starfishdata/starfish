@@ -83,8 +83,8 @@ jobs:
           python -m pytest --nbval \
             --nbval-kernel-name=python3 \
             --nbval-cell-timeout=120 \
-            --nbval-sanitize-with ./tests/sanitize.cfg \
-            tests/data_factory/factory/test_resume_index.ipynb
+            --nbval-sanitize-with sanitize.cfg \
+            data_factory/factory/test_resume_index.ipynb
 
       # Add tag deletion step
       - name: Delete triggering tag after successful test
