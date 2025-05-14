@@ -9,10 +9,10 @@ on:
     branches:
       - main
       - dev
-      - '!f/pypi_release'
 
 jobs:
   test-integration:
+    if: github.event.pull_request.head.ref != 'f/pypi_release'
     runs-on: ubuntu-latest
 
     steps:
