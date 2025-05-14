@@ -48,8 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     #a Public "Colab-like" Image
     container:
-      image: jupyter/minimal-notebook:latest   # from Docker Hub
-      options: --user 1001:1001
+      image: jupyter/minimal-notebook:latest
+      options: --user root  # Run as root to avoid permission issues
     permissions:
       contents: write
     steps:
@@ -58,6 +58,10 @@ jobs:
           sparse-checkout: |
             tests/*
           sparse-checkout-cone-mode: false
+      - name: Update system packages
+        run: |
+          apt-get update
+          apt-get install -y libssl3  # Removed sudo since we're running as root
       # Authenticate to GCP
       # - name: Authenticate to GCP
       #   uses: google-github-actions/auth@v1
