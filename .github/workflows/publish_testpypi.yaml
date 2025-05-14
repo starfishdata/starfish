@@ -5,10 +5,11 @@ on:
     tags:
       - 'test-v*'
     branches:
-      - 'dev'
+      - 'f/pypi_release'
 
 jobs:
   deploy_testpypi:
+    if: false
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -53,6 +54,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v3
+        with:
+          path: "tests"
       # Authenticate to GCP
       # - name: Authenticate to GCP
       #   uses: google-github-actions/auth@v1
