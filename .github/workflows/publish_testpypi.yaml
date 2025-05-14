@@ -46,7 +46,7 @@ jobs:
   test-colab:
     #needs: deploy_testpypi
     runs-on: ubuntu-latest
-    #a Public “Colab-like” Image
+    #a Public "Colab-like" Image
     container:
       image: jupyter/minimal-notebook:latest   # from Docker Hub
       options: --user 1001:1001
@@ -55,7 +55,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          path: "tests"
+          sparse-checkout: |
+            tests/*
+          sparse-checkout-cone-mode: false
       # Authenticate to GCP
       # - name: Authenticate to GCP
       #   uses: google-github-actions/auth@v1
@@ -83,8 +85,8 @@ jobs:
           python -m pytest --nbval \
             --nbval-kernel-name=python3 \
             --nbval-cell-timeout=120 \
-            --nbval-sanitize-with sanitize.cfg \
-            data_factory/factory/test_resume_index.ipynb
+            --nbval-sanitize-with tests/sanitize.cfg \
+            tests/data_factory/factory/test_resume_index.ipynb
 
       # Add tag deletion step
       - name: Delete triggering tag after successful test
