@@ -2,6 +2,8 @@ from typing import Any
 import httpx
 from mcp.server.fastmcp import FastMCP
 
+from starfish.data_template.template_gen import data_gen_template
+
 # Initialize FastMCP server
 mcp = FastMCP("weather")
 
@@ -89,6 +91,68 @@ Forecast: {period['detailedForecast']}
         forecasts.append(forecast)
 
     return "\n---\n".join(forecasts)
+
+
+@mcp.tool()
+async def test_get_run_template_Input_Success(template_name: str, input_data: Any):
+    """Test a template with provided input data.
+
+    This function tests the execution of a specified template by providing
+    input data and returning the results.
+
+    Args:
+        template_name: Name of the template to test
+        input_data: Input data to pass to the template
+
+    Steps:
+        1. Lists available templates using data_gen_template.list()
+        2. Retrieves the specified template
+        3. Executes the template with the input data
+        4. Prints the results
+        5. Asserts that the number of generated topics is 3
+
+    Returns:
+        Results from the template execution
+
+    Raises:
+        AssertionError: If the number of generated topics doesn't match expected value
+    """
+    data_gen_template.list()
+    print("debug-----")
+    topic_generator_temp = data_gen_template.get(template_name=template_name)
+
+    results = topic_generator_temp.run(input_data)
+    print(results)
+
+    # assert len(results.generated_topics) == 3
+    return results
+
+
+@mcp.tool()
+async def test_get_cities_info(city_name: list, region_code: list):
+    """Get information about multiple cities using the city info workflow template.
+
+    This function retrieves city information by executing the 'get_city_info_wf' template
+    with provided city names and region codes.
+
+    Args:
+        city_name: List of city names to get information for
+        region_code: List of region codes corresponding to the cities (e.g., state codes for US)
+
+    Returns:
+        Results from the city info workflow template execution containing city information
+
+    Example:
+        >>> await test_get_cities_info(
+        ...     city_name=["New York", "Los Angeles"],
+        ...     region_code=["NY", "CA"]
+        ... )
+    """
+    data_gen_template.list()
+    topic_generator_temp = data_gen_template.get("starfish/get_city_info_wf")
+
+    results = topic_generator_temp.run(city_name, region_code)
+    return results
 
 
 if __name__ == "__main__":

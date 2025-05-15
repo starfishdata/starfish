@@ -22,6 +22,10 @@ install-extras:
 	@echo "Installing dependencies with extras: $(EXTRAS)"
 	poetry install $(if $(EXTRAS),--extras "$(EXTRAS)",) --with dev
 
-start-mcp_client:
-	python src/starfish/data_mcp/client.py src/starfish/data_mcp/server.py
+#src/starfish/data_mcp/server.py
+# src/starfish/data_template/template_gen.py
+start-claude_client:
+	python src/starfish/data_mcp/client.py  src/starfish/data_mcp/server.py
 
+start-agent_client:
+	python src/starfish/data_mcp/agent_client.py 
