@@ -1,7 +1,6 @@
 import asyncio
 import os
 import shutil
-from typing import Any
 
 from agents import Agent, Runner, gen_trace_id, trace
 from agents.mcp import MCPServer, MCPServerStdio
