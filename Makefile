@@ -10,7 +10,6 @@ test:
 
 install: install-extras
 
-
 #poetry install --extras "code_execution vllm" --with dev
 # Install with specific extras
 #make install EXTRAS="pdf"
@@ -22,10 +21,8 @@ install-extras:
 	@echo "Installing dependencies with extras: $(EXTRAS)"
 	poetry install $(if $(EXTRAS),--extras "$(EXTRAS)",) --with dev
 
-#src/starfish/data_mcp/server.py
-# src/starfish/data_template/template_gen.py
-start-claude_client:
-	python src/starfish/data_mcp/client.py  src/starfish/data_mcp/server.py
+start-client_claude:
+	python src/starfish/data_mcp/client_claude.py  src/starfish/data_mcp/server.py
 
-start-agent_client:
-	python src/starfish/data_mcp/agent_client.py 
+start-client_openai:
+	python src/starfish/data_mcp/client_openai.py 

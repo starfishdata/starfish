@@ -1,160 +1,187 @@
-from typing import Any
-import httpx
-from mcp.server.fastmcp import FastMCP
-
-from starfish.data_template.template_gen import data_gen_template
-
-# Initialize FastMCP server
-mcp = FastMCP("weather")
-
-# Constants
-NWS_API_BASE = "https://api.weather.gov"
-USER_AGENT = "weather-app/1.0"
-
-
-async def make_nws_request(url: str) -> dict[str, Any] | None:
-    """Make a request to the NWS API with proper error handling."""
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/geo+json"}
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers, timeout=30.0)
-            response.raise_for_status()
-            return response.json()
-        except Exception:
-            return None
-
-
-def format_alert(feature: dict) -> str:
-    """Format an alert feature into a readable string."""
-    props = feature["properties"]
-    return f"""
-Event: {props.get('event', 'Unknown')}
-Area: {props.get('areaDesc', 'Unknown')}
-Severity: {props.get('severity', 'Unknown')}
-Description: {props.get('description', 'No description available')}
-Instructions: {props.get('instruction', 'No specific instructions provided')}
+"""
+The Serena Model Context Protocol (MCP) Server
 """
 
+import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from logging import Formatter, Logger, StreamHandler
+from typing import Any, Literal
 
-@mcp.tool()
-async def get_alerts(state: str) -> str:
-    """Get weather alerts for a US state.
+import click  # Add click import
+import docstring_parser
+from mcp.server.fastmcp import server
+from mcp.server.fastmcp.server import FastMCP, Settings
+from mcp.server.fastmcp.tools.base import Tool as MCPTool
+from mcp.server.fastmcp.utilities.func_metadata import func_metadata
+from loguru import logger  # Add this import
 
-    Args:
-        state: Two-letter US state code (e.g. CA, NY)
+from starfish.data_mcp.agent import StarfishAgent, Tool
+
+LOG_FORMAT = "%(levelname)-5s %(asctime)-15s %(name)s:%(funcName)s:%(lineno)d - %(message)s"
+LOG_LEVEL = "INFO"  # Change to string for loguru compatibility
+
+
+def configure_logging(*args, **kwargs) -> None:  # type: ignore
     """
-    url = f"{NWS_API_BASE}/alerts/active/area/{state}"
-    data = await make_nws_request(url)
+    Configures logging to stderr with a specific format and level.
 
-    if not data or "features" not in data:
-        return "Unable to fetch alerts or no alerts found."
-
-    if not data["features"]:
-        return "No active alerts for this state."
-
-    alerts = [format_alert(feature) for feature in data["features"]]
-    return "\n---\n".join(alerts)
-
-
-@mcp.tool()
-async def get_forecast(latitude: float, longitude: float) -> str:
-    """Get weather forecast for a location.
-
-    Args:
-        latitude: Latitude of the location
-        longitude: Longitude of the location
+    This function replaces the default logging configuration in fastmcp to ensure
+    logs are properly captured by Claude Desktop. Stdio cannot be used as it's
+    reserved for MCP communication.
     """
-    # First get the forecast grid endpoint
-    points_url = f"{NWS_API_BASE}/points/{latitude},{longitude}"
-    points_data = await make_nws_request(points_url)
-
-    if not points_data:
-        return "Unable to fetch forecast data for this location."
-
-    # Get the forecast URL from the points response
-    forecast_url = points_data["properties"]["forecast"]
-    forecast_data = await make_nws_request(forecast_url)
-
-    if not forecast_data:
-        return "Unable to fetch detailed forecast."
-
-    # Format the periods into a readable forecast
-    periods = forecast_data["properties"]["periods"]
-    forecasts = []
-    for period in periods[:5]:  # Only show next 5 periods
-        forecast = f"""
-{period['name']}:
-Temperature: {period['temperature']}°{period['temperatureUnit']}
-Wind: {period['windSpeed']} {period['windDirection']}
-Forecast: {period['detailedForecast']}
-"""
-        forecasts.append(forecast)
-
-    return "\n---\n".join(forecasts)
+    logger.remove()  # Remove default logger
+    logger.add(sys.stderr, format=LOG_FORMAT, level=LOG_LEVEL)
 
 
-@mcp.tool()
-async def test_get_run_template_Input_Success(template_name: str, input_data: Any):
-    """Test a template with provided input data.
+# patch the logging configuration function in fastmcp, because it's hard-coded and broken
+# server.configure_logging = configure_logging
 
-    This function tests the execution of a specified template by providing
-    input data and returning the results.
+
+@dataclass
+class SerenaMCPRequestContext:
+    agent: StarfishAgent
+
+
+def make_tool(
+    tool: Tool,
+) -> MCPTool:
+    """
+    Converts a Starfish Tool into an MCP-compatible tool.
 
     Args:
-        template_name: Name of the template to test
-        input_data: Input data to pass to the template
-
-    Steps:
-        1. Lists available templates using data_gen_template.list()
-        2. Retrieves the specified template
-        3. Executes the template with the input data
-        4. Prints the results
-        5. Asserts that the number of generated topics is 3
+        tool: The Starfish Tool to convert
 
     Returns:
-        Results from the template execution
+        MCPTool: An MCP-compatible tool with proper metadata and documentation
 
     Raises:
-        AssertionError: If the number of generated topics doesn't match expected value
+        ValueError: If the tool doesn't have an apply method
     """
-    data_gen_template.list()
-    print("debug-----")
-    topic_generator_temp = data_gen_template.get(template_name=template_name)
+    func_name = tool.get_name()
 
-    results = topic_generator_temp.run(input_data)
-    print(results)
+    apply_fn = getattr(tool, "apply")
+    if apply_fn is None:
+        raise ValueError(f"Tool does not have an apply method: {tool}")
 
-    # assert len(results.generated_topics) == 3
-    return results
+    func_doc = apply_fn.__doc__ or ""
+    is_async = False
+
+    func_arg_metadata = func_metadata(apply_fn)
+    parameters = func_arg_metadata.arg_model.model_json_schema()
+
+    docstring = docstring_parser.parse(func_doc)
+
+    # Mount the tool description as a combination of the docstring description and
+    # the return value description, if it exists.
+    if docstring.description:
+        func_doc = f"{docstring.description.strip().strip('.')}."
+    else:
+        func_doc = ""
+    if (docstring.returns) and (docstring_returns := docstring.returns.description):
+        # Only add a space before "Returns" if func_doc is not empty
+        prefix = " " if func_doc else ""
+        func_doc = f"{func_doc}{prefix}Returns {docstring_returns.strip().strip('.')}."
+
+    # Parse the parameter descriptions from the docstring and add pass its description
+    # to the parameters schema.
+    docstring_params = {param.arg_name: param for param in docstring.params}
+    parameters_properties: dict[str, dict[str, Any]] = parameters["properties"]
+    for parameter, properties in parameters_properties.items():
+        if (param_doc := docstring_params.get(parameter)) and (param_doc.description):
+            param_desc = f"{param_doc.description.strip().strip('.') + '.'}"
+            properties["description"] = param_desc[0].upper() + param_desc[1:]
+
+    def execute_fn(**kwargs) -> str:  # type: ignore
+        return tool.apply_ex(log_call=True, catch_exceptions=True, **kwargs)
+
+    return MCPTool(
+        fn=execute_fn,
+        name=func_name,
+        description=func_doc,
+        parameters=parameters,
+        fn_metadata=func_arg_metadata,
+        is_async=is_async,
+        context_kwarg=None,
+    )
 
 
-@mcp.tool()
-async def test_get_cities_info(city_name: list, region_code: list):
-    """Get information about multiple cities using the city info workflow template.
-
-    This function retrieves city information by executing the 'get_city_info_wf' template
-    with provided city names and region codes.
+def create_mcp_server(host: str = "0.0.0.0", port: int = 8000) -> FastMCP:
+    """
+    Creates and configures an MCP server instance.
 
     Args:
-        city_name: List of city names to get information for
-        region_code: List of region codes corresponding to the cities (e.g., state codes for US)
+        host: The host address to bind to (default: "0.0.0.0")
+        port: The port number to bind to (default: 8000)
 
     Returns:
-        Results from the city info workflow template execution containing city information
+        FastMCP: A configured MCP server instance
 
-    Example:
-        >>> await test_get_cities_info(
-        ...     city_name=["New York", "Los Angeles"],
-        ...     region_code=["NY", "CA"]
-        ... )
+    Raises:
+        Exception: If there's an error creating the StarfishAgent
     """
-    data_gen_template.list()
-    topic_generator_temp = data_gen_template.get("starfish/get_city_info_wf")
+    mcp: FastMCP | None = None
 
-    results = topic_generator_temp.run(city_name, region_code)
-    return results
+    try:
+        agent = StarfishAgent()
+    except Exception as e:
+        raise e
+
+    def update_tools() -> None:
+        """
+        Updates the tools registered with the MCP server.
+
+        This function refreshes the available tools from the StarfishAgent and
+        registers them with the MCP server. Note that tools are only registered
+        at startup due to limitations in Claude Desktop's tool discovery.
+        """
+        nonlocal mcp, agent
+        tools = agent.get_exposed_tools()
+        if mcp is not None:
+            mcp._tool_manager._tools = {}
+            for tool in tools:
+                mcp._tool_manager._tools[tool.get_name()] = make_tool(tool)
+
+    mcp_settings = Settings(host=host, port=port)
+    mcp = FastMCP(**mcp_settings.model_dump())
+
+    update_tools()
+
+    return mcp
+
+
+@click.command()
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "sse"]),
+    default="stdio",
+    show_default=True,
+    help="Transport protocol.",
+)
+@click.option(
+    "--host",
+    type=str,
+    default="0.0.0.0",
+    show_default=True,
+    help="Host to bind to (for SSE transport).",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8000,
+    show_default=True,
+    help="Port to bind to (for SSE transport).",
+)
+def start_mcp_server(transport: Literal["stdio", "sse"], host: str, port: int) -> None:
+    """Starts the Serena MCP server.
+
+    Accepts the project file path either via the --project-file option or as a positional argument.
+    """
+
+    mcp_server = create_mcp_server(host=host, port=port)
+    mcp_server.run(transport=transport)
 
 
 if __name__ == "__main__":
-    # Initialize and run the server
-    mcp.run(transport="stdio")
+    start_mcp_server()

@@ -2,6 +2,7 @@ import asyncio
 import httpx
 from typing import Optional
 from contextlib import AsyncExitStack
+import json
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -117,6 +118,7 @@ class MCPClient:
 
         while True:
             try:
+                # message = 'run the template community/topic_generator_success ||| {"community_name": "AI Enthusiasts", "seed_topics": ["Machine Learning", "Deep Learning"], "num_topics": 1}'
                 user_input = input("\nQuery: ").strip()
 
                 if user_input.lower() == "quit":
@@ -126,9 +128,10 @@ class MCPClient:
                 if "|||" in user_input:
                     query, data_str = user_input.split("|||", 1)
                     try:
-                        input_data = eval(data_str.strip())
-                    except:
-                        print("Invalid input data format. Use JSON-like format")
+                        print("the input data_str ", data_str)
+                        input_data = json.loads(data_str.strip())
+                    except json.JSONDecodeError:
+                        print('Invalid input data format. Use JSON-like format (e.g., {"key": "value"})')
                         continue
                 else:
                     query = user_input
