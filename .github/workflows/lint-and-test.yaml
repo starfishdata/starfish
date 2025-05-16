@@ -1,14 +1,15 @@
 name: Starfish testing workflow
 
 on:
-  push:
-    branches:
-      - main
-      - dev
+  # push:
+  #   branches:
+  #     - main
+  #     - dev
   pull_request:
     branches:
       - main
       - dev
+      - '!f/pypi_release'
 
 jobs:
   test-integration:
