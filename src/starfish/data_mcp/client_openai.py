@@ -20,6 +20,12 @@ async def run_chat(mcp_server: MCPServer):
     - Type 'quit' to exit
     Responses are logged to a markdown file in the docs/ directory.
     """
+    # First, list available tools
+    print("\nAvailable Tools:")
+    tools = await mcp_server.list_tools()
+    for tool in tools:
+        print(f"- {tool.name}: {tool.description} : {tool.inputSchema}")
+    print("\n")
     agent = Agent(
         name="Assistant",
         instructions="Use the tools to answer the questions.",
@@ -94,17 +100,17 @@ async def run(mcp_server: MCPServer):
         mcp_servers=[mcp_server],
         model_settings=ModelSettings(tool_choice="required"),
     )
-    # city_name = ["San Francisco", "New York", "Los Angeles"] * 5
-    # region_code = ["DE", "IT", "US"] * 5
-    # input_data = {"city_name": city_name, "region_code": region_code}
-
-    message = ' run the template   community/topic_generator_success ||| {"community_name": "AI Enthusiasts", "seed_topics": ["Machine Learning", "Deep Learning"], "num_topics": 1}'
-    # message = ' get multiple cities info using the template   starfish/get_city_info_wf ||| city_name=["San Francisco", "New York", "Los Angeles"],region_code=["DE", "IT", "US"]}'
+    city_name = ["San Francisco", "New York", "Los Angeles"] * 5
+    region_code = ["DE", "IT", "US"] * 5
+    input_data = {"city_name": city_name, "region_code": region_code}
+    message = f"run the template   starfish/generate_city_info ||| {input_data}"
     print(f"\n\nRunning: {message}")
     result = await Runner.run(starting_agent=agent, input=message)
     print(result.final_output)
 
-    # message = f'get city info" ||| city_name={city_name}, region_code={region_code}'
+    # message = 'run the template   starfish/generate_city_info ||| {"city_name": ["San Francisco", "New York", "Los Angeles"], "region_code": ["DE", "IT", "US"] }'
+    # #message = ' run the template   community/topic_generator_success ||| {"community_name": "AI Enthusiasts", "seed_topics": ["Machine Learning", "Deep Learning"], "num_topics": 1}'
+    # # message = ' get multiple cities info using the template   starfish/get_city_info_wf ||| city_name=["San Francisco", "New York", "Los Angeles"],region_code=["DE", "IT", "US"]}'
     # print(f"\n\nRunning: {message}")
     # result = await Runner.run(starting_agent=agent, input=message)
     # print(result.final_output)
@@ -128,6 +134,7 @@ async def main():
         #     params={"command": "uvx", "args": ["mcp-server-git"]},
         #     "command": "python src/starfish/data_mcp/server.py",
         # },
+        client_session_timeout_seconds=30,
     ) as server:
         trace_id = gen_trace_id()
         with trace(workflow_name="Stdio Example", trace_id=trace_id):

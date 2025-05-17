@@ -156,3 +156,14 @@ async def test_get_cities_info():
     region_code = ["DE", "IT", "US"] * 5
     results = template.run(city_name=city_name, region_code=region_code)
     return results
+
+
+@pytest.mark.asyncio
+async def test_gen_cities_info():
+    data_gen_template.list()
+    city_name = ["San Francisco", "New York", "Los Angeles"] * 5
+    region_code = ["DE", "IT", "US"] * 5
+    input_data = {"city_name": city_name, "region_code": region_code}
+    template = data_gen_template.get("starfish/generate_city_info")
+    results = template.run(input_data)
+    assert len(results) == 15

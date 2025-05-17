@@ -1,4 +1,3 @@
-import logging
 from abc import ABC
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional, Type, TypeVar, Union
@@ -124,6 +123,24 @@ def iter_tool_classes(same_module_only: bool = True) -> Generator[type[Tool], No
         yield tool_class
 
 
+class ListDataGenTemplateTool(Tool):
+    """Lists all available data generation templates."""
+
+    def apply(self) -> List[str]:
+        """Retrieves a list of all available data generation templates.
+
+        Returns:
+            List[str]: A list of template names that are available for use
+
+        Raises:
+            Exception: If template listing fails
+        """
+        try:
+            return data_gen_template.list()
+        except Exception as e:
+            return f"Error executing template: {str(e)}"
+
+
 # Example tool implementations
 class GenerateCityInfoTool(Tool):
     """Reads a file from the filesystem."""
@@ -144,7 +161,9 @@ class GenerateCityInfoTool(Tool):
         try:
             data_gen_template.list()
             topic_generator_temp = data_gen_template.get(template_name=template_name)
-            return topic_generator_temp.run(input_data)
+            result = topic_generator_temp.run(input_data)
+            print(result)
+            return result
         except Exception as e:
             return f"Error executing template: {str(e)}"
 
