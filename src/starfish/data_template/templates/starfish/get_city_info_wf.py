@@ -87,7 +87,7 @@ class CitiInfoGeneratorInput(BaseModel):
 # "transformers>=4.0.0",
 @data_gen_template.register(
     name="starfish/get_city_info_wf",
-    input_schema=CitiInfoGeneratorInput,
+    input_schema=None,
     output_schema=None,
     description="Generates relevant topics for community discussions using AI models",
     author="Your Name",

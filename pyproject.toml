@@ -9,7 +9,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.9.2,<4.0"
+python = ">=3.10,<4.0"
 litellm = ">=1.65.1,<2.0.0"
 loguru = ">=0.7.3,<0.8.0"
 cachetools = ">=5.5.2,<6.0.0"
@@ -22,6 +22,8 @@ posthog = "^3.11.0"
 cloudpickle = "^2.2.0"
 psutil = ">=7.0.0,<8.0.0"
 nest_asyncio = "^1.6.0"
+docstring_parser = "^0.16.0"
+mcp = "^1.8.1"
 # Force cryptography >=44.0.1 due to transitive security vulnerability
 # See: https://openssl-library.org/news/secadv/20250211.txt
 cryptography = ">=44.0.1"

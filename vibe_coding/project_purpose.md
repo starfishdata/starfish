@@ -1,0 +1,1 @@
+Starfish is a Python library designed to assist users in generating synthetic data according to their specific workflows. By leveraging structured LLM outputs with efficient parallel processing, it allows seamless scalability from experimental setups to production environments. The project is developed and maintained by Starfish AI Inc.

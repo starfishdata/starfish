@@ -27,7 +27,6 @@ class TopicGeneratorOutput(BaseModel):
     starfish_version="0.1.0",
     dependencies=["posthog>=3.11.0"],
 )
-# @data_factory(max_concurrency=10)
 def topic_generator(input_data: TopicGeneratorInput) -> TopicGeneratorOutput:
     try:
         # Step 1: Generate initial topics
