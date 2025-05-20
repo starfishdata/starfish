@@ -1,6 +1,6 @@
 [submodule "internal"]
 	path = internal
 	url = https://github.com/starfishdata/starfish_internal.git
-[submodule "docs"]
-	path = docs
+[submodule "docs_mintlify"]
+	path = docs_mintlify
 	url = https://github.com/starfishdata/docs.git
