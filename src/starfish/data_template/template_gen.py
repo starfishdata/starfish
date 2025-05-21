@@ -59,20 +59,36 @@ class Template:
         #     _check_dependencies(self.dependencies)
 
     def run(self, *args, **kwargs) -> Any:
-        """Execute the wrapped function with schema validation."""
-        # Pre-run hook: Validate input schema
+        """Execute the wrapped function with schema validation.
+
+        This method handles three possible calling patterns:
+        1. template.run(dict_of_params)  - Single positional argument with dict
+        2. template.run(param1=val1, param2=val2)  - Keyword arguments
+        3. template.run()  - No arguments (uses all defaults from Pydantic model)
+
+        IMPORTANT: Function signature defaults are never used.
+        The Pydantic model is the single source of truth for all default values.
+        """
+        # Convert positional dict argument to kwargs if provided
+        if args and len(args) == 1 and isinstance(args[0], dict):
+            # Convert single dict positional arg to kwargs
+            kwargs.update(args[0])
+        elif args:
+            # If any other positional args are provided, that's an error
+            raise DataTemplateValueError("Invalid arguments: Only keyword arguments or a single dictionary argument are supported")
+
         try:
-            # Validate input against schema
-            if args:
-                self.input_schema.validate(args[0])
-            elif kwargs:
-                self.input_schema.validate(kwargs)
+            # Create and validate with Pydantic model, which applies defaults
+            # for any parameters not provided by the user
+            validated_model = self.input_schema.model_validate(kwargs)
+
+            # Extract all fields with defaults applied into a dict
+            validated_data = validated_model.model_dump()
+
+            # Execute the function with all parameters from the validated model
+            result = self.func.run(**validated_data)
         except pydantic.ValidationError as e:
             raise DataTemplateValueError(f"Input validation failed: {str(e)}")
-
-        # Execute the function
-        try:
-            result = self.func.run(*args, **kwargs)
         except Exception as e:
             raise DataTemplateValueError(f"Template execution failed: {str(e)}")
 
