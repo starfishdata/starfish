@@ -73,19 +73,7 @@ class GenerateByTopicInput(BaseModel):
     starfish_version="0.1.3",
     dependencies=[],
 )
-async def generate_by_topic(
-    # DO NOT define defaults here - they are defined in above Pydantic GenerateByTopicInput model
-    user_instruction: Optional[str],
-    num_records: Optional[int],
-    records_per_topic: int,
-    topics: Optional[List[Union[str, Dict[str, int]]]],
-    topic_model_name: str,
-    topic_model_kwargs: Optional[Dict[str, Any]],
-    generation_model_name: str,
-    generation_model_kwargs: Optional[Dict[str, Any]],
-    output_schema: Optional[Union[List[Dict[str, Any]], Dict[str, Any], type]],
-    data_factory_config: Optional[Dict[str, Any]],
-):
+async def generate_by_topic(input_data: GenerateByTopicInput):
     """
     Generates diverse synthetic data across multiple topics based on user instructions and defined output schema.
 
@@ -98,21 +86,19 @@ async def generate_by_topic(
     Topics are shuffled to ensure even distribution and better deduplication in the output data.
 
     Each generated record includes the topic it belongs to.
-
-    IMPORTANT: Default values are defined ONLY in the GenerateByTopicInput Pydantic model.
     """
     topic_list = await prepare_topic(
-        topics=topics,
-        num_records=num_records,
-        records_per_topic=records_per_topic,
-        user_instruction=user_instruction,
-        model_name=topic_model_name,
-        model_kwargs=topic_model_kwargs,
+        topics=input_data.topics,
+        num_records=input_data.num_records,
+        records_per_topic=input_data.records_per_topic,
+        user_instruction=input_data.user_instruction,
+        model_name=input_data.topic_model_name,
+        model_kwargs=input_data.topic_model_kwargs,
     )
     ## Shuffle the topic list to be more eventually distributed for better deduplication
     random.shuffle(topic_list)
 
-    @data_factory(**data_factory_config)
+    @data_factory(**input_data.data_factory_config)
     async def batch_generate_record(topic: str):
         ## duplicate_example
         generated_data = fetch_values_by_topic(batch_generate_record.state, topic)
@@ -141,9 +127,11 @@ async def generate_by_topic(
         {% endif %}
         """
 
-        generation_llm = StructuredLLM(prompt=prompt, model_name=generation_model_name, model_kwargs=generation_model_kwargs, output_schema=output_schema)
+        generation_llm = StructuredLLM(
+            prompt=prompt, model_name=input_data.generation_model_name, model_kwargs=input_data.generation_model_kwargs, output_schema=input_data.output_schema
+        )
 
-        generated_response = await generation_llm.run(user_instruction=user_instruction, topic=topic, duplicate_example=duplicate_example)
+        generated_response = await generation_llm.run(user_instruction=input_data.user_instruction, topic=topic, duplicate_example=duplicate_example)
 
         save_value_by_topic(batch_generate_record.state, topic, str(generated_response.data))
 
