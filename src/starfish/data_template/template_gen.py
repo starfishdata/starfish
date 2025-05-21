@@ -5,6 +5,7 @@ import pydantic
 import importlib.util
 import ast
 from typing import Any, Union, List, Dict
+import inspect
 
 from starfish.data_template.utils.error import DataTemplateValueError, ImportModuleError, ImportPackageError
 
@@ -54,6 +55,22 @@ class Template:
         if not hasattr(self.func, "run"):
             self.func.run = lambda *args, **kwargs: self.func(*args, **kwargs)
 
+        # Detect if function expects a single input_data parameter
+        self.expects_model_input = False
+        try:
+            self.func_signature = inspect.signature(self.func)
+
+            # Check if the function has a single parameter that matches the input_schema type
+            if len(self.func_signature.parameters) == 1:
+                param_name, param = next(iter(self.func_signature.parameters.items()))
+                # Check if the parameter has an annotation matching input_schema
+                if param.annotation == self.input_schema:
+                    self.expects_model_input = True
+        except (TypeError, ValueError):
+            # Can't get signature (e.g., for data_factory decorated functions)
+            # Default to False (use individual parameters) which is safer
+            self.expects_model_input = False
+
         # Check dependencies on initialization
         # if self.dependencies:
         #     _check_dependencies(self.dependencies)
@@ -61,45 +78,63 @@ class Template:
     def run(self, *args, **kwargs) -> Any:
         """Execute the wrapped function with schema validation.
 
-        This method handles three possible calling patterns:
-        1. template.run(dict_of_params)  - Single positional argument with dict
-        2. template.run(param1=val1, param2=val2)  - Keyword arguments
-        3. template.run()  - No arguments (uses all defaults from Pydantic model)
+        This method supports multiple calling patterns:
+        - template.run(param1=val1, param2=val2)  # Keyword arguments
+        - template.run({"param1": val1, "param2": val2})  # Dictionary
+        - template.run(model_instance)  # Pydantic model instance
 
-        IMPORTANT: Function signature defaults are never used.
-        The Pydantic model is the single source of truth for all default values.
+        The template function can be defined in two ways:
+        1. Taking a single Pydantic model parameter: func(input_data: Model)
+        2. Taking individual parameters: func(param1, param2, param3)
+
+        In all cases, validation happens through the Pydantic model.
         """
-        # Convert positional dict argument to kwargs if provided
-        if args and len(args) == 1 and isinstance(args[0], dict):
-            # Convert single dict positional arg to kwargs
-            kwargs.update(args[0])
-        elif args:
-            # If any other positional args are provided, that's an error
-            raise DataTemplateValueError("Invalid arguments: Only keyword arguments or a single dictionary argument are supported")
+        # STEP 1: Get a validated Pydantic model instance from the inputs
+        validated_model = self._get_validated_model(args, kwargs)
 
+        # STEP 2: Call the function with appropriate arguments based on its signature
         try:
-            # Create and validate with Pydantic model, which applies defaults
-            # for any parameters not provided by the user
-            validated_model = self.input_schema.model_validate(kwargs)
-
-            # Extract all fields with defaults applied into a dict
-            validated_data = validated_model.model_dump()
-
-            # Execute the function with all parameters from the validated model
-            result = self.func.run(**validated_data)
-        except pydantic.ValidationError as e:
-            raise DataTemplateValueError(f"Input validation failed: {str(e)}")
+            if self.expects_model_input:
+                # Pass the whole model to functions expecting a model parameter
+                result = self.func.run(validated_model)
+            else:
+                # Expand model fields for functions expecting individual parameters
+                result = self.func.run(**validated_model.model_dump())
         except Exception as e:
             raise DataTemplateValueError(f"Template execution failed: {str(e)}")
 
-        # Post-run hook: Validate output schema
+        # STEP 3: Validate the output if an output schema is provided
         if self.output_schema is not None:
             try:
-                self.output_schema.validate(result)
+                # Use model_validate instead of validate (which is deprecated in Pydantic v2)
+                self.output_schema.model_validate(result)
             except pydantic.ValidationError as e:
                 raise DataTemplateValueError(f"Output validation failed: {str(e)}")
 
         return result
+
+    def _get_validated_model(self, args, kwargs):
+        """Convert input arguments into a validated Pydantic model instance."""
+        # Case 1: User passed a model instance directly
+        if len(args) == 1 and isinstance(args[0], self.input_schema):
+            return args[0]
+
+        # Case 2: User passed a dictionary as the first positional argument
+        if len(args) == 1 and isinstance(args[0], dict):
+            # Merge dictionary with any keyword arguments
+            input_data = {**args[0], **kwargs}
+        # Case 3: User passed keyword arguments only
+        elif not args:
+            input_data = kwargs
+        # Case 4: Invalid input (multiple positional args or wrong type)
+        else:
+            raise DataTemplateValueError("Invalid arguments: Please provide either keyword arguments, " "a single dictionary, or a model instance.")
+
+        # Validate and return a model instance
+        try:
+            return self.input_schema.model_validate(input_data)
+        except pydantic.ValidationError as e:
+            raise DataTemplateValueError(f"Input validation failed: {str(e)}")
 
 
 # ====================
