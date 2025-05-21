@@ -75,7 +75,7 @@ class Template:
         # if self.dependencies:
         #     _check_dependencies(self.dependencies)
 
-    def run(self, *args, **kwargs) -> Any:
+    async def run(self, *args, **kwargs) -> Any:
         """Execute the wrapped function with schema validation.
 
         This method supports multiple calling patterns:
@@ -96,10 +96,10 @@ class Template:
         try:
             if self.expects_model_input:
                 # Pass the whole model to functions expecting a model parameter
-                result = self.func.run(validated_model)
+                result = await self.func.run(validated_model)
             else:
                 # Expand model fields for functions expecting individual parameters
-                result = self.func.run(**validated_model.model_dump())
+                result = await self.func.run(**validated_model.model_dump())
         except Exception as e:
             raise DataTemplateValueError(f"Template execution failed: {str(e)}")
 
