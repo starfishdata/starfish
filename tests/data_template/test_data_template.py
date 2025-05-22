@@ -95,7 +95,7 @@ async def test_get_run_template_Input_Success():
     - Expected: All cities processed successfully
     """
     data_gen_template.list()
-    topic_generator_temp = data_gen_template.get("community/topic_generator_success")
+    template = data_gen_template.get("community/topic_generator_success")
 
     # input_data = TopicGeneratorInput(
     #         community_name="AI Enthusiasts",
@@ -103,8 +103,9 @@ async def test_get_run_template_Input_Success():
     #         num_topics=5
     #     )
     input_data = {"community_name": "AI Enthusiasts", "seed_topics": ["Machine Learning", "Deep Learning"], "num_topics": 1}
-    # results = topic_generator_temp.run(input_data.model_dump())
-    results = topic_generator_temp.run(input_data)
+    # results = template.run(input_data.model_dump())
+    results = template.run(input_data)
+    print(results)
 
     assert len(results.generated_topics) == 3
 
@@ -126,3 +127,43 @@ async def test_get_run_template_Input_Schema_Not_Match():
 
     # Assert the error message
     assert "Template community/topic_generator_success_1 not found" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_get_cities_info():
+    """Get information about multiple cities using the city info workflow template.
+
+    This function retrieves city information by executing the 'get_city_info_wf' template
+    with provided city names and region codes.
+
+    Args:
+        city_name: List of city names to get information for
+        region_code: List of region codes corresponding to the cities (e.g., state codes for US)
+
+    Returns:
+        Results from the city info workflow template execution containing city information
+
+    Example:
+        >>> await test_get_cities_info(
+        ...     city_name=["New York", "Los Angeles"],
+        ...     region_code=["NY", "CA"]
+        ... )
+    """
+    data_gen_template.list()
+    template = data_gen_template.get("starfish/get_city_info_wf")
+
+    city_name = ["San Francisco", "New York", "Los Angeles"] * 5
+    region_code = ["DE", "IT", "US"] * 5
+    results = template.run(city_name=city_name, region_code=region_code)
+    return results
+
+
+@pytest.mark.asyncio
+async def test_gen_cities_info():
+    data_gen_template.list()
+    city_name = ["San Francisco", "New York", "Los Angeles"] * 5
+    region_code = ["DE", "IT", "US"] * 5
+    input_data = {"city_name": city_name, "region_code": region_code}
+    template = data_gen_template.get("starfish/generate_city_info")
+    results = template.run(input_data)
+    assert len(results) == 15

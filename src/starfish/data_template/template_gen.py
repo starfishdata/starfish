@@ -53,6 +53,8 @@ class Template:
         # Add run method if not present
         if not hasattr(self.func, "run"):
             self.func.run = lambda *args, **kwargs: self.func(*args, **kwargs)
+            if not self.input_schema:
+                raise DataTemplateValueError("missing input_schema_validator")
 
         # Check dependencies on initialization
         # if self.dependencies:
@@ -63,10 +65,11 @@ class Template:
         # Pre-run hook: Validate input schema
         try:
             # Validate input against schema
-            if args:
-                self.input_schema.validate(args[0])
-            elif kwargs:
-                self.input_schema.validate(kwargs)
+            if self.input_schema:
+                if args:
+                    self.input_schema.validate(args[0])
+                elif kwargs:
+                    self.input_schema.validate(kwargs)
         except pydantic.ValidationError as e:
             raise DataTemplateValueError(f"Input validation failed: {str(e)}")
 
