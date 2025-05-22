@@ -19,11 +19,11 @@ def save_value_by_topic(state: MutableSharedState, topic: str, value: Any) -> No
         topic_collections = topic_collections.copy()
 
     # Initialize topic collection if needed
-    if topic not in topic_collections or not isinstance(topic_collections[topic], list):
-        topic_collections[topic] = []
-
-    # Append the value and update state
-    topic_collections[topic].append(value)
+    with state._lock:
+        if topic not in topic_collections or not isinstance(topic_collections[topic], list):
+            topic_collections[topic] = []
+        # Append the value and update state
+        topic_collections[topic].append(value)
     state.set("topic_data", topic_collections)
 
 

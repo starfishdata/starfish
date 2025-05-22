@@ -1,9 +1,11 @@
 import nest_asyncio
 import pytest
+import os
 from pydantic import BaseModel
 from starfish.common.env_loader import load_env_file
 from starfish.data_template.template_gen import data_gen_template
 from starfish.data_template.utils.error import DataTemplateValueError, ImportPackageError
+from starfish import StructuredLLM, data_factory
 
 nest_asyncio.apply()
 load_env_file()
@@ -71,6 +73,18 @@ async def test_get_run_dependencies_not_met():
     - Expected: All cities processed successfully
     """
     data_gen_template.list()
+    with pytest.raises(ModuleNotFoundError):
+        topic_generator = data_gen_template.get("starfish/math_problem_gen_wf")
+
+
+@pytest.mark.asyncio
+async def test_get_run_dependencies_not_met():
+    """Test with input data and broadcast variables
+    - Input: List of dicts with city names
+    - Broadcast: num_records_per_city
+    - Expected: All cities processed successfully
+    """
+    data_gen_template.list()
     with pytest.raises(ImportPackageError):
         topic_generator = data_gen_template.get("community/topic_generator")
 
@@ -83,16 +97,12 @@ async def test_get_run_template_Input_Success():
     - Expected: All cities processed successfully
     """
     data_gen_template.list()
-    topic_generator_temp = data_gen_template.get("community/topic_generator_success")
+    template = data_gen_template.get("community/topic_generator_success")
 
-    # input_data = TopicGeneratorInput(
-    #         community_name="AI Enthusiasts",
-    #         seed_topics=["Machine Learning", "Deep Learning"],
-    #         num_topics=5
-    #     )
     input_data = {"community_name": "AI Enthusiasts", "seed_topics": ["Machine Learning", "Deep Learning"], "num_topics": 1}
-    # results = topic_generator_temp.run(input_data.model_dump())
-    results = topic_generator_temp.run(input_data)
+    # results = template.run(input_data.model_dump())
+    results = template.run(input_data)
+    print(results)
 
     assert len(results.generated_topics) == 3
 
@@ -114,3 +124,76 @@ async def test_get_run_template_Input_Schema_Not_Match():
 
     # Assert the error message
     assert "Template community/topic_generator_success_1 not found" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_gen_cities_info():
+    data_gen_template.list()
+    city_name = ["San Francisco", "New York", "Los Angeles"] * 5
+    region_code = ["DE", "IT", "US"] * 5
+    input_data = {"city_name": city_name, "region_code": region_code}
+    template = data_gen_template.get("starfish/generate_city_info")
+    results = template.run(input_data)
+    assert len(results) == 15
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
+async def test_get_generate_by_topic_Success():
+    data_gen_template.list()
+    topic_generator_temp = data_gen_template.get("starfish/generate_by_topic")
+    num_records = 20
+    input_data = {
+        "user_instruction": "Generate Q&A pairs about machine learning concepts",
+        "num_records": num_records,
+        "records_per_topic": 5,
+        "topics": [
+            "supervised learning",
+            "unsupervised learning",
+            {"reinforcement learning": 3},  # This means generate 3 records for this topic
+            "neural networks",
+        ],
+        "topic_model_name": "openai/gpt-4",
+        "topic_model_kwargs": {"temperature": 0.7},
+        "generation_model_name": "openai/gpt-4",
+        "generation_model_kwargs": {"temperature": 0.8, "max_tokens": 200},
+        "output_schema": [
+            {"name": "question", "type": "str"},
+            {"name": "answer", "type": "str"},
+            {"name": "difficulty", "type": "str"},  # Added an additional field
+        ],
+        "data_factory_config": {"max_concurrency": 4, "task_runner_timeout": 60 * 2},
+    }
+    # results = topic_generator_temp.run(input_data.model_dump())
+    results = await topic_generator_temp.run(input_data)
+
+    assert len(results) == num_records
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv("CI") == "true", reason="Skipping in CI environment")
+async def test_get_generate_func_call_dataset():
+    data_gen_template.list()
+    generate_func_call_dataset = data_gen_template.get("starfish/generate_func_call_dataset")
+    input_data = {
+        "user_instruction": "Generate Q&A pairs about machine learning concepts",
+        "num_records": 5,
+        "sub_topic_num": 2,
+        "api_contract": {
+            "name": "weather_api.get_current_weather",
+            "description": "Retrieves the current weather conditions for a specified location .",
+            "parameters": {
+                "location": {"type": "string", "description": "The name of the city or geographic location .", "required": True},
+                "units": {"type": "string", "description": "The units for temperature measurement( e.g., 'Celsius', 'Fahrenheit') .", "required": False},
+            },
+        },
+        "topic_model_name": "openai/gpt-4",
+        "topic_model_kwargs": {"temperature": 0.7},
+        "generation_model_name": "openai/gpt-4",
+        "generation_model_kwargs": {"temperature": 0.8, "max_tokens": 200},
+        "data_factory_config": {"max_concurrency": 4, "task_runner_timeout": 60 * 2},
+    }
+    # results = topic_generator_temp.run(input_data.model_dump())
+    results = await generate_func_call_dataset.run(input_data)
+
+    assert len(results) == input_data["num_records"]
