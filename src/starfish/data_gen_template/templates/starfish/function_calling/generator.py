@@ -67,6 +67,22 @@ class GenerateFuncCallDataSet(BaseModel):
     author="Wendao Liu",
     starfish_version="0.1.3",
     dependencies=[],
+    input_example="""{
+        "num_records": 4,
+        "api_contract": {
+            "name": "weather_api.get_current_weather",
+            "description": "Retrieves the current weather conditions for a specified location .",
+            "parameters": {
+                "location": {"type": "string", "description": "The name of the city or geographic location .", "required": True},
+                "units": {"type": "string", "description": "The units for temperature measurement( e.g., 'Celsius', 'Fahrenheit') .", "required": False},
+            },
+        },
+        "topic_model_name": "openai/gpt-4",
+        "topic_model_kwargs": {"temperature": 0.7},
+        "generation_model_name": "openai/gpt-4o-mini",
+        "generation_model_kwargs": {"temperature": 0.8, "max_tokens": 200},
+        "data_factory_config": {"max_concurrency": 24, "task_runner_timeout": 60 * 2},
+    }""",
 )
 async def api_contract_workflow(input_data: GenerateFuncCallDataSet):
     api_contract = input_data.api_contract.model_dump()

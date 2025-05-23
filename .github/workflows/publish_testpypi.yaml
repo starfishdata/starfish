@@ -88,13 +88,13 @@ jobs:
             --ExecutePreprocessor.timeout=120 \
             --no-prompt --no-input \
             --stdout \
-            tests/data_factory/factory/test_resume_index_1.ipynb; then
+            tests/data_factory/factory/data_factory.ipynb; then
             echo "::error::Notebook execution failed"
 
           fi
           echo "Notebook executed successfully. Summary:" && \
           jupyter nbconvert --to markdown --stdout \
-            tests/data_factory/factory/test_resume_index_1.ipynb | \
+            tests/data_factory/factory/data_factory.ipynb | \
             grep -E '^#|^##' || true
 
       # Add tag deletion step
