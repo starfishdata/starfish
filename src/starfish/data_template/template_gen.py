@@ -155,11 +155,11 @@ class data_gen_template:
         if len(result) == 0:
             # Walk through all subdirectories in templates folder
             for subdir in templates_dir.iterdir():
-                if subdir.is_dir():
+                for sub_subdir in subdir.iterdir():
                     # Find all .py files in the subdirectory
-                    for template_file in subdir.glob("*.py"):
+                    for template_file in sub_subdir.glob("*.py"):
                         try:
-                            module_name = f"starfish.data_template.templates.{subdir.name}.{template_file.stem}"
+                            module_name = f"starfish.data_template.templates.{subdir.name}.{sub_subdir.name}.{template_file.stem}"
                             # Parse the file's AST to extract decorator information
                             with open(template_file, "r") as f:
                                 tree = ast.parse(f.read())

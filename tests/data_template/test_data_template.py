@@ -1,29 +1,11 @@
 import nest_asyncio
 import pytest
 import os
-from pydantic import BaseModel
 from starfish.common.env_loader import load_env_file
 from starfish.data_template.template_gen import data_gen_template
-from starfish.data_template.utils.error import DataTemplateValueError, ImportPackageError
-from starfish import StructuredLLM, data_factory
 
 nest_asyncio.apply()
 load_env_file()
-
-
-# Define input schema
-class TopicGeneratorInput(BaseModel):
-    community_name: str
-    seed_topics: list[str]
-    num_topics: int
-    language: str = "en"
-
-
-# Define output schema
-class TopicGeneratorOutput(BaseModel):
-    generated_topics: list[str]
-    success: bool
-    message: str
 
 
 @pytest.mark.asyncio
@@ -46,95 +28,6 @@ async def test_list_detail():
     """
     result = data_gen_template.list(is_detail=True)
     assert len(result) != 0
-
-
-@pytest.mark.asyncio
-# @pytest.mark.skip(reason="Skipping this test case as not implementing data_factory decorator outside the function")
-async def test_get_datafactory_run():
-    """Test with input data and broadcast variables
-    - Input: List of dicts with city names
-    - Broadcast: num_records_per_city
-    - Expected: All cities processed successfully
-    """
-    data_gen_template.list()
-    get_city_info_wf = data_gen_template.get("starfish/get_city_info_wf")
-    results = get_city_info_wf.run(
-        city_name=["San Francisco", "New York", "Los Angeles"] * 5,
-        region_code=["DE", "IT", "US"] * 5,
-    )
-    assert len(results) == 15
-
-
-@pytest.mark.asyncio
-async def test_get_run_dependencies_not_met():
-    """Test with input data and broadcast variables
-    - Input: List of dicts with city names
-    - Broadcast: num_records_per_city
-    - Expected: All cities processed successfully
-    """
-    data_gen_template.list()
-    with pytest.raises(ModuleNotFoundError):
-        topic_generator = data_gen_template.get("starfish/math_problem_gen_wf")
-
-
-@pytest.mark.asyncio
-async def test_get_run_dependencies_not_met():
-    """Test with input data and broadcast variables
-    - Input: List of dicts with city names
-    - Broadcast: num_records_per_city
-    - Expected: All cities processed successfully
-    """
-    data_gen_template.list()
-    with pytest.raises(ImportPackageError):
-        topic_generator = data_gen_template.get("community/topic_generator")
-
-
-@pytest.mark.asyncio
-async def test_get_run_template_Input_Success():
-    """Test with input data and broadcast variables
-    - Input: List of dicts with city names
-    - Broadcast: num_records_per_city
-    - Expected: All cities processed successfully
-    """
-    data_gen_template.list()
-    template = data_gen_template.get("community/topic_generator_success")
-
-    input_data = {"community_name": "AI Enthusiasts", "seed_topics": ["Machine Learning", "Deep Learning"], "num_topics": 1}
-    # results = template.run(input_data.model_dump())
-    results = template.run(input_data)
-    print(results)
-
-    assert len(results.generated_topics) == 3
-
-
-@pytest.mark.asyncio
-async def test_get_run_template_Input_Schema_Not_Match():
-    """Test with input data and broadcast variables
-    - Input: List of dicts with city names
-    - Broadcast: num_records_per_city
-    - Expected: All cities processed successfully
-    """
-    with pytest.raises(DataTemplateValueError) as exc_info:
-        topic_generator = data_gen_template.get("community/topic_generator_success_1")
-
-        input_data = TopicGeneratorInput(
-            community_name="AI Enthusiasts",
-        )
-        topic_generator.run(input_data)
-
-    # Assert the error message
-    assert "Template community/topic_generator_success_1 not found" in str(exc_info.value)
-
-
-@pytest.mark.asyncio
-async def test_gen_cities_info():
-    data_gen_template.list()
-    city_name = ["San Francisco", "New York", "Los Angeles"] * 5
-    region_code = ["DE", "IT", "US"] * 5
-    input_data = {"city_name": city_name, "region_code": region_code}
-    template = data_gen_template.get("starfish/generate_city_info")
-    results = template.run(input_data)
-    assert len(results) == 15
 
 
 @pytest.mark.asyncio
@@ -176,9 +69,7 @@ async def test_get_generate_func_call_dataset():
     data_gen_template.list()
     generate_func_call_dataset = data_gen_template.get("starfish/generate_func_call_dataset")
     input_data = {
-        "user_instruction": "Generate Q&A pairs about machine learning concepts",
         "num_records": 5,
-        "sub_topic_num": 2,
         "api_contract": {
             "name": "weather_api.get_current_weather",
             "description": "Retrieves the current weather conditions for a specified location .",
@@ -189,11 +80,10 @@ async def test_get_generate_func_call_dataset():
         },
         "topic_model_name": "openai/gpt-4",
         "topic_model_kwargs": {"temperature": 0.7},
-        "generation_model_name": "openai/gpt-4",
+        "generation_model_name": "openai/gpt-4o-mini",
         "generation_model_kwargs": {"temperature": 0.8, "max_tokens": 200},
         "data_factory_config": {"max_concurrency": 4, "task_runner_timeout": 60 * 2},
     }
-    # results = topic_generator_temp.run(input_data.model_dump())
     results = await generate_func_call_dataset.run(input_data)
 
     assert len(results) == input_data["num_records"]

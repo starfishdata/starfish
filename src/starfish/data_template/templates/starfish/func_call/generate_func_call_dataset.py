@@ -7,6 +7,29 @@ from pydantic import BaseModel
 from typing import Optional, List, Union, Dict, Any
 import random
 
+num_records_ = 1
+sub_topic_num = 5
+
+
+class ParameterDefinition(BaseModel):
+    """
+    Pydantic model representing parameter definition in an API contract.
+    """
+
+    type: str
+    description: str
+    required: bool = True
+
+
+class APIContract(BaseModel):
+    """
+    Pydantic model representing an API contract structure.
+    """
+
+    name: str
+    description: str
+    parameters: Dict[str, ParameterDefinition]
+
 
 ## Pydantic Input Schema
 class GenerateFuncCallDataSet(BaseModel):
@@ -18,21 +41,17 @@ class GenerateFuncCallDataSet(BaseModel):
     """
 
     num_records: Optional[int] = 10
-    api_contract: Dict[str, Any] = None
-    # sub_topic_num: int = (5,)
-    # topics: Optional[List[Union[str, Dict[str, int]]]] = None
+    api_contract: APIContract
     topic_model_name: str = "openai/gpt-4o-mini"
-    # existing_topics: Optional[list] = []
     topic_model_kwargs: Optional[Dict[str, Any]] = None
     generation_model_name: str = "openai/gpt-4o-mini"
     generation_model_kwargs: Optional[Dict[str, Any]] = None
-    # output_schema: Optional[Union[List[Dict[str, Any]], Dict[str, Any], type]] = [{"name": "question", "type": "str"}, {"name": "answer", "type": "str"}]
     data_factory_config: Optional[Dict[str, Any]] = {}
 
 
 # 4. Are there any inconsistencies between the query's intent and the answer's implementation?
 @data_factory(max_concurrency=20)
-async def verify_queries_with_llm(query, answer, api_contract):
+async def verify_queries_with_llm(model_name, query, answer, api_contract):
     """
     Uses an LLM to verify if generated queries match the API contract.
 
@@ -42,9 +61,9 @@ async def verify_queries_with_llm(query, answer, api_contract):
     """
 
     semantic_checker_llm = StructuredLLM(
-        model_name="openai/gpt-4o-mini",  # You can choose a different model
+        model_name=model_name,  # You can choose a different model
         prompt="""Given this API contract: {{api_contract}}, this query: '{{query}}', and this answer: '{{answer}}'.
-        
+        Here is an example for your reference ONLY - DO NOT compare it directly with the given query/answer pair:
         Given the API contract as 
         {
             "name": "weather_api.get_current_weather",
@@ -62,7 +81,7 @@ async def verify_queries_with_llm(query, answer, api_contract):
                 },
             },
         },
-        the valid query/answer pair would be something similar to this, watch for the optional parameters:
+        A valid query/answer pair would be something similar to this:
         Query: "Could you check the weather in Nairobi, Buenos Aires, and Bangkok? Also, I'd like to know the wind speed in Jakarta."
         Answer: [
             {'name': 'weather_api.get_current_weather', 'arguments': {'location': 'Nairobi'}},
@@ -71,12 +90,12 @@ async def verify_queries_with_llm(query, answer, api_contract):
             {'name': 'weather_api.get_current_weather', 'arguments': {'location': 'Jakarta'}}
         ]
 
-        Analyze the following aspects:
+        Analyze the following aspects of the given query/answer pair (NOT the example):
         1. Does the query contain all necessary information that the API contract requires?
         2. Does the answer contain the correct number of function calls matching the requests in the query?
         3. Does each function call in the answer:
             - Use the correct API name as specified in the contract?
-            - Include all required parameters from the API contract, the non required prameters is not necessary to include?
+            - Include all required parameters from the API contract (optional parameters are not necessary)?
             - Use parameter values that semantically match the API contract's parameters description?
 
         Respond with 'Yes' or 'No', followed by a detailed reason explaining your analysis.
@@ -185,7 +204,7 @@ async def generate_sub_topic(
     model_kwargs: Optional[Dict[str, Any]] = None,
     existing_topics: Optional[List[str]] = None,
 ):
-    user_instruction = f"{user_instruction}, generate sub topic based on the topic of {topic}"
+    user_instruction = f"{user_instruction}, generate sub topics with different location in each sub topic based on the topic of {topic}"
     sub_topics = await generate_topics(
         user_instruction=user_instruction, num_topics=num_topics, model_name=model_name, model_kwargs=model_kwargs, existing_topics=existing_topics
     )
@@ -219,7 +238,7 @@ async def generate_sub_topic(
 #                 ]
 #             }
 @data_factory(max_concurrency=30)
-async def generator_query_answer(api_contract: dict, topic: str):
+async def generator_query_answer(model_name, api_contract: dict, topic: str):
     query_answer_generator_prompt = """
         You are a data labeler. The responsibility for you is to generate a set of diverse queries and corresponding answers for the given functions in JSON format.
         Construct queries and answers that exemplifies how to use these functions in a practical scenario. Include in each query specific, plausible values for each parameter. For instance, if the function requires a date, use a typical and reasonable date.
@@ -261,7 +280,8 @@ async def generator_query_answer(api_contract: dict, topic: str):
         Now please generate {{num_records}} diverse query and answer pairs following the above format.
     """
     query_answer_generator = StructuredLLM(
-        model_name="openai/gpt-4o-mini",
+        model_name=model_name,
+        # model_name="openai/gpt-4o-mini",
         prompt=query_answer_generator_prompt,
         output_schema=[
             {"name": "query", "type": "str"},
@@ -273,7 +293,94 @@ async def generator_query_answer(api_contract: dict, topic: str):
         func_name=api_contract["name"],
         func_desc=api_contract["description"] + " in this topic :  " + topic,
         func_params=api_contract["parameters"],
+        num_records=num_records_,
+    )
+    return query_answer_pairs.data
+
+
+@data_factory(max_concurrency=30)
+async def update_query_answer(model_name: str, api_contract: dict, query, answer, failed_reason):
+    update_answer_generator_prompt = (
+        """
+        Given this API contract: {{api_contract}}, this query: '{{query}}', and this answer: '{{answer}}'. It failed the format or semantic check 
+        with this reason {{reason}}.
+        Please update the answer to pass the check. Here is the requirement
+        
+        Given the API contract as 
+        {
+            "name": "weather_api.get_current_weather",
+            "description": "Retrieves the current weather conditions for a specified location .",
+            "parameters": {
+                "location": {
+                    "type": "string", 
+                    "description": "The name of the city or geographic location .",
+                    "required": True
+                },
+                "units": {
+                    "type": "string", 
+                    "description": "The units for temperature measurement( e.g., 'Celsius', 'Fahrenheit') .", 
+                    "required": False
+                },
+            },
+        },
+        the valid query/answer pair would be something similar to this, watch for the optional parameters:
+        Query: "Could you check the weather in Nairobi, Buenos Aires, and Bangkok? Also, I'd like to know the wind speed in Jakarta."
+        Answer: [
+            {'name': 'weather_api.get_current_weather', 'arguments': {'location': 'Nairobi'}},
+            {'name': 'weather_api.get_current_weather', 'arguments': {'location': 'Buenos Aires','units': 'Fahrenheit'}},
+            {'name': 'weather_api.get_current_weather', 'arguments': {'location': 'Bangkok'}},
+            {'name': 'weather_api.get_current_weather', 'arguments': {'location': 'Jakarta'}}
+        ]
+
+        Ensure the query be the same:
+        Ensure the answer:
+            − Is a list of function calls in JSON format.
+            − The length of the answer list should be equal to the number of requests in the query
+            − Can solve all the requests in the query effectively
+ 
+        Based on these examples and the above instructions, update query and answer pair for the functions '{{func_name}}'.
+        The detailed functions description is as follows:
+        {{func_desc}}
+        The detailed functions paramters is as follows, the generated outputs shall have some records having the optional parameters:
+        {{func_params}}
+        The output MUST strictly adhere to the following JSON format, and NO other text MUST be included:
+        [
+            {
+                "query": "The generated query.",
+                "answers": [
+                    {
+                    "name": "api_name",
+                    "arguments": {
+                        "arg_name": "value",
+                        ... (more arguments as required)
+                    }       
+                    },
+                ... (more API calls as required)
+                ]
+            }
+        ]
+        
+        update the answer to pass the check..
+    """,
+    )
+
+    query_answer_generator = StructuredLLM(
+        model_name=model_name,
+        prompt=update_answer_generator_prompt,
+        output_schema=[
+            {"name": "query", "type": "str"},
+            {"name": "answer", "type": "str"},
+        ],
+        model_kwargs={"temperature": 0.7},
+    )
+    query_answer_pairs = await query_answer_generator.run(
+        func_name=api_contract["name"],
+        func_desc=api_contract["description"],
+        func_params=api_contract["parameters"],
         num_records=1,
+        query=query,
+        answer=answer,
+        reason=failed_reason,
     )
     return query_answer_pairs.data
 
@@ -290,29 +397,47 @@ async def generator_query_answer(api_contract: dict, topic: str):
     dependencies=[],
 )
 async def api_contract_workflow(input_data: GenerateFuncCallDataSet):
-    api_contract = input_data.api_contract
-    sub_topic_num = input_data.sub_topic_num
+    api_contract = input_data.api_contract.model_dump()
     num_records = input_data.num_records
-    num_topic = num_records // sub_topic_num
-    num_records_reminder = num_records % sub_topic_num
+    records_per_topic = sub_topic_num * num_records_
+    num_topic = num_records // records_per_topic
+    num_records_reminder = num_records % records_per_topic
     if num_records_reminder > 0:
         num_topic += 1
     user_instruction = api_contract["description"]
     topic_model_name = input_data.topic_model_name
     topic_model_kwargs = input_data.topic_model_kwargs
+    generation_model_name = input_data.generation_model_name
     generated_topics = await generate_topics(
         user_instruction=user_instruction,
         num_topics=num_topic,
         model_name=topic_model_name,
         model_kwargs=topic_model_kwargs,
-        existing_topics=input_data.existing_topics,
     )
     sub_topic_input_data = [{"topic": topic, "user_instruction": user_instruction} for topic in generated_topics]
-
+    generate_sub_topic.factory.config.update(input_data.data_factory_config)
     all_topics = generate_sub_topic.run(data=sub_topic_input_data, num_topics=sub_topic_num, model_name=topic_model_name, model_kwargs=topic_model_kwargs)
     generator_query_answer_input_data = random.sample(all_topics, num_records)
-    query_answer_pairs = generator_query_answer.run(data=generator_query_answer_input_data, api_contract=api_contract)
-    check_result = verify_queries_with_llm.run(data=query_answer_pairs, api_contract=api_contract)
-    # use index and check_result to filter out the failed dataset and and rerun the process to get the num_records
+    generator_query_answer.factory.config.update(input_data.data_factory_config)
+    query_answer_pairs = generator_query_answer.run(data=generator_query_answer_input_data, api_contract=api_contract, model_name=generation_model_name)
+    verify_queries_with_llm.factory.config.update(input_data.data_factory_config)
+    check_result = verify_queries_with_llm.run(data=query_answer_pairs, api_contract=api_contract, model_name=generation_model_name)
+    check_result_idx_arr = verify_queries_with_llm.get_index_completed()
+    failed_data_set = []
+    result = []
+    updated_data_set = []
+    for i in range(0, len(check_result)):
+        item = check_result[i]
+        query_answer_pair = query_answer_pairs[check_result_idx_arr[i]]
+        if not item["format_checker_passed"] or not item["semantic_checker_passed"]:
+            query_answer_pair["failed_reason"] = item["reason"]
+            failed_data_set.append(query_answer_pair)
+        else:
+            result.append(query_answer_pair)
+
+    if len(failed_data_set) > 0:
+        update_query_answer.factory.config.update(input_data.data_factory_config)
+        updated_data_set = update_query_answer.run(data=query_answer_pairs, api_contract=api_contract, model_name=generation_model_name)
+    result.extend(updated_data_set)
     # also try using duplicate-examples in the prompt
-    return query_answer_pairs
+    return result
