@@ -1,4 +1,4 @@
-from queue import Queue
+from asyncio import Queue
 from typing import Any, Callable, Dict
 
 from starfish.common.logger import get_logger
@@ -57,7 +57,7 @@ class JobManagerDryRun(JobManager):
         Note:
             The dry run will only process one task regardless of the input queue size.
         """
-        first_item = self.job_input_queue.get()
+        first_item = await self.job_input_queue.get()
         self.job_input_queue = Queue()
-        self.job_input_queue.put(first_item)
+        await self.job_input_queue.put(first_item)
         self.job_config.target_count = 1

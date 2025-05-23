@@ -4,7 +4,7 @@ import datetime
 import hashlib
 import json
 import uuid
-from queue import Queue
+from asyncio import Queue
 from typing import Any, Callable, Dict, List
 import traceback
 
@@ -145,7 +145,8 @@ class JobManager:
         self.running_tasks = set()
 
         try:
-            await self._process_tasks()
+            if not self.job_input_queue.empty():
+                await self._process_tasks()
         finally:
             await self._cleanup()
 
@@ -163,7 +164,7 @@ class JobManager:
         while not self._is_job_to_stop():
             if not self.job_input_queue.empty():
                 await self.semaphore.acquire()
-                input_data = self.job_input_queue.get()
+                input_data = await self.job_input_queue.get()
                 task = self._create_single_task(input_data)
                 self.running_tasks.add(task)
                 task.add_done_callback(self.running_tasks.discard)
@@ -224,19 +225,15 @@ class JobManager:
 
     async def _requeue_task(self, input_data, input_data_idx):
         """Requeue a task that needs to be retried or move to dead queue if failed too many times."""
-        task_key = str(input_data_idx)  # Use index as task identifier
-        # input_data[IDX] = input_data_idx
-        async with self.lock:  # Protect shared state with lock
-            # Update failure count
+        task_key = str(input_data_idx)
+        async with self.lock:
             self.task_failure_count[task_key] = self.task_failure_count.get(task_key, 0) + 1
             if self.task_failure_count[task_key] >= self.job_config.dead_queue_threshold:
-                # Move to dead queue after 3 failures
-                self.dead_queue.put(input_data)
+                await self.dead_queue.put(input_data)
                 self.dead_queue_count += 1
                 logger.warning(f"Task {task_key} failed 3 times, moving to dead queue")
             else:
-                # Requeue for retry
-                self.job_input_queue.put(input_data)
+                await self.job_input_queue.put(input_data)
                 logger.debug(f"Requeuing task {task_key} (failure count: {self.task_failure_count[task_key]})")
 
     def _create_task_result(self, input_data_idx, task_status, output_ref, output, err_output):
@@ -256,7 +253,7 @@ class JobManager:
         """
         result = await task
         async with self.lock:
-            self.job_output.put(result)
+            await self.job_output.put(result)
             self.total_count += 1
             task_status = result.get(RECORD_STATUS)
             # Update counters based on task status
@@ -376,14 +373,17 @@ class JobManager:
         logger.debug("  - Marked execution job as completed")
 
     def _is_job_to_stop(self) -> bool:
-        queue_size = len(self.job_output.queue)
+        # Immutable Snapshot: Creates a snapshot of the queue at the time of the list() call, so modifications to the queue during iteration won't affect the loop.
+        job_output_list = list(self.job_output._queue)
+        queue_size = len(job_output_list)
         if queue_size == 0:
             return False
 
-        items_check = list(self.job_output.queue)[-min(self.job_config.job_run_stop_threshold, queue_size) :]
-        consecutive_not_completed = len(items_check) == self.job_config.job_run_stop_threshold and all(
-            item[RECORD_STATUS] != STATUS_COMPLETED for item in items_check
-        )
+        items = []
+        for _ in range(min(self.job_config.job_run_stop_threshold, queue_size)):
+            items.append(job_output_list[-1])
+
+        consecutive_not_completed = len(items) == self.job_config.job_run_stop_threshold and all(item[RECORD_STATUS] != STATUS_COMPLETED for item in items)
 
         if consecutive_not_completed:
             logger.error(
@@ -394,7 +394,7 @@ class JobManager:
         target_not_reach_count = self.job_config.target_count - self.completed_count
         completed_tasks_reach_target = target_not_reach_count <= 0
         if target_not_reach_count > 0 and target_not_reach_count == self.dead_queue_count:
-            logger.warning(f"there are {target_not_reach_count} iput data not able to process, pls remove them")
+            logger.warning(f"there are {target_not_reach_count} input data not able to process, pls remove them")
             completed_tasks_reach_target = True
 
         return consecutive_not_completed or completed_tasks_reach_target

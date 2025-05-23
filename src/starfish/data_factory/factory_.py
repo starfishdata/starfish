@@ -3,7 +3,7 @@ from copy import deepcopy
 import datetime
 import uuid
 from inspect import Parameter, signature
-from queue import Queue
+from asyncio import Queue, QueueFull
 from typing import Any, Callable, Dict, List
 
 import cloudpickle
@@ -280,7 +280,11 @@ class Factory:
             STATUS_FILTERED: {"result": [], IDX: []},
         }
         # Process records and populate cache
-        for record in self.job_manager.job_output.queue:
+        # Directly iterate through the underlying deque for performance
+        # 1,No Concurrency: no other coroutines or threads are modifying the queue (e.g., adding or removing items).
+        # 2. No Further Use of the Queue: The queue will not be used again after this step, so it doesn't matter if the items remain in the queue.
+        # 3,No Size Limits: The queue does not have a maxsize limit that could be violated by leaving items in the queue.
+        for record in self.job_manager.job_output._queue:
             record_idx = record.get(IDX)
             status = record.get(RECORD_STATUS)
             record_output = record.get("output", []) if status != STATUS_FAILED else record.get("err", [])
@@ -483,7 +487,7 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
         **kwargs: Additional parameters that can be either parallel sources or broadcast values
 
     Returns:
-        Queue[Dict[str, Any]]: Queue of records ready for processing
+        asyncio.Queue[Dict[str, Any]]: Queue of records ready for processing
 
     Raises:
         ValueError: If parallel sources have different lengths
@@ -509,9 +513,10 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
 
     # Determine batch size (L)
     batch_size = lengths[0] if lengths else 1
-    # original_input_data = []
-    # Prepare input_data_queue
+    # Prepare input data queue and records
     input_data_queue = Queue()
+    records = []
+
     for i in range(batch_size):
         record = {IDX: i}
 
@@ -529,9 +534,13 @@ def _default_input_converter(data: List[Dict[str, Any]] = None, **kwargs) -> tup
             if not isinstance(value, (list, tuple)):
                 record[key] = value
 
-        input_data_queue.put(record)
+        records.append(record)
 
-        # original_input_data.append({k: deepcopy(v) for k, v in record.items() if k != IDX})
+    # Add all records to the queue
+    for record in records:
+        try:
+            input_data_queue.put_nowait(record)
+        except QueueFull:
+            raise InputError("Queue is full - cannot add more items")
 
-    # Convert the list to an immutable tuple original_input_data
-    return input_data_queue, deepcopy(list(input_data_queue.queue))
+    return input_data_queue, deepcopy(records)

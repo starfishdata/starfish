@@ -36,6 +36,22 @@ Key Features:
 pip install starfish-core
 ```
 
+### Optional Dependencies
+
+Starfish supports optional dependencies for specific file parsers. Install only what you need:
+
+```bash
+# Install specific parsers
+pip install "starfish-core[pdf]"       # PDF support
+pip install "starfish-core[docx]"      # Word document support
+pip install "starfish-core[ppt]"       # PowerPoint support
+pip install "starfish-core[excel]"     # Excel support
+pip install "starfish-core[youtube]"   # YouTube support
+
+# Install all parser dependencies
+pip install "starfish-core[all]"
+```
+
 ## Configuration
 
 Starfish uses environment variables for configuration. We provide a `.env.template` file to help you get started quickly:

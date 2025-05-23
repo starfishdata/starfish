@@ -56,3 +56,28 @@ high-quality synthetic data that strictly adheres to the provided guidelines."""
         """,
     },
 }
+
+# QA pair generation prompt
+qa_generation = """
+    Create {num_pairs} question-answer pairs from this text for LLM training.
+    
+    Rules:
+    1. Questions must be about important facts in the text
+    2. Answers must be directly supported by the text
+    3. Return JSON format only:
+    
+    [
+      {{
+        "question": "Question 1?",
+        "answer": "Answer 1."
+      }},
+      {{
+        "question": "Question 2?",
+        "answer": "Answer 2."
+      }}
+    ]
+    
+    Text:
+    {text}
+
+"""

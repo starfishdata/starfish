@@ -107,7 +107,7 @@ class FactoryExecutorManager:
 
             dead_input_data = []
             dead_input_indices = []
-            for task_data in list(factory.job_manager.dead_queue.queue):
+            for task_data in factory.job_manager.dead_queue._queue:
                 dead_input_data.append(task_data)
                 dead_input_indices.append(task_data[IDX])
 
