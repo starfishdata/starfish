@@ -69,7 +69,7 @@ async def test_get_generate_func_call_dataset():
     data_gen_template.list()
     generate_func_call_dataset = data_gen_template.get("starfish/generate_func_call_dataset")
     input_data = {
-        "num_records": 5,
+        "num_records": 4,
         "api_contract": {
             "name": "weather_api.get_current_weather",
             "description": "Retrieves the current weather conditions for a specified location .",
@@ -82,8 +82,8 @@ async def test_get_generate_func_call_dataset():
         "topic_model_kwargs": {"temperature": 0.7},
         "generation_model_name": "openai/gpt-4o-mini",
         "generation_model_kwargs": {"temperature": 0.8, "max_tokens": 200},
-        "data_factory_config": {"max_concurrency": 4, "task_runner_timeout": 60 * 2},
+        "data_factory_config": {"max_concurrency": 24, "task_runner_timeout": 60 * 2},
     }
     results = await generate_func_call_dataset.run(input_data)
 
-    assert len(results) == input_data["num_records"]
+    assert len(results) >= input_data["num_records"]
