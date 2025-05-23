@@ -1,12 +1,12 @@
 from starfish import data_factory, StructuredLLM
 from starfish.components.prepare_topic import prepare_topic
-from starfish.data_template.template_gen import data_gen_template
+from starfish import data_gen_template
 from pydantic import BaseModel
 
 from typing import Optional, List, Union, Dict, Any
 import random
 
-from starfish.data_template.templates.starfish.gen_topics.utils import fetch_values_by_topic, save_value_by_topic
+from .utils import fetch_values_by_topic, save_value_by_topic
 
 
 ## Pydantic Input Schema

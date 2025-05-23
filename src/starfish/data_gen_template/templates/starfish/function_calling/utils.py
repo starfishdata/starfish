@@ -2,10 +2,99 @@ from starfish import data_factory, StructuredLLM
 from starfish.components.prepare_topic import generate_topics
 from typing import Optional, List, Dict, Any
 from starfish.common.logger import get_logger
+import math
 
 logger = get_logger(__name__)
-num_records_ = 5
-sub_topic_num = 5
+
+
+def calculate_balanced_distribution(target_records: int, max_per_subtopic: int = 10) -> Dict[str, int]:
+    """
+    Calculate a balanced distribution of topics, subtopics, and records.
+
+    Rules:
+    1. If <= 10 records: 1 topic, 1 subtopic, X records
+    2. If > 10 records: Balance topics and subtopics, maximize records per subtopic
+    3. Prefer higher records per subtopic, then better balance, then fewer API calls
+
+    Args:
+        target_records: Number of records to generate
+        max_per_subtopic: Maximum records per subtopic (default: 10)
+
+    Returns:
+        Dict with num_topics, subtopics_per_topic, records_per_subtopic, total_subtopics, api_calls
+    """
+
+    # Simple case: small numbers
+    if target_records <= max_per_subtopic:
+        return {
+            "num_topics": 1,
+            "subtopics_per_topic": 1,
+            "records_per_subtopic": target_records,
+            "total_subtopics": 1,
+            "api_calls": 3,  # 1 + 1 topic + 1 subtopic
+        }
+
+    best_distribution = None
+
+    # Try different records per subtopic (prioritize higher numbers first)
+    for records_per_subtopic in range(max_per_subtopic, 0, -1):
+        # Calculate how many subtopics we need
+        total_subtopics_needed = math.ceil(target_records / records_per_subtopic)
+
+        # Find all factor pairs of total_subtopics_needed
+        factors = []
+        for num_topics in range(1, int(math.sqrt(total_subtopics_needed)) + 1):
+            if total_subtopics_needed % num_topics == 0:
+                subtopics_per_topic = total_subtopics_needed // num_topics
+                factors.append((num_topics, subtopics_per_topic))
+
+        # Also add the reverse factors
+        for num_topics, subtopics_per_topic in factors[:]:
+            if (subtopics_per_topic, num_topics) not in factors:
+                factors.append((subtopics_per_topic, num_topics))
+
+        # Find the best factor pair for this records_per_subtopic
+        best_for_this_level = None
+        min_balance_score = float("inf")
+        min_api_calls = float("inf")
+
+        for num_topics, subtopics_per_topic in factors:
+            total_generated = num_topics * subtopics_per_topic * records_per_subtopic
+
+            # Calculate API calls: 1 + num_topics + total_subtopics
+            api_calls = 1 + num_topics + (num_topics * subtopics_per_topic)
+
+            if total_generated >= target_records:
+                # Balance score: prefer closer to equal topics and subtopics
+                balance_score = abs(num_topics - subtopics_per_topic)
+
+                is_better = False
+
+                # For this level of records_per_subtopic, prefer balance first, then API calls
+                if balance_score < min_balance_score:
+                    is_better = True
+                elif balance_score == min_balance_score and api_calls < min_api_calls:
+                    is_better = True
+
+                if is_better:
+                    min_balance_score = balance_score
+                    min_api_calls = api_calls
+                    best_for_this_level = {
+                        "num_topics": num_topics,
+                        "subtopics_per_topic": subtopics_per_topic,
+                        "records_per_subtopic": records_per_subtopic,
+                        "total_subtopics": num_topics * subtopics_per_topic,
+                        "api_calls": api_calls,
+                    }
+
+        # Since we try higher records_per_subtopic first, take the first perfect solution
+        if best_for_this_level and (num_topics * subtopics_per_topic * records_per_subtopic == target_records):
+            best_distribution = best_for_this_level
+            break
+        elif best_for_this_level and best_distribution is None:
+            best_distribution = best_for_this_level
+
+    return best_distribution
 
 
 @data_factory(max_concurrency=20)
@@ -141,10 +230,10 @@ async def verify_queries_with_llm(model_name, query, answer, api_contract):
                 result = semantic_checker_llm_result.data[0]  # Assuming one output per run
                 match_status = result.get("match")
                 reason = result.get("reason")
-                logger.info(f"Query: '{query}'")
-                logger.info(f"Answer: '{answer}'")
-                logger.info(f"  semantic checker Result: {match_status}")
-                logger.info(f"  Reason: {reason}")
+                # logger.info(f"Query: '{query}'")
+                # logger.info(f"Answer: '{answer}'")
+                # logger.info(f"  semantic checker Result: {match_status}")
+                # logger.info(f"  Reason: {reason}")
                 reason_arr.append(reason)
                 if match_status == "Yes":
                     semantic_checker_passed = True
@@ -162,7 +251,7 @@ async def generate_sub_topic(
     model_kwargs: Optional[Dict[str, Any]] = None,
     existing_topics: Optional[List[str]] = None,
 ):
-    user_instruction = f"{user_instruction}, generate sub topics with different location in each sub topic based on the topic of {topic}"
+    user_instruction = f"{user_instruction}, generate sub topic on the topic of {topic}"
     sub_topics = await generate_topics(
         user_instruction=user_instruction, num_topics=num_topics, model_name=model_name, model_kwargs=model_kwargs, existing_topics=existing_topics
     )
@@ -196,7 +285,7 @@ async def generate_sub_topic(
 #                 ]
 #             }
 @data_factory(max_concurrency=30)
-async def generator_query_answer(model_name, api_contract: dict, topic: str):
+async def generator_query_answer(model_name, api_contract: dict, topic: str, num_records: int = 5):
     query_answer_generator_prompt = """
         You are a data labeler. The responsibility for you is to generate a set of diverse queries and corresponding answers for the given functions in JSON format.
         Construct queries and answers that exemplifies how to use these functions in a practical scenario. Include in each query specific, plausible values for each parameter. For instance, if the function requires a date, use a typical and reasonable date.
@@ -251,7 +340,7 @@ async def generator_query_answer(model_name, api_contract: dict, topic: str):
         func_name=api_contract["name"],
         func_desc=api_contract["description"] + " in this topic :  " + topic,
         func_params=api_contract["parameters"],
-        num_records=num_records_,
+        num_records=num_records,
     )
     return query_answer_pairs.data
 

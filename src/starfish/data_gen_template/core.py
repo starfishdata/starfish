@@ -7,7 +7,7 @@ import ast
 from typing import Any, Union, List, Dict
 import inspect
 
-from starfish.data_template.utils.error import DataTemplateValueError, ImportModuleError, ImportPackageError
+from starfish.data_gen_template.utils.errors import DataTemplateValueError, ImportModuleError, ImportPackageError
 
 
 def _check_dependencies(dependencies: list[str]) -> None:
@@ -159,7 +159,7 @@ class data_gen_template:
                     # Find all .py files in the subdirectory
                     for template_file in sub_subdir.glob("*.py"):
                         try:
-                            module_name = f"starfish.data_template.templates.{subdir.name}.{sub_subdir.name}.{template_file.stem}"
+                            module_name = f"starfish.data_gen_template.templates.{subdir.name}.{sub_subdir.name}.{template_file.stem}"
                             # Parse the file's AST to extract decorator information
                             with open(template_file, "r") as f:
                                 tree = ast.parse(f.read())
