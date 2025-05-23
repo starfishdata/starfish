@@ -5,6 +5,7 @@ import pydantic
 import importlib.util
 import ast
 from typing import Any, Union, List, Dict
+import inspect
 
 from starfish.data_template.utils.error import DataTemplateValueError, ImportModuleError, ImportPackageError
 
@@ -53,40 +54,87 @@ class Template:
         # Add run method if not present
         if not hasattr(self.func, "run"):
             self.func.run = lambda *args, **kwargs: self.func(*args, **kwargs)
-            if not self.input_schema:
-                raise DataTemplateValueError("missing input_schema_validator")
+
+        # Detect if function expects a single input_data parameter
+        self.expects_model_input = False
+        try:
+            self.func_signature = inspect.signature(self.func)
+
+            # Check if the function has a single parameter that matches the input_schema type
+            if len(self.func_signature.parameters) == 1:
+                param_name, param = next(iter(self.func_signature.parameters.items()))
+                # Check if the parameter has an annotation matching input_schema
+                if param.annotation == self.input_schema:
+                    self.expects_model_input = True
+        except (TypeError, ValueError):
+            # Can't get signature (e.g., for data_factory decorated functions)
+            # Default to False (use individual parameters) which is safer
+            self.expects_model_input = False
 
         # Check dependencies on initialization
         # if self.dependencies:
         #     _check_dependencies(self.dependencies)
 
-    def run(self, *args, **kwargs) -> Any:
-        """Execute the wrapped function with schema validation."""
-        # Pre-run hook: Validate input schema
-        try:
-            # Validate input against schema
-            if self.input_schema:
-                if args:
-                    self.input_schema.validate(args[0])
-                elif kwargs:
-                    self.input_schema.validate(kwargs)
-        except pydantic.ValidationError as e:
-            raise DataTemplateValueError(f"Input validation failed: {str(e)}")
+    async def run(self, *args, **kwargs) -> Any:
+        """Execute the wrapped function with schema validation.
 
-        # Execute the function
+        This method supports multiple calling patterns:
+        - template.run(param1=val1, param2=val2)  # Keyword arguments
+        - template.run({"param1": val1, "param2": val2})  # Dictionary
+        - template.run(model_instance)  # Pydantic model instance
+
+        The template function can be defined in two ways:
+        1. Taking a single Pydantic model parameter: func(input_data: Model)
+        2. Taking individual parameters: func(param1, param2, param3)
+
+        In all cases, validation happens through the Pydantic model.
+        """
+        # STEP 1: Get a validated Pydantic model instance from the inputs
+        validated_model = self._get_validated_model(args, kwargs)
+
+        # STEP 2: Call the function with appropriate arguments based on its signature
         try:
-            result = self.func.run(*args, **kwargs)
+            if self.expects_model_input:
+                # Pass the whole model to functions expecting a model parameter
+                result = await self.func.run(validated_model)
+            else:
+                # Expand model fields for functions expecting individual parameters
+                result = await self.func.run(**validated_model.model_dump())
         except Exception as e:
             raise DataTemplateValueError(f"Template execution failed: {str(e)}")
 
-        # Post-run hook: Validate output schema
+        # STEP 3: Validate the output if an output schema is provided
         if self.output_schema is not None:
             try:
-                self.output_schema.validate(result)
+                # Use model_validate instead of validate (which is deprecated in Pydantic v2)
+                self.output_schema.model_validate(result)
             except pydantic.ValidationError as e:
                 raise DataTemplateValueError(f"Output validation failed: {str(e)}")
 
         return result
+
+    def _get_validated_model(self, args, kwargs):
+        """Convert input arguments into a validated Pydantic model instance."""
+        # Case 1: User passed a model instance directly
+        if len(args) == 1 and isinstance(args[0], self.input_schema):
+            return args[0]
+
+        # Case 2: User passed a dictionary as the first positional argument
+        if len(args) == 1 and isinstance(args[0], dict):
+            # Merge dictionary with any keyword arguments
+            input_data = {**args[0], **kwargs}
+        # Case 3: User passed keyword arguments only
+        elif not args:
+            input_data = kwargs
+        # Case 4: Invalid input (multiple positional args or wrong type)
+        else:
+            raise DataTemplateValueError("Invalid arguments: Please provide either keyword arguments, " "a single dictionary, or a model instance.")
+
+        # Validate and return a model instance
+        try:
+            return self.input_schema.model_validate(input_data)
+        except pydantic.ValidationError as e:
+            raise DataTemplateValueError(f"Input validation failed: {str(e)}")
 
 
 # ====================
@@ -107,11 +155,11 @@ class data_gen_template:
         if len(result) == 0:
             # Walk through all subdirectories in templates folder
             for subdir in templates_dir.iterdir():
-                if subdir.is_dir():
+                for sub_subdir in subdir.iterdir():
                     # Find all .py files in the subdirectory
-                    for template_file in subdir.glob("*.py"):
+                    for template_file in sub_subdir.glob("*.py"):
                         try:
-                            module_name = f"starfish.data_template.templates.{subdir.name}.{template_file.stem}"
+                            module_name = f"starfish.data_template.templates.{subdir.name}.{sub_subdir.name}.{template_file.stem}"
                             # Parse the file's AST to extract decorator information
                             with open(template_file, "r") as f:
                                 tree = ast.parse(f.read())

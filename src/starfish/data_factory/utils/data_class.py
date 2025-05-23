@@ -122,6 +122,45 @@ class FactoryMasterConfig:
 
         return json.dumps(self.to_dict(), indent=2)
 
+    def update(self, data: dict):
+        """Update the configuration from a dictionary.
+
+        This method updates the configuration fields from a dictionary. It handles
+        the deserialization of callable functions using cloudpickle.
+
+        Args:
+            data (dict): Dictionary containing the configuration data. Expected keys:
+                - storage: Storage type string
+                - master_job_id: Unique job identifier
+                - project_id: Project identifier
+                - batch_size: Number of records per batch
+                - target_count: Total records to process
+                - max_concurrency: Maximum concurrent tasks
+                - show_progress: Whether to show progress
+                - task_runner_timeout: Task timeout in seconds
+                - on_record_complete: List of callable strings for record completion
+                - on_record_error: List of callable strings for record errors
+                - run_mode: Execution mode string
+                - job_run_stop_threshold: Job retry threshold
+
+        Raises:
+            ValueError: If invalid fields are provided
+            cloudpickle.PickleError: If callable deserialization fails
+        """
+        if not isinstance(data, dict):
+            raise ValueError("Input must be a dictionary")
+
+        # Handle callable deserialization
+        if "on_record_complete" in data:
+            self.on_record_complete = [cloudpickle.loads(bytes.fromhex(c)) if c else None for c in data["on_record_complete"]]
+        if "on_record_error" in data:
+            self.on_record_error = [cloudpickle.loads(bytes.fromhex(c)) if c else None for c in data["on_record_error"]]
+
+        # Update other fields
+        for key, value in data.items():
+            if key not in ["on_record_complete", "on_record_error"] and hasattr(self, key):
+                setattr(self, key, value)
+
 
 @dataclass
 class FactoryJobConfig:

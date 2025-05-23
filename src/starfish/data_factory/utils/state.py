@@ -22,7 +22,7 @@ class MutableSharedState(BaseModel):
                          the state will be initialized with a copy of this dictionary.
         """
         super().__init__()
-        self._lock = threading.Lock()  # Changed to threading.Lock
+        self._lock = threading.RLock()  # Changed to threading.Lock
         if initial_data is not None:
             self._data = initial_data.copy()
 
