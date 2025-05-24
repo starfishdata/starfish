@@ -92,7 +92,7 @@ jobs:
             --stdout \
             examples/data_factory.ipynb; then
             echo "::error::Notebook execution failed"
-
+            exit 1
           fi
           echo "Notebook executed successfully. Summary:" && \
           jupyter nbconvert --to markdown --stdout \
