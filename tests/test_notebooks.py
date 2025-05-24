@@ -13,7 +13,7 @@ from pathlib import Path
 def get_notebooks(base_dir=None):
     """Find all test notebooks in the project directory."""
     if base_dir is None:
-        base_dir = Path(__file__).parent.parent
+        base_dir = Path(__file__).parent
     else:
         base_dir = Path(base_dir)
 
