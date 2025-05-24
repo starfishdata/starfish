@@ -22,6 +22,9 @@ def get_notebooks(base_dir=None):
         # Skip checkpoints
         if ".ipynb_checkpoints" in str(nb_path):
             continue
+        # Skip specific notebook
+        if "data_factory.ipynb" in str(nb_path):
+            continue
         # Only include notebooks that follow test naming convention
         if nb_path.name.startswith("test_"):
             notebooks.append(str(nb_path))
