@@ -57,7 +57,6 @@ async def test_get_generate_by_topic_Success():
         ],
         "data_factory_config": {"max_concurrency": 4, "task_runner_timeout": 60 * 2},
     }
-    # results = topic_generator_temp.run(input_data.model_dump())
     results = await topic_generator_temp.run(input_data)
 
     assert len(results) == num_records
