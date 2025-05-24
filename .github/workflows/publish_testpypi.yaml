@@ -9,7 +9,7 @@ on:
 
 jobs:
   deploy_testpypi:
-    if: true
+    #if: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -44,7 +44,7 @@ jobs:
         twine upload --verbose --repository-url https://test.pypi.org/legacy/ dist/*
 
   test-colab:
-    #needs: deploy_testpypi
+    needs: deploy_testpypi
     runs-on: ubuntu-latest
     #a Public "Colab-like" Image
     container:
