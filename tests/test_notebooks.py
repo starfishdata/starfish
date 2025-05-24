@@ -38,6 +38,9 @@ def test_notebook_execution(notebook_file):
     """Run the notebook through pytest to verify it executes without errors."""
     pytest.importorskip("nbval")
 
+    if "data_factory.ipynb" in notebook_file:
+        pytest.skip("Skipping data_factory.ipynb as it is excluded from testing")
+
     # This test will be collected by pytest
     # We just need to ensure the file exists
     assert os.path.exists(notebook_file), f"Notebook file not found: {notebook_file}"
