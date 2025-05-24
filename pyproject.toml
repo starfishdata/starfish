@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "starfish-core"
-version = "0.1.3.2"
+version = "0.1.3"
 description = ""
 authors = ["Starfish AI Inc."]
 readme = "README.md"
