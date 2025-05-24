@@ -4,10 +4,13 @@ from packaging import requirements
 import pydantic
 import importlib.util
 import ast
-from typing import Any, Union, List, Dict
+from typing import Any, Union, List, Dict, get_type_hints
 import inspect
-
+import json
 from starfish.data_gen_template.utils.errors import DataTemplateValueError, ImportModuleError, ImportPackageError
+from starfish.common.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _check_dependencies(dependencies: list[str]) -> None:
@@ -40,11 +43,21 @@ class Template:
     """Class representing a single template instance."""
 
     def __init__(
-        self, name: str, func: callable, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list[str]
+        self,
+        name: str,
+        func: callable,
+        input_schema: type,
+        input_example: str,
+        output_schema: type,
+        description: str,
+        author: str,
+        starfish_version: str,
+        dependencies: list[str],
     ):
         self.name = name
         self.func = func
         self.input_schema = input_schema
+        self.input_example = input_example
         self.output_schema = output_schema
         self.description = description
         self.author = author
@@ -112,6 +125,17 @@ class Template:
                 raise DataTemplateValueError(f"Output validation failed: {str(e)}")
 
         return result
+
+    def print_schema(self):
+        type_hints = get_type_hints(self.func)
+        input_schema = type_hints.get("input_data").schema()
+        # Pretty print the schema
+        logger.info("Please run the template with this input schema")
+        logger.info(json.dumps(input_schema, indent=4))
+
+    def print_example(self):
+        logger.info("Here is an example with api_contract.name as weather_api.get_current_weather")
+        logger.info(self.input_example)  # Pretty print with 4-space indentation
 
     def _get_validated_model(self, args, kwargs):
         """Convert input arguments into a validated Pydantic model instance."""
@@ -221,14 +245,16 @@ class data_gen_template:
         return data_gen_template._template_instance_registry[template_name]
 
     @staticmethod
-    def register(name: str, input_schema: type, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list):
+    def register(
+        name: str, input_schema: type, input_example: str, output_schema: type, description: str, author: str, starfish_version: str, dependencies: list
+    ):
         """Decorator factory for registering data templates."""
 
         def decorator(func: callable):
             # Check if this is an import call (function already has _is_template flag)
             if name not in data_gen_template._template_instance_registry:
                 data_gen_template._template_instance_registry[name] = Template(
-                    name, func, input_schema, output_schema, description, author, starfish_version, dependencies
+                    name, func, input_schema, input_example, output_schema, description, author, starfish_version, dependencies
                 )
             return func
 

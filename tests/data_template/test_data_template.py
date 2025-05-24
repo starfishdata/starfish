@@ -2,7 +2,7 @@ import nest_asyncio
 import pytest
 import os
 from starfish.common.env_loader import load_env_file
-from starfish.data_template.template_gen import data_gen_template
+from starfish import data_gen_template
 
 nest_asyncio.apply()
 load_env_file()

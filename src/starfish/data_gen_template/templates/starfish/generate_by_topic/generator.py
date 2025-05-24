@@ -41,6 +41,27 @@ class GenerateByTopicInput(BaseModel):
     author="Wendao Liu",
     starfish_version="0.1.3",
     dependencies=[],
+    input_example="""{
+        "user_instruction": "Generate Q&A pairs about machine learning concepts",
+        "num_records": 100,
+        "records_per_topic": 5,
+        "topics": [
+            "supervised learning",
+            "unsupervised learning",
+            {"reinforcement learning": 3},  # This means generate 3 records for this topic
+            "neural networks",
+        ],
+        "topic_model_name": "openai/gpt-4",
+        "topic_model_kwargs": {"temperature": 0.7},
+        "generation_model_name": "openai/gpt-4",
+        "generation_model_kwargs": {"temperature": 0.8, "max_tokens": 200},
+        "output_schema": [
+            {"name": "question", "type": "str"},
+            {"name": "answer", "type": "str"},
+            {"name": "difficulty", "type": "str"},  # Added an additional field
+        ],
+        "data_factory_config": {"max_concurrency": 4, "task_runner_timeout": 60 * 2},
+    }""",
 )
 async def generate_by_topic(input_data: GenerateByTopicInput):
     """

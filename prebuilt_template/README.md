@@ -14,12 +14,40 @@ Data generation templates are **prebuilt** that encapsulate sophisticated data g
 4. **Generate Data**: Run the template to produce high-quality synthetic data
 5. **Export & Use**: Data comes ready for training, testing, or evaluation
 
+## Use the data-template CLI like this:
+```
+# List all templates
+data-template list-templates
+
+# List with details
+data-template list-templates --detail
+
+# Get template details
+data-template get-template my_template
+
+# Print schema
+data-template print-schema my_template
+
+# Print example
+data-template print-example my_template
+
+# Run template with interactive input
+data-template run-template my_template
+
+# Run template with input file
+data-template run-template my_template --input-file input.json
+
+# Run template and save output
+data-template run-template my_template --input-file input.json --output-file output.json
+```
 ## Source Code Location
 
 The actual implementation of these templates can be found in:
 ```
 src/starfish/data_gen_template/templates/
 ```
+
+
 
 ## Community & Contributions 🤝
 

@@ -74,6 +74,7 @@ nbval = "^0.11.0"
 
 [tool.poetry.scripts]
 starfish = "starfish.api.cli:main"
+data-template = "src.starfish.data_gen_template.cli:main"
 
 
 [tool.ruff]
