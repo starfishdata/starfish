@@ -6,6 +6,7 @@ on:
       - 'test-v*'
     branches:
       - 'f/pypi_release'
+      - 'dev'
 
 jobs:
   deploy_testpypi:
