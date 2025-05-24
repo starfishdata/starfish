@@ -9,7 +9,7 @@ on:
 
 jobs:
   deploy_testpypi:
-    if: false
+    if: true
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
