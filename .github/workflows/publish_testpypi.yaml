@@ -57,6 +57,7 @@ jobs:
         with:
           sparse-checkout: |
             tests/*
+            examples/data_factory.ipynb
           sparse-checkout-cone-mode: false
       - name: Update system packages
         run: |
@@ -88,13 +89,13 @@ jobs:
             --ExecutePreprocessor.timeout=120 \
             --no-prompt --no-input \
             --stdout \
-            tests/data_factory/factory/data_factory.ipynb; then
+            examples/data_factory.ipynb; then
             echo "::error::Notebook execution failed"
 
           fi
           echo "Notebook executed successfully. Summary:" && \
           jupyter nbconvert --to markdown --stdout \
-            tests/data_factory/factory/data_factory.ipynb | \
+            examples/data_factory.ipynb | \
             grep -E '^#|^##' || true
 
       # Add tag deletion step
