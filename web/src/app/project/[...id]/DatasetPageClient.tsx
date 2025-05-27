@@ -392,7 +392,7 @@ export default function DatasetPageClient({ projectId, initialProject, inputFine
     try {
       await createFineTuneRun(projectId, openAIKey, openAIModel, parseInt(selectedFineTuneVersion?.replace('V', ''), 10), filterFineTuneDownvoted, parseInt(filterFineTuneScore))
       const jobs = await getAllFineTuningJobForProject(projectId);
-
+      //const jobs = []
       setFineTuneJobs(jobs);
       setIsModalOpen(false)
       setModalError('')
@@ -639,9 +639,9 @@ export default function DatasetPageClient({ projectId, initialProject, inputFine
     
     <Tabs defaultValue="generate" className="mb-8">
         <TabsList className="bg-pink-100">
-          <TabsTrigger value="generate" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Generate</TabsTrigger>
-          <TabsTrigger value="evaluate" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Evaluate</TabsTrigger>
-          <TabsTrigger value="finetune" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Finetune</TabsTrigger>
+          <TabsTrigger value="generate" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Data Factory</TabsTrigger>
+          <TabsTrigger value="evaluate" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Data Template</TabsTrigger>
+          <TabsTrigger value="finetune" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Data Injection</TabsTrigger>
           <TabsTrigger value="export" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Export</TabsTrigger>
         </TabsList>
       
@@ -666,7 +666,7 @@ export default function DatasetPageClient({ projectId, initialProject, inputFine
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label htmlFor="numRecords" className="block text-sm font-medium text-gray-700 mb-2">
-                    Number of Records
+                    Max Concurrency
                   </label>
                   <Input
                     type="number"

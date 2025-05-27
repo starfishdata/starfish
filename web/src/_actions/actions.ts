@@ -55,13 +55,42 @@ export async function getAllProjectsOfUser() {
     // });
 
     //return output;
-    return []
+    const sampleProject = {
+      id: 'proj_12345',
+      userId: 'user_67890',
+      name: 'My AI Project',
+      description: 'A project for testing AI models',
+      datapoints: [],
+      seedDatapoints: [],
+      finetuneJobs: [],
+      exportJobs: [],
+      jobs: [],
+      seedDataUploadJobs: [],
+      latestSeedFile: 'seed_data_20231001.json',
+      latestDatasetVersion: 1
+    };
+    return [sampleProject]
 }
 
 export async function getProjectById(id: string) {
-    const { data: project } = await cookieBasedClient.models.Project.get({
-        id: id as string
-      });
+    // const { data: project } = await cookieBasedClient.models.Project.get({
+    //     id: id as string
+    //   });
+
+      const project = {
+        id: 'proj_12345',
+        userId: 'user_67890',
+        name: 'My AI Project',
+        description: 'A project for testing AI models',
+        datapoints: [],
+        seedDatapoints: [],
+        finetuneJobs: [],
+        exportJobs: [],
+        jobs: [],
+        seedDataUploadJobs: [],
+        latestSeedFile: 'seed_data_20231001.json',
+        latestDatasetVersion: 1
+      };
       
     return {
         name: project?.name,
@@ -93,27 +122,28 @@ export async function getAllDataPointsByProjectId(id: string) {
 }
 
 export async function getDataPointsByProjectIdAndVersion(id: string, version: number | null | undefined) {
-  if (version == null || version == undefined) {
-    version = 0;
-  }
+  // if (version == null || version == undefined) {
+  //   version = 0;
+  // }
 
-  const datapoints = await fetchAllDataPointsByVersion(id, version);
+  // const datapoints = await fetchAllDataPointsByVersion(id, version);
 
-  const output = datapoints?.map((datapoint) => ({
-      id: datapoint.id,
-      name: datapoint.name,
-      type: datapoint.type,
-      data: datapoint.data,
-      topic: datapoint.topic,
-      liked: datapoint.liked,
-      qualityScore: datapoint.qualityScore * 10
-  }));
+  // const output = datapoints?.map((datapoint) => ({
+  //     id: datapoint.id,
+  //     name: datapoint.name,
+  //     type: datapoint.type,
+  //     data: datapoint.data,
+  //     topic: datapoint.topic,
+  //     liked: datapoint.liked,
+  //     qualityScore: datapoint.qualityScore * 10
+  // }));
 
-  if (output == undefined) {
-    return null;
-  }
+  // if (output == undefined) {
+  //   return null;
+  // }
 
-  return output;
+  // return output;
+  return null;
 }
 
 export async function createUser() {
@@ -202,52 +232,54 @@ async function fetchAllDataPoints(id: string) {
 }
 
 async function fetchAllDataPointsByVersion(id: string, version: number) {
-  let datapoints: any = await cookieBasedClient.models.Datapoint.listDatapointByProjectIdAndVersion({
-    projectId: id,
-    version: {
-      eq: version
-    }
-  },
-  {
-    limit: 1000
-  });
+  // let datapoints: any = await cookieBasedClient.models.Datapoint.listDatapointByProjectIdAndVersion({
+  //   projectId: id,
+  //   version: {
+  //     eq: version
+  //   }
+  // },
+  // {
+  //   limit: 1000
+  // });
 
-  let allData = [...datapoints?.data];
-  let nextToken = datapoints?.nextToken;
+  // let allData = [...datapoints?.data];
+  // let nextToken = datapoints?.nextToken;
   
-  while (nextToken !== null) {
-    datapoints = await cookieBasedClient.models.Datapoint.listDatapointByProjectIdAndVersion({
-      projectId: id,
-      version: {
-        eq: version
-      }
-    }, 
-    {
-      limit: 1000,
-      nextToken: datapoints?.nextToken
-    });
-    allData = [...allData, ...datapoints?.data];
-    nextToken = datapoints.nextToken;
-  }
+  // while (nextToken !== null) {
+  //   datapoints = await cookieBasedClient.models.Datapoint.listDatapointByProjectIdAndVersion({
+  //     projectId: id,
+  //     version: {
+  //       eq: version
+  //     }
+  //   }, 
+  //   {
+  //     limit: 1000,
+  //     nextToken: datapoints?.nextToken
+  //   });
+  //   allData = [...allData, ...datapoints?.data];
+  //   nextToken = datapoints.nextToken;
+  // }
 
-  return allData;
+  // return allData;
+
+  return []
 }
 
 
 export async function fetchLatestGenerationJobByProjectId(projectId: string) {
-  let generationJobs: any = await cookieBasedClient.models.Job.listJobByProjectId({
-      projectId: projectId
-    },
-    {
-      limit: 1000
-    });
+  // let generationJobs: any = await cookieBasedClient.models.Job.listJobByProjectId({
+  //     projectId: projectId
+  //   },
+  //   {
+  //     limit: 1000
+  //   });
 
-  const sortedAndFiltered = generationJobs?.data
-  .filter((job: any) => job.type === 'GENERATION')
-  .sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // const sortedAndFiltered = generationJobs?.data
+  // .filter((job: any) => job.type === 'GENERATION')
+  // .sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const latestJob = sortedAndFiltered?.length > 0 ? sortedAndFiltered[0] : [];
-
+  // const latestJob = sortedAndFiltered?.length > 0 ? sortedAndFiltered[0] : [];
+  const latestJob = []
   if (latestJob.length == 0) {
     return {
       jobId: null,
@@ -258,13 +290,13 @@ export async function fetchLatestGenerationJobByProjectId(projectId: string) {
     }
   }
 
-  return {
-    jobId: latestJob.id,
-    status: latestJob.status,
-    numberOfRecords: latestJob.inputNumOfRecords,
-    model: latestJob.model,
-    prompt: latestJob.userPrompt
-  }
+  // return {
+  //   jobId: latestJob.id,
+  //   status: latestJob.status,
+  //   numberOfRecords: latestJob.inputNumOfRecords,
+  //   model: latestJob.model,
+  //   prompt: latestJob.userPrompt
+  // }
 }
 
 export async function likeDataPoint(datapointId: string, liked: number) {
@@ -275,31 +307,44 @@ export async function likeDataPoint(datapointId: string, liked: number) {
 }
 
 export async function getJobDataForProjectAndVersion(projectId: string, version: number | null | undefined) {
-  const allJobs: any = await cookieBasedClient.models.Job.listJobByProjectId({
-    projectId: projectId
-  }, {
-    limit: 1000
-  });
+  // const allJobs: any = await cookieBasedClient.models.Job.listJobByProjectId({
+  //   projectId: projectId
+  // }, {
+  //   limit: 1000
+  // });
 
-  const latestGenerationJob = allJobs?.data
-  .filter((job: { type: string; version: number }) => job.type === 'GENERATION' && job.version === version)
-  .sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] || null;
+  // const latestGenerationJob = allJobs?.data
+  // .filter((job: { type: string; version: number }) => job.type === 'GENERATION' && job.version === version)
+  // .sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] || null;
 
-  const latestEvaluationJob = allJobs?.data
-  .filter((job: { type: string; version: number }) => job.type === 'EVALUATION' && job.version === version)
-  .sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] || null;
+  // const latestEvaluationJob = allJobs?.data
+  // .filter((job: { type: string; version: number }) => job.type === 'EVALUATION' && job.version === version)
+  // .sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] || null;
 
-  return {
+  // return {
+  //   generationJob: {
+  //     jobId: latestGenerationJob?.id,
+  //     status: latestGenerationJob?.status,
+  //   },
+  //   evaluationJob: {
+  //     jobId: latestEvaluationJob?.id,
+  //     status: latestEvaluationJob?.status,
+  //     averageQualityScore: latestEvaluationJob?.averageQualityScore * 10,
+  //   }
+  // }
+
+  const sampleJobData = {
     generationJob: {
-      jobId: latestGenerationJob?.id,
-      status: latestGenerationJob?.status,
+      jobId: 'gen_job_12345',
+      status: 'COMPLETE'
     },
     evaluationJob: {
-      jobId: latestEvaluationJob?.id,
-      status: latestEvaluationJob?.status,
-      averageQualityScore: latestEvaluationJob?.averageQualityScore * 10,
+      jobId: 'eval_job_67890',
+      status: 'RUNNING',
+      averageQualityScore: 8.5
     }
-  }
+  };
+  return  sampleJobData
 }
 
 /** SEED DATA ACTIONS */
@@ -324,82 +369,85 @@ export async function updateSeedDataRunStatus(id: string, status: 'STARTING' | '
 }
 
 export async function fetchAllSeedDataPoints(projectId: string) {
-  const { data: seedDataPoints } = await cookieBasedClient.models.SeedDatapoint.list({
-    limit: 100,
-    filter: { projectId: { eq: projectId } }
-  });
+  // const { data: seedDataPoints } = await cookieBasedClient.models.SeedDatapoint.list({
+  //   limit: 100,
+  //   filter: { projectId: { eq: projectId } }
+  // });
 
-  let allData = [ ...seedDataPoints ];
+  // let allData = [ ...seedDataPoints ];
   
-  // while (seedDataPoints.nextToken !== null) {
-  //   allData = [...allData, ...seedDataPoints.data];
-  //   seedDataPoints = await project?.seedDatapoints({
-  //     limit: 1000,
-  //     nextToken: seedDataPoints.nextToken
-  //   });
+  // // while (seedDataPoints.nextToken !== null) {
+  // //   allData = [...allData, ...seedDataPoints.data];
+  // //   seedDataPoints = await project?.seedDatapoints({
+  // //     limit: 1000,
+  // //     nextToken: seedDataPoints.nextToken
+  // //   });
+  // // }
+
+  // const output = allData?.map((datapoint: { id: any; type: any; data: any; }) => ({
+  //   id: datapoint.id,
+  //   type: datapoint.type,
+  //   data: datapoint.data
+  // }));
+
+  // if (output == undefined || output == null) {
+  //   return [];
   // }
 
-  const output = allData?.map((datapoint: { id: any; type: any; data: any; }) => ({
-    id: datapoint.id,
-    type: datapoint.type,
-    data: datapoint.data
-  }));
-
-  if (output == undefined || output == null) {
-    return [];
-  }
-
-  return output;
+  // return output;
+  return []
 }
 
 export async function fetchSeedDataUploadJobStatus(projectId: string) {
-  let project = await cookieBasedClient.models.Project.get({
-    id: projectId,
-  });
+  // let project = await cookieBasedClient.models.Project.get({
+  //   id: projectId,
+  // });
 
-  const seedDatUploadJobs = await project.data?.seedDataUploadJobs();
+  // const seedDatUploadJobs = await project.data?.seedDataUploadJobs();
 
-  if (seedDatUploadJobs?.data == undefined || seedDatUploadJobs?.data == null || seedDatUploadJobs?.data.length == 0) {
-    return "NOT STARTED";
-  }
+  // if (seedDatUploadJobs?.data == undefined || seedDatUploadJobs?.data == null || seedDatUploadJobs?.data.length == 0) {
+  //   return "NOT STARTED";
+  // }
 
-  seedDatUploadJobs?.data.sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // seedDatUploadJobs?.data.sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  let status =  seedDatUploadJobs.data[0].status;
+  // let status =  seedDatUploadJobs.data[0].status;
 
-  if (status == null || status == undefined) {
-    return "NOT STARTED";
-  }
+  // if (status == null || status == undefined) {
+  //   return "NOT STARTED";
+  // }
 
-  return seedDatUploadJobs.data[0].status;
+  // return seedDatUploadJobs.data[0].status;
+  return "NOT STARTED";
 }
 
 
 /** FINE TUNING ACTIONS */
 export async function getAllFineTuningJobForProject(projectId: string) {
-  const { data: project } = await cookieBasedClient.models.Project.get({
-    id: projectId
-  });
+  // const { data: project } = await cookieBasedClient.models.Project.get({
+  //   id: projectId
+  // });
 
-  const finetuneJobs = await project?.finetuneJobs()
+  // const finetuneJobs = await project?.finetuneJobs()
 
 
-  finetuneJobs?.data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // finetuneJobs?.data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const output = finetuneJobs?.data.map((job) => ({
-    id: job.id,
-    type: job.type,
-    model: job.model,
-    events: JSON.parse(job.events as string),
-    status: job.status,
-    finetunedModel: job.finetunedModel
-  }));
+  // const output = finetuneJobs?.data.map((job) => ({
+  //   id: job.id,
+  //   type: job.type,
+  //   model: job.model,
+  //   events: JSON.parse(job.events as string),
+  //   status: job.status,
+  //   finetunedModel: job.finetunedModel
+  // }));
 
-  if (output == null || output == undefined) {
-    return [];
-  }
+  // if (output == null || output == undefined) {
+  //   return [];
+  // }
 
-  return output;
+  // return output;
+  return []
 }
 
 export async function checkJobEvents(jobId: string) {
@@ -615,26 +663,27 @@ async function backgroundUploadProcess(id: string, apiToken: string, exportJobId
 }
 
 export async function getAllExportJobForProject(projectId: string) {
-  const { data: project } = await cookieBasedClient.models.Project.get({
-    id: projectId
-  });
+  // const { data: project } = await cookieBasedClient.models.Project.get({
+  //   id: projectId
+  // });
 
-  const exportJobs = await project?.exportJobs()
+  // const exportJobs = await project?.exportJobs()
 
-  exportJobs?.data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // exportJobs?.data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const output = exportJobs?.data.map((job) => ({
-    id: job.id,
-    type: job.type,
-    events: JSON.parse(job.events as string),
-    status: job.status,
-    datasetUrl: job.datasetUrl
-  }));
+  // const output = exportJobs?.data.map((job) => ({
+  //   id: job.id,
+  //   type: job.type,
+  //   events: JSON.parse(job.events as string),
+  //   status: job.status,
+  //   datasetUrl: job.datasetUrl
+  // }));
 
-  if (output == null || output == undefined) {
-    return [];
-  }
-  return output;
+  // if (output == null || output == undefined) {
+  //   return [];
+  // }
+  // return output;
+  return []
 }
 
 async function updateEvents(progressEvent: any, jobId: string) {
@@ -654,28 +703,29 @@ async function updateEvents(progressEvent: any, jobId: string) {
 
 /** EVALUATION JOBS */
 export async function getAllEvaluationJobForProject(projectId: string) {
-  const allEvaluationJobsForProject = await cookieBasedClient.models.Job.listJobByProjectId({
-    projectId: projectId
-  },
-  {
-    limit: 1000,
-    filter: { type: { eq: 'EVALUATION' } },
-  });
+  // const allEvaluationJobsForProject = await cookieBasedClient.models.Job.listJobByProjectId({
+  //   projectId: projectId
+  // },
+  // {
+  //   limit: 1000,
+  //   filter: { type: { eq: 'EVALUATION' } },
+  // });
 
-  const sortedJobs = allEvaluationJobsForProject.data.sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => {
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  // const sortedJobs = allEvaluationJobsForProject.data.sort((a: { createdAt: string | number | Date; }, b: { createdAt: string | number | Date; }) => {
+  //   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  // });
 
-  const mappedJobs = sortedJobs.map(
-    (job: { id: any; status: any; version: any; averageQualityScore: any; }) => ({
-      id: job?.id,
-      status: job?.status,
-      version: job?.version,
-      overallScore: job?.averageQualityScore * 10
-    })
-  );
+  // const mappedJobs = sortedJobs.map(
+  //   (job: { id: any; status: any; version: any; averageQualityScore: any; }) => ({
+  //     id: job?.id,
+  //     status: job?.status,
+  //     version: job?.version,
+  //     overallScore: job?.averageQualityScore * 10
+  //   })
+  // );
 
-  return mappedJobs;
+  //return mappedJobs;
+  return []
 }
 
 export async function createEvaluationJob(projectId: string, version: number) {

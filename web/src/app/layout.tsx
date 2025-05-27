@@ -30,7 +30,7 @@ export default async function RootLayout({
       </head>
       <body className={inter.className}>
         <PostHogProvider>
-          <NavBar {isSignedIn} inputProjects={projects}>
+          <NavBar isSignedIn={isSignedIn} inputProjects={projects}>
             <div> {/* Adjust padding as needed */}
             {children}
               {/* <Auth>
