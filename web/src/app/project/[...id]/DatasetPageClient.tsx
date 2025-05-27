@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -16,6 +16,7 @@ import { uploadData } from 'aws-amplify/storage'
 import { Checkbox } from '@/src/components/ui/checkbox'
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { Badge } from '@/components/ui/badge'
+import Editor from '@monaco-editor/react'
 
 const openAIModels = [
   { value: 'gpt-4o-2024-08-06' },
@@ -643,6 +644,7 @@ export default function DatasetPageClient({ projectId, initialProject, inputFine
           <TabsTrigger value="evaluate" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Data Template</TabsTrigger>
           <TabsTrigger value="finetune" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Data Injection</TabsTrigger>
           <TabsTrigger value="export" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Export</TabsTrigger>
+          <TabsTrigger value="functions" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white">Functions</TabsTrigger>
         </TabsList>
       
       <TabsContent value="generate">
@@ -1536,6 +1538,53 @@ export default function DatasetPageClient({ projectId, initialProject, inputFine
                   )})}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="functions">
+          <Card>
+            <CardHeader>
+              <CardTitle>Python Functions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="h-[400px]">
+                  <Editor
+                    height="100%"
+                    defaultLanguage="python"
+                    defaultValue={`def process_data(data):\n    # Your code here\n    return processed_data`}
+                    theme="vs-dark"
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 14,
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      padding: { top: 10 },
+                    }}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button className="bg-pink-600 hover:bg-pink-700 text-white">
+                    Save Function
+                  </Button>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Saved Functions</h3>
+                  <div className="space-y-2">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm">process_data.py</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <pre className="text-sm text-gray-600">
+                          {`def process_data(data):\n    return data.upper()`}
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -42,7 +42,8 @@
     "swr": "^2.2.5",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
-    "xstate": "^5.19.2"
+    "xstate": "^5.19.2",
+    "@monaco-editor/react": "^4.5.0"
   },
   "devDependencies": {
     "@aws-amplify/backend": "^1.0.4",
