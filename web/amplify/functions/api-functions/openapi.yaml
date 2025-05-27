@@ -1,0 +1,176 @@
+openapi: 3.0.0
+info:
+  title: Starfish API
+  version: 1.0.0
+  description: API for generating and evaluating data using LLMs
+
+servers:
+  - url: /v1
+    description: API v1
+
+paths:
+  /generateData:
+    post:
+      summary: Generate data using LLM
+      description: Creates a new project and job for data generation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - prompt
+                - numOfRecords
+                - model
+              properties:
+                prompt:
+                  type: string
+                  description: The prompt to generate data from
+                numOfRecords:
+                  type: integer
+                  description: Number of records to generate
+                model:
+                  type: string
+                  enum:
+                    - gpt-4o-2024-08-06
+                    - gpt-4o-mini-2024-07-18
+                    - gpt-4-turbo-2024-04-09
+                  description: The LLM model to use for generation
+      responses:
+        '200':
+          description: Successfully created generation job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projectId:
+                    type: string
+                  jobId:
+                    type: string
+                  success:
+                    type: boolean
+
+  /jobStatus:
+    post:
+      summary: Get job status
+      description: Retrieve the status of a specific job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - jobId
+              properties:
+                jobId:
+                  type: string
+                  description: ID of the job to check status for
+      responses:
+        '200':
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  status:
+                    type: string
+                  type:
+                    type: string
+                  success:
+                    type: boolean
+
+  /data:
+    post:
+      summary: Fetch data
+      description: Retrieve data points for a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - projectId
+              properties:
+                projectId:
+                  type: string
+                  description: ID of the project to fetch data from
+                nextToken:
+                  type: string
+                  description: Token for pagination
+      responses:
+        '200':
+          description: Data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        data:
+                          type: object
+                        topic:
+                          type: string
+                        accuracyScore:
+                          type: number
+                        adherenceScore:
+                          type: number
+                        qualityScore:
+                          type: number
+                  nextToken:
+                    type: string
+                  averageQualityScore:
+                    type: number
+                  success:
+                    type: boolean
+
+  /evaluateData:
+    post:
+      summary: Evaluate data
+      description: Create a new evaluation job for a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - projectId
+              properties:
+                projectId:
+                  type: string
+                  description: ID of the project to evaluate
+      responses:
+        '200':
+          description: Successfully created evaluation job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projectId:
+                    type: string
+                  jobId:
+                    type: string
+                  success:
+                    type: boolean
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string 
