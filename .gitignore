@@ -1,4 +1,9 @@
 # Adhoc stuff
+input.json
+output.json
+.serena/
+docs/
+/vibe_coding/response.md
 /dev/
 todo
 .local/

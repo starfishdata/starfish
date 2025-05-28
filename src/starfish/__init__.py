@@ -8,9 +8,11 @@ Provides core components for:
 # Expose core directly from easy access
 from .data_factory.factory import data_factory
 from .llm.structured_llm import StructuredLLM
+from .data_gen_template.core import data_gen_template
 
 # Define what 'from starfish import *' imports (good practice)
 __all__ = [
     "StructuredLLM",
     "data_factory",
+    "data_gen_template",
 ]

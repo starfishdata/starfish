@@ -6,7 +6,7 @@ from starfish import StructuredLLM
 
 
 async def generate_topics(
-    user_instructions: str,
+    user_instruction: str,
     num_topics: int,
     model_name: str = "openai/gpt-4o-mini",
     model_kwargs: Optional[Dict[str, Any]] = None,
@@ -30,7 +30,7 @@ async def generate_topics(
     for _ in range(num_batches):
         topic_generator = StructuredLLM(
             model_name=model_name,
-            prompt="""Can you generate a list of topics about {{user_instructions}}
+            prompt="""Can you generate a list of topics about {{user_instruction}}
                   {% if existing_topics_str %}
                   Please do not generate topics that are already in the list: {{existing_topics_str}}
                   Make sure the topics are unique and vary from each other
@@ -41,7 +41,7 @@ async def generate_topics(
         )
 
         all_existing = existing_topics + generated_topics
-        input_params = {"user_instructions": user_instructions, "num_records": min(llm_batch_size, num_topics - len(generated_topics))}
+        input_params = {"user_instruction": user_instruction, "num_records": min(llm_batch_size, num_topics - len(generated_topics))}
 
         if all_existing:
             input_params["existing_topics_str"] = ",".join(all_existing)
@@ -60,7 +60,7 @@ async def prepare_topic(
     topics: Optional[List[Union[str, Dict[str, int]]]] = None,
     num_records: Optional[int] = None,
     records_per_topic: int = 20,
-    user_instructions: Optional[str] = None,
+    user_instruction: Optional[str] = None,
     model_name: str = "openai/gpt-4o-mini",
     model_kwargs: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, str]]:
@@ -70,13 +70,13 @@ async def prepare_topic(
     1. String list: ['topic1', 'topic2'] - Topics with equal or calculated distribution
     2. Dict list: [{'topic1': 20}, {'topic2': 30}] - Topics with specific counts
     3. Mixed: ['topic1', {'topic2': 30}] - Combination of both formats
-    4. None: No topics provided, will generate based on user_instructions
+    4. None: No topics provided, will generate based on user_instruction
 
     Args:
         topics: Optional list of topics, either strings or {topic: count} dicts
         num_records: Total number of records to split (required for dict topics or None topics)
         records_per_topic: Number of records per topic (default: 20)
-        user_instructions: Topic generation instructions (required if topics is None)
+        user_instruction: Topic generation instructions (required if topics is None)
         model_name: Model name for topic generation
         model_kwargs: Model kwargs for topic generation
 
@@ -89,11 +89,11 @@ async def prepare_topic(
         model_kwargs["temperature"] = 1
     # --- STEP 1: Input validation and normalization ---
     if topics is None:
-        # Must have num_records and user_instructions if no topics provided
+        # Must have num_records and user_instruction if no topics provided
         if not num_records or num_records <= 0:
             raise ValueError("num_records must be positive when topics are not provided")
-        if not user_instructions:
-            raise ValueError("user_instructions required when topics are not provided")
+        if not user_instruction:
+            raise ValueError("user_instruction required when topics are not provided")
         topic_assignments = []
     else:
         # Validate topics is a non-empty list
@@ -181,11 +181,11 @@ async def prepare_topic(
             raise ValueError("records_per_topic must be positive when generating topics")
 
         # Generate topics with LLM if instructions provided
-        if user_instructions:
+        if user_instruction:
             topics_needed = math.ceil(remaining_records / records_per_topic)
 
             generated = await generate_topics(
-                user_instructions=user_instructions, num_topics=topics_needed, model_name=model_name, model_kwargs=model_kwargs, existing_topics=topic_names
+                user_instruction=user_instruction, num_topics=topics_needed, model_name=model_name, model_kwargs=model_kwargs, existing_topics=topic_names
             )
 
             # Assign counts to generated topics
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     # Example 1: Dictionary topics with additional generation
     print("\nExample 1: Dictionary topics + generation")
     topics1 = [{"topic1": 20}, {"topic2": 30}]
-    result1 = asyncio.run(prepare_topic(topics=topics1, num_records=100, records_per_topic=25, user_instructions="some context"))
+    result1 = asyncio.run(prepare_topic(topics=topics1, num_records=100, records_per_topic=25, user_instruction="some context"))
     print(f"Result: {result1}")
     print(f"Total: {len(result1)}")
 
@@ -251,7 +251,7 @@ if __name__ == "__main__":
     # Example 3: Mixed string and dict topics
     print("\nExample 3: Mixed string/dict topics")
     topics3 = ["topicX", {"topicY": 10}]
-    result3 = asyncio.run(prepare_topic(topics=topics3, num_records=30, user_instructions="mixed topics"))
+    result3 = asyncio.run(prepare_topic(topics=topics3, num_records=30, user_instruction="mixed topics"))
     print(f"Result: {result3}")
     print(f"Total: {len(result3)}")
 
@@ -266,7 +266,7 @@ if __name__ == "__main__":
     print("\nExample 5: No topics, generate all")
 
     async def run_example5():
-        result = await prepare_topic(topics=None, num_records=10, records_per_topic=5, user_instructions="cloud computing")
+        result = await prepare_topic(topics=None, num_records=10, records_per_topic=5, user_instruction="cloud computing")
         print(f"Result: {result}")
         print(f"Total: {len(result)}")
 

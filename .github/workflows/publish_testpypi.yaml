@@ -1,0 +1,107 @@
+name: Publish to Test PyPI
+
+on:
+  push:
+    tags:
+      - 'test-v*'
+    branches:
+      - 'f/pypi_release'
+
+jobs:
+  deploy_testpypi:
+    #if: true
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Required for full commit history check
+    - name: Verify tag is on dev branch
+      run: |
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        COMMIT=$(git rev-parse $TAG_NAME)
+        if ! git branch --contains $COMMIT | grep -qw dev; then
+          echo "::error::Tag $TAG_NAME must be created from dev branch"
+          exit 1
+        fi
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+    - name: Build and publish
+      env:
+        #TWINE_USERNAME: ${{ secrets.TEST_PYPI_USERNAME }}
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_PASSWORD }}
+        #ACTIONS_STEP_DEBUG: true
+      run: |
+        # echo "TWINE_PASSWORD first 5 chars: ${TWINE_PASSWORD:0:184}"
+        # echo "TWINE_PASSWORD length: ${#TWINE_PASSWORD}"
+        python -m build
+        twine upload --verbose --repository-url https://test.pypi.org/legacy/ dist/*
+
+  test-colab:
+    needs: deploy_testpypi
+    runs-on: ubuntu-latest
+    #a Public "Colab-like" Image
+    container:
+      image: jupyter/minimal-notebook:latest
+      options: --user root  # Run as root to avoid permission issues
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          sparse-checkout: |
+            tests/*
+            examples/data_factory_release_check.ipynb
+          sparse-checkout-cone-mode: false
+      - name: Update system packages
+        run: |
+          apt-get update
+          apt-get install -y libssl3  # Removed sudo since we're running as root
+      - name: Print Python and Jupyter versions
+        run: |
+          python --version
+          pip list | grep -E 'jupyter|ipykernel|nbconvert|notebook'
+      # Authenticate to GCP
+      # - name: Authenticate to GCP
+      #   uses: google-github-actions/auth@v1
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # # Configure Docker to use GCR credentials
+      # - name: Configure Docker for GCR
+      #   uses: google-github-actions/docker-auth@v1
+
+      # # Now you can pull the image
+      # - name: Use Colab base image
+      #   run: docker pull gcr.io/colab-images/base:latest
+
+      # --no-prompt --no-input \ suppress the output
+      - name: Run Colab-style tests
+        run: |
+          if ! jupyter nbconvert --execute --to notebook --inplace \
+            --ExecutePreprocessor.kernel_name=python3 \
+            --ExecutePreprocessor.timeout=120 \
+            --no-prompt --no-input \
+            --stdout \
+            examples/data_factory_release_check.ipynb; then
+            echo "::error::Notebook execution failed"
+            exit 1
+          fi
+          echo "Notebook executed successfully. Summary:" && \
+          jupyter nbconvert --to markdown --stdout \
+            examples/data_factory_release_check.ipynb | \
+            grep -E '^#|^##' || true
+
+      # Add tag deletion step
+      - name: Delete triggering tag after successful test
+        if: startsWith(github.ref, 'refs/tags/test-v')
+        run: |
+          gh api -X DELETE /repos/$GITHUB_REPOSITORY/git/refs/tags/${GITHUB_REF#refs/tags/}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
