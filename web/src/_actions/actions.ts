@@ -56,9 +56,9 @@ export async function getAllProjectsOfUser() {
 
     //return output;
     const sampleProject = {
-      id: 'proj_12345',
+      id: 'proj_func_call',
       userId: 'user_67890',
-      name: 'My AI Project',
+      name: 'My func_call Project',
       description: 'A project for testing AI models',
       datapoints: [],
       seedDatapoints: [],
@@ -69,7 +69,21 @@ export async function getAllProjectsOfUser() {
       latestSeedFile: 'seed_data_20231001.json',
       latestDatasetVersion: 1
     };
-    return [sampleProject]
+    const sampleProject1 = {
+      id: 'proj_topic_generate',
+      userId: 'user_67890',
+      name: 'My topic generate Project',
+      description: 'A project for testing AI models',
+      datapoints: [],
+      seedDatapoints: [],
+      finetuneJobs: [],
+      exportJobs: [],
+      jobs: [],
+      seedDataUploadJobs: [],
+      latestSeedFile: 'seed_data_20231001.json',
+      latestDatasetVersion: 1
+    };
+    return [sampleProject,sampleProject1]
 }
 
 export async function getProjectById(id: string) {
