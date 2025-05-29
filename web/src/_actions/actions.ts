@@ -8,10 +8,42 @@ import path from 'path';
 import { createRepo, uploadFilesWithProgress, whoAmI } from "@huggingface/hub";
 import { data } from "@/amplify/data/resource";
 
+const proj_func_call = {
+  id: 'proj_func_call',
+  userId: 'user_67890',
+  name: 'My func_call Project',
+  template_name: 'starfish/generate_func_call_dataset',
+  description: 'A project for testing AI models',
+  datapoints: [],
+  seedDatapoints: [],
+  finetuneJobs: [],
+  exportJobs: [],
+  jobs: [],
+  seedDataUploadJobs: [],
+  latestSeedFile: 'seed_data_20231001.json',
+  latestDatasetVersion: 1
+};
+
+
+const proj_topic_generate = {
+  id: 'proj_topic_generate',
+  userId: 'user_67890',
+  name: 'My topic generate Project',
+  template_name: 'starfish/generate_by_topic',
+  description: 'A project for testing AI models',
+  datapoints: [],
+  seedDatapoints: [],
+  finetuneJobs: [],
+  exportJobs: [],
+  jobs: [],
+  seedDataUploadJobs: [],
+  latestSeedFile: 'seed_data_20231001.json',
+  latestDatasetVersion: 1
+};
 /** PROJECT ACTIONS */
 export async function createProject(formData: FormData) {
     const currentUser = await getUser();
-
+    
     const { data: user } = await cookieBasedClient.models.User.get({
         id: currentUser?.sub
       });
@@ -55,62 +87,27 @@ export async function getAllProjectsOfUser() {
     // });
 
     //return output;
-    const sampleProject = {
-      id: 'proj_func_call',
-      userId: 'user_67890',
-      name: 'My func_call Project',
-      description: 'A project for testing AI models',
-      datapoints: [],
-      seedDatapoints: [],
-      finetuneJobs: [],
-      exportJobs: [],
-      jobs: [],
-      seedDataUploadJobs: [],
-      latestSeedFile: 'seed_data_20231001.json',
-      latestDatasetVersion: 1
-    };
-    const sampleProject1 = {
-      id: 'proj_topic_generate',
-      userId: 'user_67890',
-      name: 'My topic generate Project',
-      description: 'A project for testing AI models',
-      datapoints: [],
-      seedDatapoints: [],
-      finetuneJobs: [],
-      exportJobs: [],
-      jobs: [],
-      seedDataUploadJobs: [],
-      latestSeedFile: 'seed_data_20231001.json',
-      latestDatasetVersion: 1
-    };
-    return [sampleProject,sampleProject1]
+    
+    return [proj_func_call,proj_topic_generate]
 }
 
 export async function getProjectById(id: string) {
     // const { data: project } = await cookieBasedClient.models.Project.get({
     //     id: id as string
     //   });
+    let project = null;
+    if (id == 'proj_func_call') {
+      project = proj_func_call;
+    } else if (id == 'proj_topic_generate') {
+      project = proj_topic_generate;
+    }
 
-      const project = {
-        id: 'proj_12345',
-        userId: 'user_67890',
-        name: 'My AI Project',
-        description: 'A project for testing AI models',
-        datapoints: [],
-        seedDatapoints: [],
-        finetuneJobs: [],
-        exportJobs: [],
-        jobs: [],
-        seedDataUploadJobs: [],
-        latestSeedFile: 'seed_data_20231001.json',
-        latestDatasetVersion: 1
-      };
-      
     return {
         name: project?.name,
         description: project?.description,
         latestSeedFile: project?.latestSeedFile,
         latestDatasetVersion: project?.latestDatasetVersion,
+        template_name: project?.template_name || ""
     }
 }
 

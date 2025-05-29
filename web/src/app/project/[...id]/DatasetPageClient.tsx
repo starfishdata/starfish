@@ -16,6 +16,7 @@ export default function DatasetPageClient({
     id: projectId,
     name: initialProject.name,
     description: initialProject.description,
+    template_name: initialProject.template_name || '',
   })
   
   // Commented out Data Factory related state for now
@@ -75,7 +76,13 @@ export default function DatasetPageClient({
         </TabsContent> */}
 
         <TabsContent value="template">
-          <TemplateManager projectId={projectId} />
+          {dataset.template_name ? (
+            <TemplateManager projectId={projectId} templateName={dataset.template_name} />
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No template associated with this project</p>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

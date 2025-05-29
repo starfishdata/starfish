@@ -52,6 +52,7 @@ export type DatasetPageClientProps = {
   initialProject: {
     name: string | null | undefined;
     description: string | null | undefined;
+    template_name: string;
   };
 }
 
