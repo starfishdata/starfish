@@ -142,15 +142,15 @@ export default function TemplateManager({ projectId, templateName }: TemplateMan
       <TemplateWorkflowSteps currentStep={currentStep} />
       
       {currentStep === 'configure' && (
+
         <TemplateConfigureStep
-          selectedTemplate={selectedTemplate}
-          templateInputs={templateInputs}
-          setTemplateInputs={setTemplateInputs}
-          parseTemplateExample={parseTemplateExample}
-          onRunTemplate={() => setCurrentStep('running')}
-          setTemplateResult={setTemplateResult}
-          setCurrentStep={setCurrentStep}
-          setEvaluatedData={setEvaluatedData}
+            selectedTemplate={selectedTemplate}
+            templateInputs={templateInputs}
+            setTemplateInputs={setTemplateInputs}
+            parseTemplateExample={parseTemplateExample}
+            setTemplateResult={setTemplateResult}
+            setCurrentStep={setCurrentStep}
+            setEvaluatedData={setEvaluatedData}
         />
       )}
       

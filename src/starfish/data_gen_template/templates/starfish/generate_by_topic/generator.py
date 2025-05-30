@@ -43,8 +43,8 @@ class GenerateByTopicInput(BaseModel):
     dependencies=[],
     input_example="""{
         "user_instruction": "Generate Q&A pairs about machine learning concepts",
-        "num_records": 100,
-        "records_per_topic": 5,
+        "num_records": 4,
+        "records_per_topic": 2,
         "topics": [
             "supervised learning",
             "unsupervised learning",

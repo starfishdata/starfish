@@ -17,7 +17,6 @@ interface TemplateConfigureStepProps {
   templateInputs: Record<string, string>
   setTemplateInputs: (inputs: Record<string, string>) => void
   parseTemplateExample: (inputExample: any) => any
-  onRunTemplate: () => void
   setTemplateResult: (result: TemplateResult | null) => void
   setCurrentStep: (step: WorkflowStep) => void
   setEvaluatedData: (data: DatasetRecord[]) => void
@@ -28,7 +27,6 @@ export default function TemplateConfigureStep({
   templateInputs,
   setTemplateInputs,
   parseTemplateExample,
-  onRunTemplate,
   setTemplateResult,
   setCurrentStep,
   setEvaluatedData
@@ -111,7 +109,9 @@ export default function TemplateConfigureStep({
 
   const handleRunTemplate = async () => {
     setIsRunningTemplate(true)
-    onRunTemplate()
+    
+    // First transition to running step
+    setCurrentStep('running')
     
     try {
       const exampleData = parseTemplateExample(selectedTemplate.input_example)
@@ -151,46 +151,46 @@ export default function TemplateConfigureStep({
           inputs: finalInputs
         })
       })
-      
+
       if (response.ok) {
         const result = await response.json()
         
-        // Add IDs to records if they don't have them
-        const dataWithIds = result.data.map((record: any, index: number) => ({
-          ...record,
-          id: record.id || `record_${index + 1}`
-        }))
-        
+        // Use actual API response data
         const templateResult: TemplateResult = {
           success: true,
-          data: dataWithIds,
+          data: result || [],
           metadata: {
-            total_records: dataWithIds.length,
+            total_records: result?.length || 0,
             execution_time: result.execution_time || 0,
             template_name: selectedTemplate.name
           }
         }
-        
+
         setTemplateResult(templateResult)
-        setEvaluatedData(dataWithIds)
-        setCurrentStep('results')
+        setEvaluatedData(templateResult.data)
         
         toast({
           title: "Template executed successfully",
-          description: `Generated ${dataWithIds.length} records`,
+          description: `Generated ${templateResult.data.length} records`,
           duration: 3000,
         })
+
+        // Transition to results step after execution completes
+        setCurrentStep('results')
+
       } else {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Template execution failed')
       }
     } catch (error) {
-      console.error('Error running template:', error)
+      const message = error instanceof Error ? error.message : 'An unknown error occurred'
       toast({
-        title: "Error",
-        description: "Failed to run template. Please try again.",
+        title: "Template execution failed",
+        description: message,
         variant: "destructive",
         duration: 5000,
       })
+      // Go back to configure step on error
       setCurrentStep('configure')
     } finally {
       setIsRunningTemplate(false)
