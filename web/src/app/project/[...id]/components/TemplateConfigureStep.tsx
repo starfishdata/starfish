@@ -19,7 +19,7 @@ interface TemplateConfigureStepProps {
   parseTemplateExample: (inputExample: any) => any
   setTemplateResult: (result: TemplateResult | null) => void
   setCurrentStep: (step: WorkflowStep) => void
-  setEvaluatedData: (data: DatasetRecord[]) => void
+//   setEvaluatedData: (data: DatasetRecord[]) => void
 }
 
 export default function TemplateConfigureStep({
@@ -29,7 +29,7 @@ export default function TemplateConfigureStep({
   parseTemplateExample,
   setTemplateResult,
   setCurrentStep,
-  setEvaluatedData
+//   setEvaluatedData
 }: TemplateConfigureStepProps) {
   const [isRunningTemplate, setIsRunningTemplate] = useState(false)
   const { toast } = useToast()
@@ -167,7 +167,7 @@ export default function TemplateConfigureStep({
         }
 
         setTemplateResult(templateResult)
-        setEvaluatedData(templateResult.data)
+        // setEvaluatedData(templateResult.data)
         
         toast({
           title: "Template executed successfully",

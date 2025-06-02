@@ -1,0 +1,110 @@
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+
+from starfish.common.logger import get_logger
+from starfish.data_factory.storage.models import Project
+from web.api.storage import save_project, get_project, list_projects
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/project", tags=["project"])
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str
+    template_name: str
+    description: Optional[str] = None
+
+
+@router.post("/create")
+async def create_project(request: ProjectCreateRequest):
+    """
+    Create a new project.
+
+    This endpoint creates a new project with the given details and saves it using Local Storage.
+
+    Args:
+        request: Project creation request containing name, description, and metadata
+
+    Returns:
+        The created project details
+    """
+    try:
+        logger.info(f"Creating project: {request.name}")
+
+        # Create project instance
+        project = Project(
+            name=request.name,
+            template_name=request.template_name,
+            description=request.description,
+        )
+
+        # Save project using local storage
+        await save_project(project)
+
+        logger.info(f"Project created successfully: {project.id}")
+        return {"id": project.project_id, "name": project.name, "description": project.description, "created_at": project.created_when}
+
+    except Exception as e:
+        logger.error(f"Error creating project: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating project: {str(e)}")
+
+
+@router.get("/{project_id}")
+async def get_project_endpoint(project_id: str):
+    """
+    Get a project by ID.
+
+    Args:
+        project_id: The ID of the project to retrieve
+
+    Returns:
+        The project details
+    """
+    try:
+        project = await get_project(project_id)
+
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        return {
+            "id": project.project_id,
+            "name": project.name,
+            "template_name": project.template_name,
+            "description": project.description,
+            "created_at": project.created_when,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving project: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving project: {str(e)}")
+
+
+@router.get("/")
+async def list_projects_endpoint():
+    """
+    List all projects.
+
+    Returns:
+        List of all projects
+    """
+    try:
+        projects = await list_projects()
+
+        return [
+            {
+                "id": project.project_id,
+                "name": project.name,
+                "template_name": project.template_name,
+                "description": project.description,
+                "created_at": project.created_when,
+            }
+            for project in projects
+        ]
+
+    except Exception as e:
+        logger.error(f"Error listing projects: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing projects: {str(e)}")

@@ -35,6 +35,7 @@ class Project(BaseModel):
 
     project_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique project identifier.")
     name: str = Field(..., description="User-friendly project name.")
+    template_name: Optional[str] = Field(None, description="template name.")
     description: Optional[str] = Field(None, description="Optional description.")
     created_when: datetime.datetime = Field(default_factory=utc_now)
     updated_when: datetime.datetime = Field(default_factory=utc_now)

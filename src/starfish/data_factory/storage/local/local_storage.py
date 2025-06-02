@@ -154,6 +154,15 @@ class LocalStorage(Storage):
     async def list_record_metadata(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
         return await self._metadata_handler.list_record_metadata_impl(master_job_uuid, job_uuid)
 
+    async def save_dataset(self, project_id: str, dataset_name: str, dataset_data: Dict[str, Any]) -> str:
+        return await self._data_handler.save_dataset_impl(project_id, dataset_name, dataset_data)
+
+    async def get_dataset(self, project_id: str, dataset_name: str) -> Dict[str, Any]:
+        return await self._data_handler.get_dataset_impl(project_id, dataset_name)
+
+    async def list_datasets(self, project_id: str) -> List[Dict[str, Any]]:
+        return await self._data_handler.list_datasets_impl(project_id)
+
 
 @register_storage("local")
 def create_local_storage(storage_uri: str, data_storage_uri_override: Optional[str] = None) -> LocalStorage:

@@ -11,6 +11,7 @@ CREATE_PROJECTS_SQL = """
 CREATE TABLE IF NOT EXISTS Projects (
     project_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    template_name TEXT,
     description TEXT,
     created_when TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_when TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

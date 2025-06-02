@@ -51,9 +51,9 @@ class GenerateByTopicInput(BaseModel):
             {"reinforcement learning": 3},  # This means generate 3 records for this topic
             "neural networks",
         ],
-        "topic_model_name": "openai/gpt-4",
+        "topic_model_name": "openai/gpt-4.1-mini",
         "topic_model_kwargs": {"temperature": 0.7},
-        "generation_model_name": "openai/gpt-4",
+        "generation_model_name": "openai/gpt-4.1-mini",
         "generation_model_kwargs": {"temperature": 0.8, "max_tokens": 200},
         "output_schema": [
             {"name": "question", "type": "str"},

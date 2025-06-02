@@ -225,10 +225,17 @@ class SQLiteMetadataHandler:
 
     async def save_project_impl(self, project_data: Project):
         sql = """
-            INSERT OR REPLACE INTO Projects (project_id, name, description, created_when, updated_when)
-            VALUES (?, ?, ?, ?, ?);
+            INSERT OR REPLACE INTO Projects (project_id, name, template_name, description, created_when, updated_when)
+            VALUES (?, ?, ?, ?, ?,?);
         """
-        params = (project_data.project_id, project_data.name, project_data.description, project_data.created_when, project_data.updated_when)
+        params = (
+            project_data.project_id,
+            project_data.name,
+            project_data.template_name,
+            project_data.description,
+            project_data.created_when,
+            project_data.updated_when,
+        )
         await self._execute_sql(sql, params)
 
     async def get_project_impl(self, project_id: str) -> Optional[Project]:

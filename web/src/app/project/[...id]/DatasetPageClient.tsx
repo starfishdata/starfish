@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import TemplateManager from './components/TemplateManager'
-// import DataFactory from './components/DataFactory'
-// import { factories } from './constants'
+import DatasetViewer from './components/DatasetViewer'
 import type { DatasetPageClientProps } from './types'
 
 export default function DatasetPageClient({ 
@@ -14,8 +13,8 @@ export default function DatasetPageClient({
   // Basic state management
   const [dataset] = useState({
     id: projectId,
-    name: initialProject.name,
-    description: initialProject.description,
+    name: initialProject.name || '',
+    description: initialProject.description || '',
     template_name: initialProject.template_name || '',
   })
   
@@ -37,6 +36,9 @@ export default function DatasetPageClient({
           </TabsTrigger>
           <TabsTrigger value="template" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white h-10 px-16">
             Data Template
+          </TabsTrigger>
+          <TabsTrigger value="view" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white h-10 px-16">
+            View Dataset
           </TabsTrigger>
         </TabsList>
 
@@ -83,6 +85,35 @@ export default function DatasetPageClient({
               <p className="text-gray-500">No template associated with this project</p>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="view">
+          <Tabs defaultValue="template-datasets" className="mb-8">
+            <TabsList className="bg-pink-50">
+              <TabsTrigger 
+                value="factory-datasets" 
+                className="data-[state=active]:bg-pink-600 data-[state=active]:text-white"
+              >
+                Data Factory Datasets
+              </TabsTrigger>
+              <TabsTrigger 
+                value="template-datasets" 
+                className="data-[state=active]:bg-pink-600 data-[state=active]:text-white"
+              >
+                Data Template Datasets
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="factory-datasets">
+              <h2 className="text-2xl font-bold mb-6">Data Factory Datasets</h2>
+              <DatasetViewer projectId={projectId} datasetType="factory" />
+            </TabsContent>
+
+            <TabsContent value="template-datasets">
+              <h2 className="text-2xl font-bold mb-6">Data Template Datasets</h2>
+              <DatasetViewer projectId={projectId} datasetType="template" />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>

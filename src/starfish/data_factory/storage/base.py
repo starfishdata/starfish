@@ -173,6 +173,21 @@ class Storage(ABC):
         """Retrieve execution job details by master job id and config hash."""
         pass
 
+    @abstractmethod
+    async def save_dataset(self, project_id: str, dataset_name: str, dataset_data: Dict[str, Any]) -> str:
+        """Save a dataset."""
+        pass
+
+    @abstractmethod
+    async def get_dataset(self, project_id: str, dataset_name: str) -> Dict[str, Any]:
+        """Get a dataset."""
+        pass
+
+    @abstractmethod
+    async def list_datasets(self, project_id: str) -> List[Dict[str, Any]]:
+        """List datasets for a project."""
+        pass
+
 
 from .registry import Registry
 

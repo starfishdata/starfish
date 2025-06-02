@@ -14,7 +14,7 @@ interface TemplateSaveExportStepProps {
   evaluatedData: DatasetRecord[]
   selectedTemplate: TemplateRegister
   projectId: string
-  onBackToEvaluate: () => void
+  onBackToStep: (step: string) => void
   onStartNew: () => void
 }
 
@@ -22,19 +22,28 @@ export default function TemplateSaveExportStep({
   evaluatedData,
   selectedTemplate,
   projectId,
-  onBackToEvaluate,
+  onBackToStep,
   onStartNew
 }: TemplateSaveExportStepProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
-  const [datasetName, setDatasetName] = useState(`${selectedTemplate.name}_dataset_${Date.now()}`)
+  const [datasetName, setDatasetName] = useState(() => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    const seconds = String(now.getSeconds()).padStart(2, '0')
+    return `dataset_${year}-${month}-${day}_${hours}-${minutes}-${seconds}`
+  })
   const [huggingFaceRepo, setHuggingFaceRepo] = useState('')
   const { toast } = useToast()
 
   const handleSaveDataset = async () => {
     setIsSaving(true)
     try {
-      const response = await fetch('/api/datasets/save', {
+      const response = await fetch('/api/dataset/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -67,7 +76,12 @@ export default function TemplateSaveExportStep({
       setIsSaving(false)
     }
   }
-
+  const handleBackToEvaluate = () => {
+    onBackToStep("evaluate")
+  }
+  const handleBackToResults = () => {
+    onBackToStep("results")
+  }
   const handleExportToHuggingFace = async () => {
     setIsExporting(true)
     try {
@@ -208,14 +222,24 @@ export default function TemplateSaveExportStep({
       </div>
 
       <div className="flex justify-between">
-        <Button 
-          variant="outline"
-          onClick={onBackToEvaluate}
-          className="flex items-center gap-2"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Evaluate
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline"
+            onClick={handleBackToEvaluate}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Evaluate
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={handleBackToResults}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Results
+          </Button>   
+        </div>
         <Button 
           onClick={onStartNew}
           variant="outline"

@@ -23,6 +23,13 @@ export interface DatasetRecord {
   score?: number
 }
 
+export interface ToEvaluateDatasetRecord {
+    id: string
+    [key: string]: any
+    rating?: number
+    comments?: string
+  }
+
 export interface TemplateResult {
   success: boolean
   data: DatasetRecord[]
@@ -112,6 +119,68 @@ export default function TemplateManager({ projectId, templateName }: TemplateMan
     }
   }
 
+  const handleDatasetEvaluation = async (evaluatedData: DatasetRecord[], skipEvaluation: boolean) => {
+    try {
+
+        if (skipEvaluation) {
+            setCurrentStep('save-export')
+            return
+        }
+      setCurrentStep('running') // Show loading state during API call
+      
+      // Update templateResult with the evaluated data (ratings and comments)
+      if (templateResult) {
+        setTemplateResult({
+          ...templateResult,
+          data: evaluatedData
+        })
+      }
+      
+      
+      
+      const response = await fetch('/api/dataset/evaluate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model_name: "gpt-4o-mini",
+          evaluatedData: evaluatedData
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to evaluate dataset')
+      }
+
+      const finalEvaluatedData = await response.json()
+      //const finalEvaluatedData = result.evaluatedData || evaluatedData
+      
+      // Update both evaluatedData and templateResult
+      setEvaluatedData(finalEvaluatedData)
+    //   if (templateResult) {
+    //     setTemplateResult({
+    //       ...templateResult,
+    //       data: finalEvaluatedData
+    //     })
+    //   }
+      
+      setCurrentStep('evaluate')
+    } catch (error) {
+      console.error('Error evaluating dataset:', error)
+      // Fallback to using the original evaluated data
+      setEvaluatedData(evaluatedData)
+      if (templateResult) {
+        setTemplateResult({
+          ...templateResult,
+          data: evaluatedData
+        })
+      }
+      setCurrentStep('evaluate')
+      // You might want to show an error message to the user here
+    }
+  }
+
   if (isLoadingTemplate) {
     return (
       <div className="space-y-6">
@@ -150,7 +219,7 @@ export default function TemplateManager({ projectId, templateName }: TemplateMan
             parseTemplateExample={parseTemplateExample}
             setTemplateResult={setTemplateResult}
             setCurrentStep={setCurrentStep}
-            setEvaluatedData={setEvaluatedData}
+            // setEvaluatedData={setEvaluatedData}
         />
       )}
       
@@ -161,7 +230,7 @@ export default function TemplateManager({ projectId, templateName }: TemplateMan
       {currentStep === 'results' && (
         <TemplateResultsStep
           templateResult={templateResult}
-          onEvaluate={() => setCurrentStep('evaluate')}
+          onEvaluate={handleDatasetEvaluation}
           onBackToConfigure={() => setCurrentStep('configure')}
         />
       )}
@@ -181,7 +250,7 @@ export default function TemplateManager({ projectId, templateName }: TemplateMan
           evaluatedData={evaluatedData}
           selectedTemplate={selectedTemplate}
           projectId={projectId}
-          onBackToEvaluate={() => setCurrentStep('evaluate')}
+          onBackToStep={(step) => setCurrentStep(step as WorkflowStep)}
           onStartNew={() => {
             setCurrentStep('configure')
             setTemplateResult(null)
