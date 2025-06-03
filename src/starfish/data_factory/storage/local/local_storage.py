@@ -90,6 +90,9 @@ class LocalStorage(Storage):
     async def get_project(self, project_id: str) -> Optional[Project]:
         return await self._metadata_handler.get_project_impl(project_id)
 
+    async def delete_project(self, project_id: str) -> None:
+        await self._metadata_handler.delete_project_impl(project_id)
+
     async def list_projects(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Project]:
         return await self._metadata_handler.list_projects_impl_data_template(limit, offset)
 

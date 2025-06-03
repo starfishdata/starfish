@@ -50,7 +50,8 @@ export default function DatasetViewer({ projectId, datasetType }: DatasetViewerP
         }),
       })
       const data = await response.json()
-      setDatasets(data || [])
+      // Ensure data is always an array
+      setDatasets(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error fetching datasets:', error)
       setDatasets([])
@@ -149,7 +150,7 @@ export default function DatasetViewer({ projectId, datasetType }: DatasetViewerP
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {datasets.map((dataset) => (
+                  {Array.isArray(datasets) && datasets.map((dataset) => (
                     <TableRow key={dataset.id}>
                       <TableCell className="font-medium">{dataset.name}</TableCell>
                       <TableCell>

@@ -4,7 +4,7 @@ from typing import Optional
 
 from starfish.common.logger import get_logger
 from starfish.data_factory.storage.models import Project
-from web.api.storage import save_project, get_project, list_projects
+from web.api.storage import save_project, get_project, list_projects, delete_project
 
 logger = get_logger(__name__)
 
@@ -52,8 +52,8 @@ async def create_project(request: ProjectCreateRequest):
         raise HTTPException(status_code=500, detail=f"Error creating project: {str(e)}")
 
 
-@router.get("/{project_id}")
-async def get_project_endpoint(project_id: str):
+@router.get("/get")
+async def get_project_endpoint(id: str):
     """
     Get a project by ID.
 
@@ -64,7 +64,7 @@ async def get_project_endpoint(project_id: str):
         The project details
     """
     try:
-        project = await get_project(project_id)
+        project = await get_project(id)
 
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -82,6 +82,25 @@ async def get_project_endpoint(project_id: str):
     except Exception as e:
         logger.error(f"Error retrieving project: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving project: {str(e)}")
+
+
+@router.delete("/delete")
+async def delete_project_endpoint(id: str):
+    """
+    Delete a project by ID.
+
+    Args:
+        id: The ID of the project to delete
+
+    Returns:
+        The deleted project details
+    """
+    try:
+        await delete_project(id)
+        return {"message": "Project deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting project: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting project: {str(e)}")
 
 
 @router.post("/list")

@@ -243,6 +243,10 @@ class SQLiteMetadataHandler:
         row = await self._fetchone_sql(sql, (project_id,))
         return _row_to_pydantic(Project, row)
 
+    async def delete_project_impl(self, project_id: str) -> None:
+        sql = "DELETE FROM Projects WHERE project_id = ?"
+        await self._execute_sql(sql, (project_id,))
+
     async def list_projects_impl(self, limit: Optional[int], offset: Optional[int]) -> List[Project]:
         sql = "SELECT * FROM Projects ORDER BY name"
         params: List[Any] = []

@@ -142,3 +142,7 @@ class InMemoryStorage(Storage):
     async def list_datasets(self, project_id: str) -> List[Dict[str, Any]]:
         """List datasets for a project."""
         pass
+
+    async def delete_project(self, project_id: str) -> None:
+        """Delete a project."""
+        pass

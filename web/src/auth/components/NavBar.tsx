@@ -3,10 +3,7 @@
 import { useState, ReactNode, useEffect, useRef } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { LogOutIcon, LogInIcon, ChevronDownIcon, Menu, X, LogOut, ChevronDown } from 'lucide-react'
-import { signOut } from 'aws-amplify/auth'
-import { createUser, getAllProjectsOfUser } from '@/src/_actions/actions'
-import { Hub } from 'aws-amplify/utils'
+import { Menu, X, ChevronDown } from 'lucide-react'
 import Image from 'next/image'
 
 interface NavBarProps {
@@ -26,29 +23,10 @@ export default function NavBar({ children, isSignedIn, inputProjects }: NavBarPr
   // Check if we're on the homepage, contact page, or blog pages
   const isPinkBackground = pathname === '/' || pathname === '/contactus' || pathname.startsWith('/blog')
 
+  // Add useEffect to sync state when inputProjects changes
   useEffect(() => {
-    
-    const hubListener = Hub.listen('auth', async (data) => {
-      switch (data.payload.event) {
-        case 'signedIn':
-            createUser();
-            let projects = await getAllProjectsOfUser();
-            setProjects(projects);
-            router.push('/dashboard');
-            router.refresh();
-            break;
-        case 'signedOut':
-            router.push('/');
-            router.refresh();
-            break;
-      }
-    });
-
-    createUser();
-
-    return () => hubListener();
-}, [router]);
-
+    setProjects(inputProjects)
+  }, [inputProjects])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -62,18 +40,6 @@ export default function NavBar({ children, isSignedIn, inputProjects }: NavBarPr
     }
   }, [])
 
-  const handleSignOut = async () => {
-    await signOut();
-    router.push('/');
-  }
-
-  const handleSignIn = () => {
-    router.push('/signin');
-  };
-
-  const toggleDropdown = () => {
-    setIsDropdownOpen(!isDropdownOpen);
-  }
 
   return (
     <>
@@ -178,24 +144,6 @@ export default function NavBar({ children, isSignedIn, inputProjects }: NavBarPr
               >
                 API Docs
               </a>
-
-              {/* Desktop Auth Buttons */}
-              {/* {isSignedIn ? (
-                <button
-                  onClick={handleSignOut}
-                  className="ml-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-pink-600 hover:bg-pink-700"
-                >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Sign Out
-                </button>
-              ) : (
-                <Link 
-                  href="/signin"
-                  className="ml-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-pink-600 hover:bg-pink-700"
-                >
-                  Sign in / Sign up
-                </Link>
-              )} */}
             </div>
 
             {/* Mobile menu button */}
@@ -291,31 +239,6 @@ export default function NavBar({ children, isSignedIn, inputProjects }: NavBarPr
                 API Docs
               </a>
 
-              {/* Mobile Auth Buttons */}
-              {isSignedIn ? (
-                <button
-                  onClick={() => {
-                    handleSignOut();
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="w-full text-left block pl-3 pr-4 py-2 border-l-4 border-transparent text-pink-600 hover:bg-gray-50 hover:border-gray-300 hover:text-pink-700 text-base font-medium"
-                >
-                  <span className="flex items-center">
-                    <LogOut className="h-5 w-5 mr-2" />
-                    Sign Out
-                  </span>
-                </button>
-              ) : (
-                <Link
-                  href="/signin"
-                  className="w-full text-left block pl-3 pr-4 py-2 border-l-4 border-transparent text-pink-600 hover:bg-gray-50 hover:border-gray-300 hover:text-pink-700 text-base font-medium"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <span className="flex items-center">
-                    Sign in / Sign up
-                  </span>
-                </Link>
-              )}
             </div>
           </div>
         )}

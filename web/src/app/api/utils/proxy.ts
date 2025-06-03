@@ -25,14 +25,23 @@ export async function proxyToBackend(
       },
     };
 
-    // Add body for POST/PUT/PATCH requests
-    if (['POST', 'PUT', 'PATCH'].includes(method)) {
-      const requestBody = await req.json();
-      fetchOptions.body = JSON.stringify(requestBody);
+    // Add body for POST/PUT/PATCH/DELETE requests (DELETE may have a body)
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      try {
+        const requestBody = await req.json();
+        if (requestBody && Object.keys(requestBody).length > 0) {
+          fetchOptions.body = JSON.stringify(requestBody);
+        }
+      } catch (error) {
+        // No body or invalid JSON - this is fine for DELETE requests
+        if (method !== 'DELETE') {
+          console.warn(`Failed to parse request body for ${method}:`, error);
+        }
+      }
     }
 
-    // For GET requests, append query parameters if they exist
-    if (method === 'GET') {
+    // For GET and DELETE requests, append query parameters if they exist
+    if (['GET', 'DELETE'].includes(method)) {
       const url = new URL(req.url);
       const searchParams = url.searchParams;
       if (searchParams.toString()) {

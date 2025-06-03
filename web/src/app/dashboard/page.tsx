@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import CreateProjectForm from './CreateProjectForm'
 import ExploreTemplates from './ExploreTemplates'
 import { Suspense } from 'react'
 import DashboardClient from './DashboardClient'
@@ -18,56 +17,22 @@ export default function DashboardPage() {
     try {
       setLoading(true)
       setError(null)
-      // const response = await fetch('/api/projects/list', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({
-      //     userId: "user_67890"
-      //   }),
-      // })
+      const response = await fetch('/api/projects/list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          
+        }),
+      })
       
-      // if (!response.ok) {
-      //   throw new Error(`Failed to fetch projects: ${response.status}`)
-      // }
+      if (!response.ok) {
+        throw new Error(`Failed to fetch projects: ${response.status}`)
+      }
       
-      // const data = await response.json()
+      const data = await response.json()
 
-
-      const proj_func_call = {
-        id: 'proj_func_call',
-        userId: 'user_67890',
-        name: 'My func_call Project',
-        template_name: 'starfish/generate_func_call_dataset',
-        description: 'A project for testing AI models',
-        datapoints: [],
-        seedDatapoints: [],
-        finetuneJobs: [],
-        exportJobs: [],
-        jobs: [],
-        seedDataUploadJobs: [],
-        latestSeedFile: 'seed_data_20231001.json',
-        latestDatasetVersion: 1
-      };
-
-
-      const proj_topic_generate = {
-        id: 'proj_topic_generate',
-        userId: 'user_67890',
-        name: 'My topic generate Project',
-        template_name: 'starfish/generate_by_topic',
-        description: 'A project for testing AI models',
-        datapoints: [],
-        seedDatapoints: [],
-        finetuneJobs: [],
-        exportJobs: [],
-        jobs: [],
-        seedDataUploadJobs: [],
-        latestSeedFile: 'seed_data_20231001.json',
-        latestDatasetVersion: 1
-      };
-      const data = [proj_topic_generate, proj_func_call]
       setProjects(data)
     } catch (error) {
       console.error('Error fetching projects:', error)

@@ -39,6 +39,11 @@ async def list_projects():
     return await storage.list_projects()
 
 
+async def delete_project(project_id: str):
+    # Implementation here
+    await storage.delete_project(project_id)
+
+
 async def save_dataset(project_name: str, dataset_name: str, dataset_data: Dict[str, Any]):
     # Implementation here
     await storage.save_dataset(project_name, dataset_name, dataset_data)

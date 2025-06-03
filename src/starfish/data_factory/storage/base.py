@@ -79,6 +79,11 @@ class Storage(ABC):
         """List available projects."""
         pass
 
+    @abstractmethod
+    async def delete_project(self, project_id: str) -> None:
+        """Delete a project."""
+        pass
+
     # Master Job methods
     @abstractmethod
     async def log_master_job_start(self, job_data: GenerationMasterJob) -> None:
