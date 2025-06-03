@@ -263,6 +263,26 @@ class SQLiteMetadataHandler:
         rows = await self._fetchall_sql(sql, tuple(params))
         return [_row_to_pydantic(Project, row) for row in rows]
 
+    async def list_projects_impl_data_template(self, limit: Optional[int], offset: Optional[int]) -> List[Project]:
+        sql = "SELECT * FROM Projects WHERE template_name IS NOT NULL ORDER BY name"
+        params: List[Any] = []
+
+        # SQLite requires LIMIT when using OFFSET
+        if offset is not None:
+            if limit is not None:
+                sql += " LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+            else:
+                # If no explicit limit but with offset, use a high limit
+                sql += " LIMIT 1000 OFFSET ?"
+                params.append(offset)
+        elif limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        rows = await self._fetchall_sql(sql, tuple(params))
+        return [_row_to_pydantic(Project, row) for row in rows]
+
     async def log_master_job_start_impl(self, job_data: GenerationMasterJob):
         data_dict = _serialize_pydantic_for_db(job_data)
         cols = ", ".join(data_dict.keys())

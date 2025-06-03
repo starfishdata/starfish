@@ -142,7 +142,7 @@ export default function NavBar({ children, isSignedIn, inputProjects }: NavBarPr
                     )}
                   </div>
 
-                  {isSignedIn && (
+                  {/* {isSignedIn && (
                     <Link href="/api-key-management" className={`${
                       pathname === '/api-key-management'
                         ? 'border-pink-500 text-gray-900'
@@ -150,7 +150,7 @@ export default function NavBar({ children, isSignedIn, inputProjects }: NavBarPr
                       } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}>
                       API Keys
                     </Link>
-                  )}
+                  )} */}
                 </>
               )}
               
@@ -180,7 +180,7 @@ export default function NavBar({ children, isSignedIn, inputProjects }: NavBarPr
               </a>
 
               {/* Desktop Auth Buttons */}
-              {isSignedIn ? (
+              {/* {isSignedIn ? (
                 <button
                   onClick={handleSignOut}
                   className="ml-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-pink-600 hover:bg-pink-700"
@@ -195,7 +195,7 @@ export default function NavBar({ children, isSignedIn, inputProjects }: NavBarPr
                 >
                   Sign in / Sign up
                 </Link>
-              )}
+              )} */}
             </div>
 
             {/* Mobile menu button */}

@@ -87,6 +87,15 @@ export async function getAllProjectsOfUser() {
     // });
 
     //return output;
+
+    // const response = await fetch('/api/projects/list', {
+    //   method: 'POST',
+    //   headers: {
+    //     'Content-Type': 'application/json',
+    //   },
+    // })
+    // const initialProjects = await response.json()
+    // return initialProjects
     
     return [proj_func_call,proj_topic_generate]
 }

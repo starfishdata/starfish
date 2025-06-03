@@ -6,7 +6,6 @@ import NavBar from "../auth/components/NavBar";
 import { Toaster } from "@/components/ui/toaster"
 import { getAllProjectsOfUser } from '@/src/_actions/actions'
 import Script from 'next/script';
-import { PostHogProvider } from "@/components/PostHogProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -29,8 +28,10 @@ export default async function RootLayout({
         />
       </head>
       <body className={inter.className}>
-        <PostHogProvider>
-          <NavBar isSignedIn={isSignedIn} inputProjects={projects}>
+        {/* <PostHogProvider>
+          
+        </PostHogProvider> */}
+        <NavBar isSignedIn={isSignedIn} inputProjects={projects}>
             <div> {/* Adjust padding as needed */}
             {children}
               {/* <Auth>
@@ -39,7 +40,6 @@ export default async function RootLayout({
             </div>
             <Toaster />
           </NavBar>
-        </PostHogProvider>
       </body>
     </html>
   );

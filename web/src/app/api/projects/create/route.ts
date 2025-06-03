@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Send to Python backend
-    const backendResponse = await fetch(`${PYTHON_BACKEND_URL}/api/project/create`, {
+    const backendResponse = await fetch(`${PYTHON_BACKEND_URL}/project/create`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

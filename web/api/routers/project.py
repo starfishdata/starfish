@@ -35,6 +35,7 @@ async def create_project(request: ProjectCreateRequest):
 
         # Create project instance
         project = Project(
+            project_id=request.name,
             name=request.name,
             template_name=request.template_name,
             description=request.description,
@@ -43,7 +44,7 @@ async def create_project(request: ProjectCreateRequest):
         # Save project using local storage
         await save_project(project)
 
-        logger.info(f"Project created successfully: {project.id}")
+        logger.info(f"Project created successfully: {project.project_id}")
         return {"id": project.project_id, "name": project.name, "description": project.description, "created_at": project.created_when}
 
     except Exception as e:
@@ -83,8 +84,8 @@ async def get_project_endpoint(project_id: str):
         raise HTTPException(status_code=500, detail=f"Error retrieving project: {str(e)}")
 
 
-@router.get("/")
-async def list_projects_endpoint():
+@router.post("/list")
+async def list_projects_endpoint(request: dict):
     """
     List all projects.
 

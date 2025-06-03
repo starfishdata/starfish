@@ -1,67 +1,146 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import CreateProjectForm from './CreateProjectForm'
 import ExploreTemplates from './ExploreTemplates'
 import { Suspense } from 'react'
 import DashboardClient from './DashboardClient'
-import { getAllProjectsOfUser } from '@/src/_actions/actions'
 import { Loader2 } from 'lucide-react'
 
-async function DashboardWrapper() {
-  const initialProjects = await getAllProjectsOfUser()
-  return <DashboardClient initialProjects={initialProjects} />
-}
-
 export default function DashboardPage() {
-  const [refreshKey, setRefreshKey] = useState(0)
+  const [projects, setProjects] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("explore")
+
+  const fetchProjects = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      // const response = await fetch('/api/projects/list', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify({
+      //     userId: "user_67890"
+      //   }),
+      // })
+      
+      // if (!response.ok) {
+      //   throw new Error(`Failed to fetch projects: ${response.status}`)
+      // }
+      
+      // const data = await response.json()
+
+
+      const proj_func_call = {
+        id: 'proj_func_call',
+        userId: 'user_67890',
+        name: 'My func_call Project',
+        template_name: 'starfish/generate_func_call_dataset',
+        description: 'A project for testing AI models',
+        datapoints: [],
+        seedDatapoints: [],
+        finetuneJobs: [],
+        exportJobs: [],
+        jobs: [],
+        seedDataUploadJobs: [],
+        latestSeedFile: 'seed_data_20231001.json',
+        latestDatasetVersion: 1
+      };
+
+
+      const proj_topic_generate = {
+        id: 'proj_topic_generate',
+        userId: 'user_67890',
+        name: 'My topic generate Project',
+        template_name: 'starfish/generate_by_topic',
+        description: 'A project for testing AI models',
+        datapoints: [],
+        seedDatapoints: [],
+        finetuneJobs: [],
+        exportJobs: [],
+        jobs: [],
+        seedDataUploadJobs: [],
+        latestSeedFile: 'seed_data_20231001.json',
+        latestDatasetVersion: 1
+      };
+      const data = [proj_topic_generate, proj_func_call]
+      setProjects(data)
+    } catch (error) {
+      console.error('Error fetching projects:', error)
+      setError(error instanceof Error ? error.message : 'Failed to fetch projects')
+      setProjects([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchProjects()
+  }, [])
 
   const handleProjectCreated = (newProject: any) => {
-    // Refresh the project list or handle the new project
-    setRefreshKey(prev => prev + 1)
-    console.log('New project created:', newProject)
+    // Add the new project to the list without refetching
+    setProjects(prev => [...prev, newProject])
+    // Switch to projects tab to show the updated list
+    setActiveTab("projects")
+  }
+
+  const handleRefresh = () => {
+    fetchProjects()
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="text-gray-500">Loading projects...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col justify-center items-center min-h-screen">
+        <div className="text-red-500 mb-4">Error: {error}</div>
+        <button 
+          onClick={handleRefresh}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Retry
+        </button>
+      </div>
+    )
   }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
       
-      <Tabs defaultValue="create" className="mb-8">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
         <TabsList className="bg-pink-100 h-12">
-          {/* <TabsTrigger value="create" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white h-10 px-8">
-            Create Project
-          </TabsTrigger> */}
           <TabsTrigger value="explore" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white h-10 px-8">
-            Explore Templates
+            Create Project
+          </TabsTrigger>
+          <TabsTrigger value="projects" className="data-[state=active]:bg-pink-600 data-[state=active]:text-white h-10 px-8">
+            My Projects
           </TabsTrigger>
         </TabsList>
-
-        {/* <TabsContent value="create">
-          <CreateProjectForm onProjectCreated={handleProjectCreated} />
-        </TabsContent> */}
 
         <TabsContent value="explore">
           <ExploreTemplates onProjectCreated={handleProjectCreated} />
         </TabsContent>
-      </Tabs>
 
-      {/* Your existing project list component would go here */}
-      <div key={refreshKey}>
-        <Suspense fallback={
-          <div className="flex items-center justify-center min-h-screen">
-            <div className="text-center">
-                <div className="flex justify-center mb-4">
-                <Loader2 className="text-pink-600 h-12 w-12 animate-spin" />
-                </div>
-                <p className="text-gray-600">Loading Projects...</p>
-            </div>
-          </div>
-          }
-        >
-          <DashboardWrapper />
-        </Suspense>
-      </div>
+        <TabsContent value="projects">
+          <DashboardClient 
+            initialProjects={projects} 
+            onProjectCreated={handleProjectCreated}
+            onRefresh={handleRefresh}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

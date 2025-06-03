@@ -91,7 +91,7 @@ class LocalStorage(Storage):
         return await self._metadata_handler.get_project_impl(project_id)
 
     async def list_projects(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Project]:
-        return await self._metadata_handler.list_projects_impl(limit, offset)
+        return await self._metadata_handler.list_projects_impl_data_template(limit, offset)
 
     async def log_master_job_start(self, job_data: GenerationMasterJob) -> None:
         await self._metadata_handler.log_master_job_start_impl(job_data)
