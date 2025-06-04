@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 CONFIGS_DIR = "configs"
 DATA_DIR = "data"
 ASSOCIATIONS_DIR = "associations"
+DATASETS_DIR = "datasets"
 
 
 class FileSystemDataHandler:
@@ -31,6 +32,7 @@ class FileSystemDataHandler:
         self.config_path = os.path.join(self.data_base_path, CONFIGS_DIR)
         self.record_data_path = os.path.join(self.data_base_path, DATA_DIR)
         self.assoc_path = os.path.join(self.data_base_path, ASSOCIATIONS_DIR)
+        self.datasets_path = os.path.join(self.data_base_path, DATASETS_DIR)
         # TODO: Consider locks if implementing JSONL appends for associations
 
     async def ensure_base_dirs(self):
@@ -84,6 +86,30 @@ class FileSystemDataHandler:
     def generate_request_config_path_impl(self, master_job_id: str) -> str:
         path = os.path.join(self.config_path, f"{master_job_id}.request.json")
         return path  # Return absolute path as the reference
+
+    async def save_dataset_impl(self, project_id: str, dataset_name: str, dataset_data: Dict[str, Any]):
+        path = os.path.join(self.datasets_path, project_id, f"{dataset_name}.json")
+        await self._save_json_file(path, dataset_data)
+        return path
+
+    async def get_dataset_impl(self, project_id: str, dataset_name: str) -> Dict[str, Any]:
+        path = os.path.join(self.datasets_path, project_id, f"{dataset_name}.json")
+        return await self._read_json_file(path)
+
+    async def list_datasets_impl(self, project_id: str) -> list[Dict[str, Any]]:
+        path = os.path.join(self.datasets_path, project_id)
+        files = await aio_os.listdir(path)
+        datasets = []
+
+        for i in range(len(files)):
+            file = files[i]
+            if file.endswith(".json"):
+                dataset = await self._read_json_file(os.path.join(path, file))
+
+                datasets.append(
+                    {"id": i, "name": file[:-5], "created_at": file.split("__")[1][:-5], "record_count": len(dataset), "data": dataset, "status": "completed"}
+                )
+        return datasets
 
     async def get_request_config_impl(self, config_ref: str) -> Dict[str, Any]:
         return await self._read_json_file(config_ref)  # Assumes ref is absolute path

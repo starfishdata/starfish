@@ -43,17 +43,17 @@ class GenerateByTopicInput(BaseModel):
     dependencies=[],
     input_example="""{
         "user_instruction": "Generate Q&A pairs about machine learning concepts",
-        "num_records": 100,
-        "records_per_topic": 5,
+        "num_records": 4,
+        "records_per_topic": 2,
         "topics": [
             "supervised learning",
             "unsupervised learning",
             {"reinforcement learning": 3},  # This means generate 3 records for this topic
             "neural networks",
         ],
-        "topic_model_name": "openai/gpt-4",
+        "topic_model_name": "openai/gpt-4.1-mini",
         "topic_model_kwargs": {"temperature": 0.7},
-        "generation_model_name": "openai/gpt-4",
+        "generation_model_name": "openai/gpt-4.1-mini",
         "generation_model_kwargs": {"temperature": 0.8, "max_tokens": 200},
         "output_schema": [
             {"name": "question", "type": "str"},

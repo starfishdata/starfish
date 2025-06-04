@@ -1,0 +1,103 @@
+.blogContent {
+  @apply prose prose-xl prose-pink max-w-none;
+}
+
+.blogContent p {
+  @apply text-xl leading-relaxed mb-8 text-gray-700;
+}
+
+@media (max-width: 640px) {
+  .blogContent p {
+    @apply text-lg leading-relaxed;
+  }
+}
+
+.blogContent h2 {
+  @apply text-4xl font-bold mt-20 mb-8 text-gray-900;
+}
+
+.blogContent h3 {
+  @apply text-3xl font-semibold mt-16 mb-6 text-gray-900;
+}
+
+.blogContent a {
+  @apply text-[#DB2777] underline decoration-[#DB2777]/30 underline-offset-2 hover:decoration-[#DB2777] transition-colors;
+}
+
+.blogContent ul,
+.blogContent ol {
+  @apply my-8 pl-6 space-y-3 text-gray-700 text-xl;
+}
+
+@media (max-width: 640px) {
+  .blogContent ul,
+  .blogContent ol {
+    @apply text-lg;
+  }
+}
+
+.blogContent li {
+  @apply text-gray-700 leading-relaxed;
+}
+
+.blogContent img {
+  @apply rounded-xl my-12 shadow-md mx-auto;
+}
+
+.blogContent figure {
+  @apply my-16;
+}
+
+.blogContent figcaption {
+  @apply mt-4 text-sm text-gray-500 italic text-center max-w-2xl mx-auto;
+}
+
+.blogContent blockquote {
+  @apply italic border-l-4 border-[#DB2777] pl-8 my-16 text-gray-600 bg-pink-50/50 py-6 pr-6 rounded-r-lg text-xl;
+}
+
+@media (max-width: 640px) {
+  .blogContent blockquote {
+    @apply text-lg py-4 pr-4;
+  }
+}
+
+.blogContent pre {
+  @apply my-12 rounded-xl shadow-md bg-gray-900 overflow-x-auto;
+}
+
+.blogContent code {
+  @apply text-[#DB2777] bg-pink-50 px-2 py-0.5 rounded-md text-base font-normal;
+}
+
+.blogContent pre code {
+  @apply bg-transparent text-inherit p-0 text-base text-gray-200;
+}
+
+.blogContent strong {
+  @apply text-gray-900 font-semibold;
+}
+
+.blogContent em {
+  @apply text-gray-700;
+}
+
+.blogContent hr {
+  @apply my-16 border-gray-200;
+}
+
+.blogContent table {
+  @apply my-8 w-full border-collapse;
+}
+
+.blogContent th {
+  @apply bg-gray-50 text-left py-3 px-4 font-semibold text-gray-900 border-b border-gray-200;
+}
+
+.blogContent td {
+  @apply py-3 px-4 border-b border-gray-200 text-gray-700;
+}
+
+.blogContent iframe {
+  @apply my-12 rounded-xl shadow-md mx-auto w-full aspect-video;
+} 
