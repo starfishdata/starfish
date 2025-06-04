@@ -225,10 +225,17 @@ class SQLiteMetadataHandler:
 
     async def save_project_impl(self, project_data: Project):
         sql = """
-            INSERT OR REPLACE INTO Projects (project_id, name, description, created_when, updated_when)
-            VALUES (?, ?, ?, ?, ?);
+            INSERT OR REPLACE INTO Projects (project_id, name, template_name, description, created_when, updated_when)
+            VALUES (?, ?, ?, ?, ?,?);
         """
-        params = (project_data.project_id, project_data.name, project_data.description, project_data.created_when, project_data.updated_when)
+        params = (
+            project_data.project_id,
+            project_data.name,
+            project_data.template_name,
+            project_data.description,
+            project_data.created_when,
+            project_data.updated_when,
+        )
         await self._execute_sql(sql, params)
 
     async def get_project_impl(self, project_id: str) -> Optional[Project]:
@@ -236,8 +243,32 @@ class SQLiteMetadataHandler:
         row = await self._fetchone_sql(sql, (project_id,))
         return _row_to_pydantic(Project, row)
 
+    async def delete_project_impl(self, project_id: str) -> None:
+        sql = "DELETE FROM Projects WHERE project_id = ?"
+        await self._execute_sql(sql, (project_id,))
+
     async def list_projects_impl(self, limit: Optional[int], offset: Optional[int]) -> List[Project]:
         sql = "SELECT * FROM Projects ORDER BY name"
+        params: List[Any] = []
+
+        # SQLite requires LIMIT when using OFFSET
+        if offset is not None:
+            if limit is not None:
+                sql += " LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+            else:
+                # If no explicit limit but with offset, use a high limit
+                sql += " LIMIT 1000 OFFSET ?"
+                params.append(offset)
+        elif limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        rows = await self._fetchall_sql(sql, tuple(params))
+        return [_row_to_pydantic(Project, row) for row in rows]
+
+    async def list_projects_impl_data_template(self, limit: Optional[int], offset: Optional[int]) -> List[Project]:
+        sql = "SELECT * FROM Projects WHERE template_name IS NOT NULL ORDER BY name"
         params: List[Any] = []
 
         # SQLite requires LIMIT when using OFFSET

@@ -130,3 +130,19 @@ class InMemoryStorage(Storage):
     async def list_execution_jobs_by_master_id_and_config_hash(self, master_job_id: str, config_hash: str, job_status: str) -> Optional[GenerationJob]:
         """Retrieve execution job details by master job id and config hash."""
         pass
+
+    async def save_dataset(self, project_id: str, dataset_name: str, dataset_data: Dict[str, Any]) -> str:
+        """Save a dataset."""
+        pass
+
+    async def get_dataset(self, project_id: str, dataset_name: str) -> Dict[str, Any]:
+        """Get a dataset."""
+        pass
+
+    async def list_datasets(self, project_id: str) -> List[Dict[str, Any]]:
+        """List datasets for a project."""
+        pass
+
+    async def delete_project(self, project_id: str) -> None:
+        """Delete a project."""
+        pass

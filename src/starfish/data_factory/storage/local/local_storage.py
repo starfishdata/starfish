@@ -90,8 +90,11 @@ class LocalStorage(Storage):
     async def get_project(self, project_id: str) -> Optional[Project]:
         return await self._metadata_handler.get_project_impl(project_id)
 
+    async def delete_project(self, project_id: str) -> None:
+        await self._metadata_handler.delete_project_impl(project_id)
+
     async def list_projects(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Project]:
-        return await self._metadata_handler.list_projects_impl(limit, offset)
+        return await self._metadata_handler.list_projects_impl_data_template(limit, offset)
 
     async def log_master_job_start(self, job_data: GenerationMasterJob) -> None:
         await self._metadata_handler.log_master_job_start_impl(job_data)
@@ -153,6 +156,15 @@ class LocalStorage(Storage):
 
     async def list_record_metadata(self, master_job_uuid: str, job_uuid: str) -> List[Record]:
         return await self._metadata_handler.list_record_metadata_impl(master_job_uuid, job_uuid)
+
+    async def save_dataset(self, project_id: str, dataset_name: str, dataset_data: Dict[str, Any]) -> str:
+        return await self._data_handler.save_dataset_impl(project_id, dataset_name, dataset_data)
+
+    async def get_dataset(self, project_id: str, dataset_name: str) -> Dict[str, Any]:
+        return await self._data_handler.get_dataset_impl(project_id, dataset_name)
+
+    async def list_datasets(self, project_id: str) -> List[Dict[str, Any]]:
+        return await self._data_handler.list_datasets_impl(project_id)
 
 
 @register_storage("local")

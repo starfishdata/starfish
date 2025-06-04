@@ -11,6 +11,7 @@ packages = [
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
 litellm = ">=1.65.1,<2.0.0"
+fastapi = ">=0.95.0"
 loguru = ">=0.7.3,<0.8.0"
 cachetools = ">=5.5.2,<6.0.0"
 ollama = ">=0.4.7,<0.5.0"
