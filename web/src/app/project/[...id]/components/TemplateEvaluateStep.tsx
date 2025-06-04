@@ -115,8 +115,9 @@ export default function TemplateEvaluateStep({
                     <h4 className="font-medium mb-2">Record {startIndex + index + 1}</h4>
                     <div className="text-sm text-gray-600 space-y-1">
                       {Object.entries(record).filter(([key]) => 
+                      // {.slice(0, 3)}
                         key !== 'id' && key !== 'score' && key !== 'rating' && key !== 'comments'
-                      ).slice(0, 3).map(([key, value]) => (
+                      ).map(([key, value]) => (
                         <div key={key}>
                           <span className="font-medium capitalize">{key.replace(/_/g, ' ')}:</span>{' '}
                           <span className="break-words">

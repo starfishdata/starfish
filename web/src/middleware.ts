@@ -1,7 +1,5 @@
-//import { fetchAuthSession } from 'aws-amplify/auth/server';
-import { NextRequest, NextResponse } from 'next/server';
-//import { cookieBasedClient, runWithAmplifyServerContext } from './utils/amplify-server-utils';
 
+import { NextRequest, NextResponse } from 'next/server';
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
 

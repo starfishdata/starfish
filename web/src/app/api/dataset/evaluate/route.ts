@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // The target backend server base URL, derived from environment variable or defaulted.
 // This should match the logic in your frontend's page.tsx for consistency.
-const TARGET_SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'http://localhost:8000';
+const TARGET_SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'http://localhost:8002';
 
 export async function POST(req: NextRequest) {
   try {

@@ -20,7 +20,7 @@ async def default_eval(input_data):
         model_name="gpt-4o-mini",
     )
 
-    eval_response = await eval_llm.run(input_data)
+    eval_response = await eval_llm.run(input_data=input_data)
     return eval_response.data
 
 
@@ -37,16 +37,16 @@ async def evaluate_dataset(request: dict):
     try:
         # logger.info(f"Evaluating dataset: {request}")
         result = request["evaluatedData"]
-        # input_data = []
-        # for item in result:
-        #     input_data.append(str(item))
-        # processed_data =  default_eval.run(input_data=input_data)
-        # processed_data_index = default_eval.get_index_completed()
-        # for i in range(len(processed_data_index)):
-        #     result[processed_data_index[i]]['quality_score'] = processed_data[i]['quality_score']
-
+        input_data = []
         for item in result:
-            item["quality_score"] = 6
+            input_data.append(str(item))
+        processed_data = default_eval.run(input_data=input_data)
+        processed_data_index = default_eval.get_index_completed()
+        for i in range(len(processed_data_index)):
+            result[processed_data_index[i]]["quality_score"] = processed_data[i]["quality_score"]
+
+        # for item in result:
+        #     item["quality_score"] = 6
         return result
 
     except Exception as e:

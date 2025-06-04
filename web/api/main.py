@@ -40,8 +40,8 @@ if missing_vars:
 
 if __name__ == "__main__":
     # Get port from environment variable or use default
-    port = int(os.environ.get("PORT", 8001))
-
+    # port = int(os.environ.get("PORT", 8001))
+    port = 8002
     # Import the app here to ensure environment variables are set first
     from api.api import app
 

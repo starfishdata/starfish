@@ -5,11 +5,8 @@ import { Inter } from "next/font/google";
 import { useEffect, useState, useCallback } from 'react';
 // import Auth from "../auth/components/Auth";
 import NavBar from "../auth/components/NavBar";
-//import { isAuthenticated } from "../utils/amplify-server-utils";
 import { Toaster } from "@/components/ui/toaster"
-// import { getAllProjectsOfUser } from '@/src/_actions/actions'
 import Script from 'next/script';
-
 const inter = Inter({ subsets: ["latin"] });
 
 export default function RootLayout({
@@ -82,6 +79,7 @@ export default function RootLayout({
           strategy="afterInteractive"
           defer
         />
+        <link rel="stylesheet" href="/amplify-ui.css" />
       </head>
       <body className={inter.className}>
         {/* <PostHogProvider>

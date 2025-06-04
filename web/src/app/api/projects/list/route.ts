@@ -5,7 +5,7 @@ interface ListProjectsRequest {
 }
 
 // Get backend URL from environment
-const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_HOST || 'http://localhost:8000'
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_HOST || 'http://localhost:8002'
 
 export async function POST(request: NextRequest) {
   try {
