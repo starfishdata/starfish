@@ -9,7 +9,7 @@ from starfish.data_factory.constants import (
     STORAGE_TYPE_LOCAL,
 )
 from starfish.data_factory.config import NOT_COMPLETED_THRESHOLD, TASK_RUNNER_TIMEOUT
-from starfish.data_factory.factory_ import Factory
+from starfish.data_factory.factory import Factory
 from starfish.data_factory.factory_executor_manager import FactoryExecutorManager
 from starfish.common.logger import get_logger
 

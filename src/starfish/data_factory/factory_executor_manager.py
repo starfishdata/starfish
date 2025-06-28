@@ -6,7 +6,7 @@ import cloudpickle
 from starfish.data_factory.utils.errors import InputError, NoResumeSupportError
 from starfish.common.logger import get_logger
 from starfish.data_factory.constants import IDX, STORAGE_TYPE_LOCAL, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FAILED, STATUS_FILTERED, RUN_MODE_RE_RUN
-from starfish.data_factory.factory_ import Factory
+from starfish.data_factory.factory import Factory
 from starfish.data_factory.utils.data_class import FactoryMasterConfig
 from starfish.data_factory.utils.state import MutableSharedState
 
