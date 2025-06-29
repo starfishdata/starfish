@@ -1,12 +1,13 @@
 import asyncio
 import sys
-from typing import Any, Callable, List
+from typing import Any, Callable, List, TYPE_CHECKING
 
 import cloudpickle
 from starfish.data_factory.utils.errors import InputError, NoResumeSupportError
 from starfish.common.logger import get_logger
 from starfish.data_factory.constants import IDX, STORAGE_TYPE_LOCAL, STATUS_COMPLETED, STATUS_DUPLICATE, STATUS_FAILED, STATUS_FILTERED, RUN_MODE_RE_RUN
-from starfish.data_factory.factory_ import Factory
+if TYPE_CHECKING:
+    from starfish.data_factory.factory import Factory
 from starfish.data_factory.utils.data_class import FactoryMasterConfig
 from starfish.data_factory.utils.state import MutableSharedState
 
@@ -100,7 +101,7 @@ class FactoryExecutorManager:
         """Handles dead queue operations"""
 
         @staticmethod
-        def get_indices_and_data(factory: Factory) -> tuple[List[dict], List[int]]:
+        def get_indices_and_data(factory: "Factory") -> tuple[List[dict], List[int]]:
             """Get dead queue indices and data"""
             if not hasattr(factory.job_manager, "dead_queue"):
                 return [], []
@@ -116,6 +117,7 @@ class FactoryExecutorManager:
     class Resume:
         @staticmethod
         async def _not_same_session_factory(*args, **kwargs):
+            from starfish.data_factory.factory import Factory
             factory = Factory(FactoryMasterConfig(storage=STORAGE_TYPE_LOCAL))
             if len(args) == 1:
                 factory.config.master_job_id = args[0]
@@ -212,7 +214,7 @@ class FactoryExecutorManager:
         return FactoryExecutorManager.execute(FactoryExecutorManager.Resume.resume, *args, **filtered_args)
 
     @staticmethod
-    def process_output(factory: Factory, filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[dict[str, Any]]:
+    def process_output(factory: "Factory", filter: str = STATUS_COMPLETED, is_idx: bool = False) -> List[dict[str, Any]]:
         """Process and filter output data"""
         _filter = FactoryExecutorManager.Filters.convert(filter)
         if FactoryExecutorManager.Filters.is_valid(_filter):
@@ -220,7 +222,7 @@ class FactoryExecutorManager:
         raise InputError(f"Invalid filter '{filter}'. Supported filters are: {list(FactoryExecutorManager.Filters.filter_mapping.keys())}")
 
     @staticmethod
-    def process_dead_queue(factory: Factory, is_idx: bool = False) -> List:
+    def process_dead_queue(factory: "Factory", is_idx: bool = False) -> List:
         """Process dead queue data"""
         result = FactoryExecutorManager.DeadQueue.get_indices_and_data(factory)
         return result[1] if is_idx else result[0]

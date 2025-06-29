@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, Protocol
+from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, TypeVar, Protocol, TYPE_CHECKING
 from starfish.data_factory.constants import (
     RUN_MODE_DRY_RUN,
     RUN_MODE_NORMAL,
@@ -9,7 +9,8 @@ from starfish.data_factory.constants import (
     STORAGE_TYPE_LOCAL,
 )
 from starfish.data_factory.config import NOT_COMPLETED_THRESHOLD, TASK_RUNNER_TIMEOUT
-from starfish.data_factory.factory_ import Factory
+if TYPE_CHECKING:
+    from starfish.data_factory.factory import Factory
 from starfish.data_factory.factory_executor_manager import FactoryExecutorManager
 from starfish.common.logger import get_logger
 
@@ -35,7 +36,7 @@ class FactoryWrapper(Generic[T]):
         state: Shared state object for tracking job state
     """
 
-    def __init__(self, factory: Factory, func: Callable[..., T]):
+    def __init__(self, factory: "Factory", func: Callable[..., T]):
         """Initialize the FactoryWrapper instance.
 
         Args:
